@@ -5,7 +5,7 @@ from api.v1.schemas import SipuniEvent
 from . import router
 
 
-@router.get('/stream')
+@router.get('/stream', tags=['Streams'])
 async def stream(request: Request):
     try:
         event_model = TypeAdapter(SipuniEvent).validate_python(request.query_params)
