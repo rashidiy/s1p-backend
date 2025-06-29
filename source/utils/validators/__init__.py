@@ -1,0 +1,1 @@
+from .phone_number_validator import validate_phone_number

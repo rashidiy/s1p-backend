@@ -1,6 +1,4 @@
-import string
 import uuid
-from random import choice
 
 from sqlalchemy import Integer, String, UUID, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import mapped_column, Mapped, relationship
@@ -24,8 +22,3 @@ class Sipuni(Base, ObjectManagerMixin):
     user: Mapped['User'] = relationship("User", back_populates='sipuni_integrations')
 
     __table_args__ = (UniqueConstraint('user_id', 'cabinet_id'),)
-
-    @classmethod
-    def generate_token(cls, cabinet_id):
-        filler = ''.join([choice(string.ascii_letters + string.digits) for _ in range(63 - len(cabinet_id))])
-        return f'{cabinet_id}:{filler}'

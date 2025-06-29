@@ -1,13 +1,39 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, constr, conint
+
+from utils.validators import validate_phone_number
 
 
-class ExternalCallRequest(BaseModel):
-    phone1: str
-    phone2: str
-    secret: str
-    bridge_start: str
-    bridge_end: str
+class CallSchema:
+    class ExternalCallRequest(BaseModel):
+        token: constr(min_length=64, max_length=64)
+        phone1: str
+        phone2: str
+        bridge_start: constr(max_length=100) = 201
+        bridge_end: constr(max_length=100) = 201
 
-    @field_validator('phone1', 'phone2', 'bridge_start', 'bridge_end')
-    def validate_phone1_phone2(cls, phone_number):
-        return phone_number
+        @field_validator('phone1', 'phone2')
+        def validate_phone(cls, phone):
+            return validate_phone_number(phone)
+
+    class CallNumberRequest(BaseModel):
+        token: constr(min_length=64, max_length=64)
+        phone: str
+        sip_number: str
+        reverse: bool
+        antiaon: bool
+
+        @field_validator('phone')
+        def validate_phone(cls, phone):
+            return validate_phone_number(phone)
+
+    class CallTreeRequest(BaseModel):
+        token: constr(min_length=64, max_length=64)
+        phone: str
+        sip_number: str
+        tree: str
+        reverse: bool
+        attempt_duration: conint(gt=30) = 30
+
+        @field_validator('phone')
+        def validate_sip_number(cls, phone):
+            return validate_phone_number(phone)
