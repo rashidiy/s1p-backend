@@ -1,3 +1,4 @@
+import uuid
 from typing import List
 
 from fastapi import Depends, Query
@@ -20,7 +21,7 @@ async def get_sipuni_list(
 
 @router.get('/detail', response_model=SipuniSchema.SipuniResponse)
 async def get_sipuni_detail(
-        id_: int = Query(..., alias='id'),
+        id_: uuid.UUID = Query(..., alias='id'),
         user: User = User.current(check_for_active=False),
         session: AsyncSession = Depends(get_session)
 ):

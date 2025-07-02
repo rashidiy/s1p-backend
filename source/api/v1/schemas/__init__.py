@@ -1,7 +1,7 @@
 from .auth import AuthSchema
-from .sipuni import SipuniSchema, SipuniEvent, CallSchema
+from .sipuni import SipuniSchema, SipuniEventSchema, CallSchema
 
 __all__ = [
     'AuthSchema',
-    'SipuniSchema', 'SipuniEvent', 'CallSchema',
+    'SipuniSchema', 'SipuniEventSchema', 'CallSchema',
 ]

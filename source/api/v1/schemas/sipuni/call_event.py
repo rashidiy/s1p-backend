@@ -1,49 +1,32 @@
-from typing import Literal, Optional, Union, Annotated
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-
-class BaseEvent(BaseModel):
-    event: str
-    call_id: str
-    src_num: str
-    src_type: Literal['1', '2']
-    dst_num: Optional[str] = None
-    dst_type: Optional[Literal['1', '2']] = None
-    timestamp: int
-    short_src_num: Optional[str] = None
-    short_dst_num: Optional[str] = None
+from db.models.enums import CallStatusEnum
 
 
-class CallEvent(BaseEvent):
-    event: Literal['1']
-    is_inner_call: Optional[Literal['0', '1']] = None
-    roistat: Optional[str] = None
-    roistat_number: Optional[str] = None
-    roistat_market: Optional[str] = None
+class SipuniEventSchema:
+    class HangupEvent(BaseModel):
+        event: str
+        call_id: str
+        record_link: str = Field(alias='call_record_link')
+        status: CallStatusEnum
+        call_start_timestamp: int
+        call_end_timestamp: Optional[int] = None
+        pbxdstnum: Optional[str] = None
+        short_dst_num: str
+        short_src_num: str
+        dst_num: Optional[str] = None
+        dst_type: str
+        src_num: str
+        src_type: str
+        last_called: str | list
+        timestamp: int
+        transfer_from: Optional[str] = None
+        treeName: Optional[str] = None
+        treeNumber: Optional[str] = None
+        user_id: Optional[str] = None
 
-
-class AnswerEvent(BaseEvent):
-    event: Literal['3']
-
-
-class HangupBase(BaseEvent):
-    status: Literal["ANSWER", "BUSY", "NOANSWER", "CANCEL", "CONGESTION", "CHANUNAVAIL"]
-    call_start_timestamp: int
-    call_answer_timestamp: int
-    call_record_link: Optional[str] = None
-
-
-class HangupEvent(HangupBase):
-    event: Literal['2']
-    roistatgoogleid: Optional[str] = None
-
-
-class SecondaryHangupEvent(HangupBase):
-    event: Literal['4']
-
-
-SipuniEvent = Annotated[
-    Union[CallEvent, HangupEvent, AnswerEvent, SecondaryHangupEvent],
-    Field(discriminator="event")
-]
+        @field_validator('last_called')
+        def validate_last_called(cls, v):
+            return v.split('&')
