@@ -1,8 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import List
 
-from sqlalchemy import Integer, String, UUID, ForeignKey, UniqueConstraint, BigInteger, Uuid, Enum
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Integer, String, UUID, ForeignKey, UniqueConstraint, Uuid, Enum, DateTime
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from db import Base, ObjectManagerMixin
@@ -33,18 +33,20 @@ class CallEvent(Base, ObjectManagerMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     call_id: Mapped[str] = mapped_column(String(255), unique=True)
-    call_start_timestamp = mapped_column(BigInteger)
-    call_end_timestamp = mapped_column(BigInteger, nullable=True)
     sipuni_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('sipuni.id'))
     pbxdstnum: Mapped[str] = mapped_column(String(255))
     dst_type: Mapped[str] = mapped_column(String(1))
     src_num: Mapped[str] = mapped_column(String(255))
     src_type: Mapped[str] = mapped_column(String(1))
-    last_called: Mapped[str] = mapped_column(ARRAY(String(255)), nullable=True)
+    operator: Mapped[str] = mapped_column(String(255), nullable=True)
     transfer_from: Mapped[str] = mapped_column(String(255), nullable=True)
     tree_number: Mapped[str] = mapped_column(String(255), nullable=True)
-    record_link: Mapped[str] = mapped_column(String(2048), nullable=True)
-    timestamp = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Enum(CallStatusEnum))
+    call_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    call_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
+    # relationships
     sipuni: Mapped['Sipuni'] = relationship("Sipuni", back_populates='call_events')
+
+    def __repr__(self):
+        return f"<CallEvent: {self.call_id}>"

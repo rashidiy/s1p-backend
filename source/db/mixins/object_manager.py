@@ -21,7 +21,6 @@ class ObjectManagerMixin:
                 continue
             if not hasattr(cls, field):
                 fields.pop(field)
-        print(fields)
         return fields
 
     @classmethod
