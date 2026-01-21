@@ -1,1 +1,1 @@
-from . import statistics
+from . import general
