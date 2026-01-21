@@ -27,4 +27,4 @@ class DatabaseConfig:
 
 class JWTConfig:
     ALGORITHM = required_env('JWT_ALGORITHM', 'HS256')
-    SINGING_KEY = required_env('JWT_SINGING_KEY')
+    SIGNING_KEY = required_env('JWT_SIGNING_KEY')

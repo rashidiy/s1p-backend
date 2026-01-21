@@ -23,13 +23,14 @@ class Sipuni(Base, ObjectManagerMixin):
     comment: Mapped[str] = mapped_column(String(1024))
 
     user: Mapped['User'] = relationship("User", back_populates='sipuni_integrations')
-    call_events: Mapped[List['CallEvent']] = relationship("CallEvent", back_populates='sipuni')
+    call_events: Mapped[List['SipuniCallEvent']] = relationship("SipuniCallEvent", back_populates='sipuni')
 
     __table_args__ = (UniqueConstraint('user_id', 'cabinet_id'),)
 
 
-class CallEvent(Base, ObjectManagerMixin):
-    __tablename__ = 'call_events'
+class SipuniCallEvent(Base, ObjectManagerMixin):
+    """Legacy Sipuni call event model - kept for backward compatibility"""
+    __tablename__ = 'sipuni_call_events'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     call_id: Mapped[str] = mapped_column(String(255), unique=True)
@@ -48,3 +49,7 @@ class CallEvent(Base, ObjectManagerMixin):
     status: Mapped[str] = mapped_column(Enum(CallStatusEnum))
 
     sipuni: Mapped['Sipuni'] = relationship("Sipuni", back_populates='call_events')
+
+
+# Alias for backward compatibility
+LegacySipuniCallEvent = SipuniCallEvent

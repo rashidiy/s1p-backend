@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, relationship, mapped_column
 from sqlalchemy.sql import func
 
 from db import Base, ObjectManagerMixin, AuthenticationManagerMixin
-from source.db.models.enums import RoleEnum
+from db.models.enums import RoleEnum
 
 
 class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
@@ -97,6 +97,9 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     created_contacts = relationship("Contact", foreign_keys="Contact.created_by", back_populates="creator")
     call_events = relationship("CallEvent", back_populates="operator")
     audit_logs = relationship("AuditLog", back_populates="user")
+
+    # Legacy Sipuni integrations
+    sipuni_integrations = relationship("Sipuni", back_populates="user")
 
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>"

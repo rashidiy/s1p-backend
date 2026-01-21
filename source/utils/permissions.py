@@ -6,8 +6,8 @@ from functools import wraps
 from typing import List, Callable
 from fastapi import HTTPException, status
 
-from source.db.models.user import User
-from source.db.models.enums import RoleEnum
+from db.models.user import User
+from db.models.enums import RoleEnum
 
 
 class PermissionDenied(HTTPException):

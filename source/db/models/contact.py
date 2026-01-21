@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from source.db.base import Base
+from db.base import Base
 
 
 class Contact(Base):

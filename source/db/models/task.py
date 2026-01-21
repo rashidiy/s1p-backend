@@ -10,8 +10,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from source.db.base import Base
-from source.db.models.enums import TaskStatusEnum, TaskPriorityEnum
+from db.base import Base
+from db.models.enums import TaskStatusEnum, TaskPriorityEnum
 
 
 class Task(Base):

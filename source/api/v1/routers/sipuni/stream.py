@@ -9,7 +9,7 @@ from starlette.requests import Request
 from api.v1.schemas import SipuniEventSchema as SESch
 from db import get_session
 from db.models.enums import CallStatusEnum
-from db.models.sipuni import CallEvent
+from db.models.sipuni import SipuniCallEvent as CallEvent
 from . import router
 
 
