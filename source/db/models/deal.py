@@ -11,8 +11,8 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from source.db.base import Base
-from source.db.models.enums import DealStageEnum
+from db.base import Base
+from db.models.enums import DealStageEnum
 
 
 class Deal(Base):

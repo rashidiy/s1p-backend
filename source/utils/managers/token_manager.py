@@ -32,13 +32,13 @@ class JWTManager:
         now = datetime.now(timezone.utc)
         exp_time = now + duration
         payload = {"sub": str(sub), "data": data, "exp": int(exp_time.timestamp()), "type": token_type.value}
-        return jwt.encode(payload, config.JWTConfig.SINGING_KEY, algorithm=config.JWTConfig.ALGORITHM)
+        return jwt.encode(payload, config.JWTConfig.SIGNING_KEY, algorithm=config.JWTConfig.ALGORITHM)
 
     @classmethod
     def verify(cls, token: str, expected_type: Optional[str] = None) -> JWTPayload | None:
         try:
             options, algorithms = {"verify_sub": False}, [config.JWTConfig.ALGORITHM]
-            payload = jwt.decode(token, config.JWTConfig.SINGING_KEY, algorithms, options)
+            payload = jwt.decode(token, config.JWTConfig.SIGNING_KEY, algorithms, options)
         except ExpiredSignatureError:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired or invalid.")
         except JWTError:
