@@ -157,6 +157,8 @@ class Permissions:
 
     # Users
     USERS_READ = "users.read"
+    USERS_CREATE = "users.create"
+    USERS_UPDATE = "users.update"
     USERS_WRITE = "users.write"
     USERS_DELETE = "users.delete"
     USERS_MANAGE = "users.manage"
@@ -213,6 +215,8 @@ ROLE_PERMISSIONS = {
         Permissions.NOTES_DELETE,
         # Users
         Permissions.USERS_READ,
+        Permissions.USERS_CREATE,
+        Permissions.USERS_UPDATE,
         Permissions.USERS_WRITE,
         Permissions.USERS_DELETE,
         Permissions.USERS_MANAGE,
