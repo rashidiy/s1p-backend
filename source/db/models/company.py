@@ -8,11 +8,11 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from db.base import Base
+from db import Base, ObjectManagerMixin
 from db.models.enums import ProviderEnum
 
 
-class Company(Base):
+class Company(Base, ObjectManagerMixin):
     """
     Company model - Multi-tenant entity
 
