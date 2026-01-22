@@ -12,6 +12,8 @@ from db.models.call_event import CallEvent
 from api.v1.schemas.call import CallRequest, CallResponse, CallEventResponse, CallRecordingURL
 from utils.services.telephony import ProviderFactory
 from utils.permissions import require_permissions, Permissions
+from utils.managers import RecordTokenManager
+from core.config import WebhookConfig, AppConfig
 
 router = APIRouter(prefix="/calls", tags=["Calls"])
 
@@ -112,6 +114,7 @@ async def get_call_recording(
     Get proxied call recording URL
 
     Returns a secure, time-limited URL to access the call recording.
+    The URL is signed and expires after the configured time period.
     """
     call = await CallEvent.get_or_404(
         id=call_id,
@@ -124,9 +127,21 @@ async def get_call_recording(
             detail="No recording available for this call"
         )
 
-    # TODO: Generate signed token for proxied URL
-    # For now, return the direct URL
-    return CallRecordingURL(
-        url=call.record_url,
-        expires_in=86400  # 24 hours
-    )
+    # Generate signed token for proxied access
+    if WebhookConfig.RECORD_PROXY_SECRET:
+        # Use proxied URL with signed token
+        proxied_url = RecordTokenManager.generate_proxied_url(
+            call_id=call.id,
+            company_id=user.company_id,
+            base_url=AppConfig.BASE_URL
+        )
+        return CallRecordingURL(
+            url=proxied_url,
+            expires_in=WebhookConfig.RECORD_PROXY_TOKEN_EXPIRY
+        )
+    else:
+        # Fallback: return direct URL (less secure, for development)
+        return CallRecordingURL(
+            url=call.record_url,
+            expires_in=86400  # 24 hours
+        )
