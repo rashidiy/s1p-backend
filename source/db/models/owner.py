@@ -7,10 +7,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from db.base import Base
+from db import Base, ObjectManagerMixin, AuthenticationManagerMixin
 
 
-class Owner(Base):
+class Owner(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     """
     Owner model - Platform-level master account
 
