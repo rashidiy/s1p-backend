@@ -24,10 +24,31 @@ class AuthenticationManagerMixin:
 
             user = await cls.get(id=payload.sub, session=session)
 
+            if not user:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found.")
+
+            # Check for soft delete
+            if user.deleted_at is not None:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Account has been deleted.")
+
+            # Multi-tenant validation: ensure JWT company_id matches user's company_id
+            if user.company_id:
+                jwt_company_id = str(user.company_id) if user.company_id else None
+                payload_company_id = str(payload.company_id) if payload.company_id else None
+
+                if jwt_company_id != payload_company_id:
+                    raise HTTPException(
+                        status.HTTP_403_FORBIDDEN,
+                        "Token company mismatch. Please re-authenticate."
+                    )
+
             if check_for_active:
-                if not user.is_active: raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is inactive.")
+                if not user.is_active:
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is inactive.")
             if check_for_suspended:
-                if user.is_suspended: raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended.")
+                if user.is_suspended:
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended.")
+
             return user
 
         return Depends(authenticate)

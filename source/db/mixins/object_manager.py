@@ -1,5 +1,6 @@
 from copy import copy
 from typing import Any
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select, and_, exists, delete, update
@@ -11,17 +12,22 @@ from starlette import status
 class ObjectManagerMixin:
     excluded_fields = ['session']
 
+    @classmethod
+    def _has_soft_delete(cls) -> bool:
+        """Check if model has soft delete support (deleted_at column)"""
+        return hasattr(cls, 'deleted_at')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     @classmethod
     def validate_fields(cls, fields):
+        """Validate and filter fields before database operations"""
         for field in copy(fields):
             if field in cls.excluded_fields:
                 continue
             if not hasattr(cls, field):
                 fields.pop(field)
-        print(fields)
         return fields
 
     @classmethod
@@ -47,8 +53,24 @@ class ObjectManagerMixin:
         return obj, created
 
     @classmethod
-    def build_filter_conditions(cls, filters: dict) -> list:
+    def build_filter_conditions(cls, filters: dict, include_deleted: bool = False) -> list:
+        """
+        Build filter conditions from filters dict
+
+        Args:
+            filters: Dictionary of field filters
+            include_deleted: If False (default), exclude soft-deleted records
+
+        Returns:
+            List of SQLAlchemy filter conditions
+        """
         conditions = []
+
+        # Automatically filter out soft-deleted records
+        if cls._has_soft_delete() and not include_deleted:
+            # Only include records where deleted_at IS NULL
+            conditions.append(cls.deleted_at.is_(None))
+
         for key, value in filters.items():
             if '__' in key:
                 field, operator = key.split('__', 1)
@@ -84,15 +106,34 @@ class ObjectManagerMixin:
             order_by: tuple[Any] = None,
             annotate: dict = None,
             fields: list = None,
+            include_deleted: bool = False,
             **filters
     ):
+        """
+        Get all records matching filters
+
+        Args:
+            session: Database session
+            relationships: Relationships to eagerly load
+            limit: Maximum number of records
+            offset: Number of records to skip
+            order_by: Ordering clauses
+            annotate: Additional columns to add
+            fields: Specific fields to select
+            include_deleted: If True, include soft-deleted records
+            **filters: Field filters
+
+        Returns:
+            List of matching records
+        """
         if fields is None:
             query = select(cls)
         else:
             query = select(*fields)
 
-        if filters:
-            conditions = cls.build_filter_conditions(filters)
+        # Build conditions with soft delete filtering
+        conditions = cls.build_filter_conditions(filters, include_deleted=include_deleted)
+        if conditions:
             query = query.where(and_(*conditions))
 
         if relationships:
@@ -122,14 +163,28 @@ class ObjectManagerMixin:
         return objs
 
     @classmethod
-    async def get(cls, *, session, relationships: tuple[Any] = None, fields: tuple[Any] = None, **filters):
+    async def get(cls, *, session, relationships: tuple[Any] = None, fields: tuple[Any] = None, include_deleted: bool = False, **filters):
+        """
+        Get a single record matching filters
+
+        Args:
+            session: Database session
+            relationships: Relationships to eagerly load
+            fields: Specific fields to select
+            include_deleted: If True, include soft-deleted records
+            **filters: Field filters
+
+        Returns:
+            Matching record or None
+        """
         if fields is None:
             query = select(cls)
         else:
             query = select(*fields)
 
-        if filters:
-            conditions = cls.build_filter_conditions(filters)
+        # Build conditions with soft delete filtering
+        conditions = cls.build_filter_conditions(filters, include_deleted=include_deleted)
+        if conditions:
             query = query.where(and_(*conditions))
 
         if relationships:
@@ -154,11 +209,22 @@ class ObjectManagerMixin:
         return obj
 
     @classmethod
-    async def exists(cls, *, session: AsyncSession, **filters):
+    async def exists(cls, *, session: AsyncSession, include_deleted: bool = False, **filters):
+        """
+        Check if a record exists
+
+        Args:
+            session: Database session
+            include_deleted: If True, include soft-deleted records
+            **filters: Field filters
+
+        Returns:
+            True if record exists, False otherwise
+        """
         query = select(exists(cls.id))
 
-        if filters:
-            conditions = cls.build_filter_conditions(filters)
+        conditions = cls.build_filter_conditions(filters, include_deleted=include_deleted)
+        if conditions:
             query = query.where(and_(*conditions))
 
         result = await session.execute(query)
@@ -174,11 +240,24 @@ class ObjectManagerMixin:
         return obj
 
     @classmethod
-    async def update_by(cls, *, session: AsyncSession, values: dict, commit: bool = True, **filters) -> int:
+    async def update_by(cls, *, session: AsyncSession, values: dict, commit: bool = True, include_deleted: bool = False, **filters) -> int:
+        """
+        Update records by filters
+
+        Args:
+            session: Database session
+            values: Dictionary of field values to update
+            commit: Whether to commit the transaction
+            include_deleted: If True, update soft-deleted records too
+            **filters: Field filters
+
+        Returns:
+            Number of records updated
+        """
         stmt = update(cls).values(**values)
 
-        if filters:
-            conditions = cls.build_filter_conditions(filters)
+        conditions = cls.build_filter_conditions(filters, include_deleted=include_deleted)
+        if conditions:
             stmt = stmt.where(and_(*conditions))
 
         result = await session.execute(stmt)
@@ -189,24 +268,71 @@ class ObjectManagerMixin:
 
         return result.rowcount
 
-    async def delete(obj: Any, *, session: AsyncSession, commit: bool = True) -> None:  # noqa
-        await session.delete(obj)
-        if commit:
-            await session.commit()
+    async def delete(obj: Any, *, session: AsyncSession, commit: bool = True, hard: bool = False) -> None:  # noqa
+        """
+        Delete a record (soft delete by default)
+
+        Args:
+            obj: The object to delete
+            session: Database session
+            commit: Whether to commit the transaction
+            hard: If True, perform hard delete (permanent). Otherwise, soft delete.
+        """
+        if hasattr(obj, 'deleted_at') and not hard:
+            # Soft delete: set deleted_at timestamp
+            obj.deleted_at = datetime.now(timezone.utc)
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
+            await session.refresh(obj)
         else:
-            await session.flush()
+            # Hard delete: remove from database
+            await session.delete(obj)
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
 
     @classmethod
-    async def delete_by(cls, *, session: AsyncSession, commit: bool = True, **filters):
-        query = delete(cls)
-        if filters:
-            conditions = cls.build_filter_conditions(filters)
-            query = query.where(and_(*conditions))
+    async def delete_by(cls, *, session: AsyncSession, commit: bool = True, hard: bool = False, **filters):
+        """
+        Delete records by filters (soft delete by default)
 
-        result = await session.execute(query)
-        if commit:
-            await session.commit()
+        Args:
+            session: Database session
+            commit: Whether to commit the transaction
+            hard: If True, perform hard delete. Otherwise, soft delete.
+            **filters: Field filters
+
+        Returns:
+            Number of records deleted
+        """
+        if cls._has_soft_delete() and not hard:
+            # Soft delete: update deleted_at
+            conditions = cls.build_filter_conditions(filters, include_deleted=False)
+            stmt = update(cls).values(deleted_at=datetime.now(timezone.utc))
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+
+            result = await session.execute(stmt)
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
+
+            return result.rowcount
         else:
-            await session.flush()
+            # Hard delete: remove from database
+            query = delete(cls)
+            conditions = cls.build_filter_conditions(filters, include_deleted=True)
+            if conditions:
+                query = query.where(and_(*conditions))
 
-        return result.rowcount
+            result = await session.execute(query)
+            if commit:
+                await session.commit()
+            else:
+                await session.flush()
+
+            return result.rowcount
