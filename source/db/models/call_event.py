@@ -12,7 +12,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
-from db.models.enums import CallStatusEnum, ProviderEnum, CallDirectionEnum
+from db.models.enums import CallStatusEnum, ProviderEnum, CallDirectionEnum, CallOutcomeEnum
 
 
 class CallEvent(Base):
@@ -101,6 +101,18 @@ class CallEvent(Base):
         ForeignKey("leads.id", ondelete="SET NULL"),
         nullable=True
     )
+    deal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("deals.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Call outcome and disposition
+    outcome = Column(
+        SQLEnum(CallOutcomeEnum, name="call_outcome_enum"),
+        nullable=True
+    )
+    disposition_notes = Column(Text, nullable=True)
 
     # UTM tracking for marketing attribution
     utm_source = Column(String(255))
@@ -124,6 +136,7 @@ class CallEvent(Base):
     operator = relationship("User", back_populates="call_events")
     contact = relationship("Contact", back_populates="calls")
     lead = relationship("Lead", back_populates="calls")
+    deal = relationship("Deal", back_populates="calls")
 
     def __repr__(self):
         return (

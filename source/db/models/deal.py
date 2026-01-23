@@ -101,6 +101,7 @@ class Deal(Base):
     lead = relationship("Lead", back_populates="deals")
     contact = relationship("Contact", back_populates="deals")
     assignee = relationship("User", foreign_keys=[assigned_to], back_populates="assigned_deals")
+    calls = relationship("CallEvent", back_populates="deal")
 
     notes = relationship("Note", primaryjoin="and_(Note.entity_type=='deal', Note.entity_id==Deal.id)", foreign_keys="Note.entity_id", viewonly=True)
 

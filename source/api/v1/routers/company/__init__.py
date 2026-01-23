@@ -6,12 +6,13 @@ All endpoints under /company operate on the user's company from their JWT token.
 
 from fastapi import APIRouter
 
-from . import calls, webhooks, recordings, users, analytics, contacts, leads, deals, tasks, notes
+from . import calls, calls_enhanced, webhooks, recordings, users, analytics, contacts, leads, deals, tasks, notes
 
 router = APIRouter(prefix="/company", tags=["Company Operations"])
 
 # Include sub-routers
 router.include_router(calls.router)
+router.include_router(calls_enhanced.router)  # Enhanced call management
 router.include_router(webhooks.router)
 router.include_router(recordings.router)
 router.include_router(users.router)

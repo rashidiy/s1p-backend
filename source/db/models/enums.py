@@ -80,3 +80,28 @@ class CallDirectionEnum(str, enum.Enum):
     INBOUND = "inbound"
     OUTBOUND = "outbound"
     INTERNAL = "internal"
+
+
+class CallOutcomeEnum(str, enum.Enum):
+    """Call outcome/disposition enumeration"""
+    # Positive outcomes
+    INTERESTED = "interested"
+    APPOINTMENT_SCHEDULED = "appointment_scheduled"
+    FOLLOW_UP = "follow_up"
+    SALE_MADE = "sale_made"
+
+    # Neutral outcomes
+    NO_ANSWER = "no_answer"
+    LEFT_VOICEMAIL = "left_voicemail"
+    BUSY = "busy"
+    CALLBACK_REQUESTED = "callback_requested"
+    INFORMATION_PROVIDED = "information_provided"
+
+    # Negative outcomes
+    NOT_INTERESTED = "not_interested"
+    WRONG_NUMBER = "wrong_number"
+    DO_NOT_CALL = "do_not_call"
+    CUSTOMER_COMPLAINT = "customer_complaint"
+
+    # Other
+    OTHER = "other"
