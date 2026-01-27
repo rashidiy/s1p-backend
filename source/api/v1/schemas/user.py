@@ -48,6 +48,7 @@ class PasswordChangeRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     """Reset password (for temporary passwords)"""
+    email: EmailStr
     temporary_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8, max_length=100)
 

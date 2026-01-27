@@ -36,7 +36,7 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 @require_permissions(Permissions.USERS_CREATE)
 async def invite_operator(
     data: UserInviteRequest,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -108,7 +108,7 @@ async def invite_operator(
 @router.get("/", response_model=UserListResponse)
 @require_permissions(Permissions.USERS_READ)
 async def list_users(
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -167,7 +167,7 @@ async def list_users(
 @require_permissions(Permissions.USERS_READ)
 async def get_user(
     user_id: UUID,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -223,7 +223,7 @@ async def get_user(
 async def update_user(
     user_id: UUID,
     data: UserUpdateRequest,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -267,7 +267,7 @@ async def update_user(
 @require_permissions(Permissions.USERS_DELETE)
 async def delete_user(
     user_id: UUID,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session),
     hard: bool = False
 ):
@@ -297,7 +297,7 @@ async def delete_user(
 @require_permissions(Permissions.USERS_UPDATE)
 async def activate_user(
     user_id: UUID,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -320,7 +320,7 @@ async def activate_user(
 @require_permissions(Permissions.USERS_UPDATE)
 async def deactivate_user(
     user_id: UUID,
-    admin: User = Depends(User.current),
+    admin: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -348,7 +348,7 @@ async def deactivate_user(
 @router.post("/me/change-password", status_code=status.HTTP_200_OK)
 async def change_password(
     data: PasswordChangeRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -374,15 +374,15 @@ async def change_password(
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password(
     data: PasswordResetRequest,
-    email: str = Query(...),
     session: AsyncSession = Depends(get_session)
 ):
     """
     Reset password using temporary password
 
     Used by operators on first login.
+    Email is now in request body (PasswordResetRequest).
     """
-    user = await User.get(email=email, session=session)
+    user = await User.get(email=data.email, session=session)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

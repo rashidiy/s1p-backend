@@ -73,7 +73,7 @@ class CallWithDetails(BaseModel):
 async def set_call_outcome(
     call_id: UUID,
     data: CallOutcomeUpdate,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -109,7 +109,7 @@ async def set_call_outcome(
 async def link_call_to_crm(
     call_id: UUID,
     data: CallLinkRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -166,7 +166,7 @@ async def link_call_to_crm(
 @router.get("/history", response_model=PaginatedResponse)
 @require_permissions(Permissions.CALLS_READ)
 async def get_call_history(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -314,7 +314,7 @@ async def get_call_history(
 @router.get("/outcomes/summary")
 @require_permissions(Permissions.CALLS_READ)
 async def get_call_outcomes_summary(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
@@ -379,7 +379,7 @@ async def get_call_outcomes_summary(
 @require_permissions(Permissions.CALLS_READ)
 async def get_auto_link_suggestions(
     phone_number: str,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """

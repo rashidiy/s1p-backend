@@ -10,9 +10,10 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
+from db.mixins.object_manager import ObjectManagerMixin
 
 
-class Note(Base):
+class Note(Base, ObjectManagerMixin):
     """
     Note model - Notes and comments
 

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
@@ -52,10 +53,15 @@ async def login(data: AuthSchema.LoginRequest, session: AsyncSession = Depends(g
     return user
 
 
-@router.get('/refresh')
-async def refresh_token(token: str = Query()):
+class RefreshTokenRequest(BaseModel):
+    """Request body for token refresh"""
+    refresh_token: str
+
+
+@router.post('/refresh')
+async def refresh_token(data: RefreshTokenRequest):
     """Refresh access token using refresh token"""
-    payload = JWTManager.verify(token, TokenType.REFRESH)
+    payload = JWTManager.verify(data.refresh_token, TokenType.REFRESH)
     return {
         "access": JWTManager.create(
             sub=payload.sub,

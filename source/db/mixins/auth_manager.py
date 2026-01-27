@@ -27,12 +27,12 @@ class AuthenticationManagerMixin:
             if not user:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found.")
 
-            # Check for soft delete
-            if user.deleted_at is not None:
+            # Check for soft delete (if model has deleted_at attribute)
+            if hasattr(user, 'deleted_at') and user.deleted_at is not None:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Account has been deleted.")
 
             # Multi-tenant validation: ensure JWT company_id matches user's company_id
-            if user.company_id:
+            if hasattr(user, 'company_id') and user.company_id:
                 jwt_company_id = str(user.company_id) if user.company_id else None
                 payload_company_id = str(payload.company_id) if payload.company_id else None
 

@@ -11,10 +11,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
+from db.mixins.object_manager import ObjectManagerMixin
 from db.models.enums import LeadStatusEnum, PipelineStageEnum
 
 
-class Lead(Base):
+class Lead(Base, ObjectManagerMixin):
     """
     Lead model - Sales lead/opportunity
 

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/calls", tags=["Calls"])
 @require_permissions(Permissions.CALLS_MAKE)
 async def make_call(
     request: CallRequest,
-    user: User = Depends(User.current)
+    user: User = User.current()
 ):
     """
     Make a call (provider-agnostic)
@@ -78,7 +78,7 @@ async def make_call(
 async def list_calls(
     skip: int = 0,
     limit: int = 100,
-    user: User = Depends(User.current)
+    user: User = User.current()
 ):
     """List all calls for the company"""
     calls = await CallEvent.get_all(
@@ -94,7 +94,7 @@ async def list_calls(
 @require_permissions(Permissions.CALLS_READ)
 async def get_call(
     call_id: UUID,
-    user: User = Depends(User.current)
+    user: User = User.current()
 ):
     """Get call details"""
     call = await CallEvent.get_or_404(
@@ -108,7 +108,7 @@ async def get_call(
 @require_permissions(Permissions.CALLS_READ)
 async def get_call_recording(
     call_id: UUID,
-    user: User = Depends(User.current)
+    user: User = User.current()
 ):
     """
     Get proxied call recording URL

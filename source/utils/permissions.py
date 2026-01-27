@@ -46,7 +46,19 @@ def require_permissions(*required_permissions: str):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             # Extract user from kwargs (injected by User.current() dependency)
-            user: User = kwargs.get('user')
+            # Check common parameter names: user, admin, current_user
+            user: User = None
+            for key in ['user', 'admin', 'current_user']:
+                if key in kwargs and isinstance(kwargs.get(key), User):
+                    user = kwargs[key]
+                    break
+
+            # If not found by name, search for any User instance
+            if not user:
+                for value in kwargs.values():
+                    if isinstance(value, User):
+                        user = value
+                        break
 
             if not user:
                 raise PermissionDenied("Authentication required")
@@ -57,6 +69,10 @@ def require_permissions(*required_permissions: str):
 
             # Check if user has all required permissions
             user_permissions = set(user.permissions or [])
+
+            # Wildcard permission grants all access
+            if "*" in user_permissions:
+                return await func(*args, **kwargs)
 
             missing_permissions = [
                 perm for perm in required_permissions

@@ -1,5 +1,9 @@
 """
 Sipuni telephony provider implementation
+
+Optimized for production:
+- Uses shared connection pool
+- Automatic retry on failures
 """
 
 import hashlib
@@ -15,6 +19,7 @@ from .base import (
     CallStatus,
     ProviderException
 )
+from .http_client import get_http_client
 
 
 class SipuniProvider(TelephonyProvider):
@@ -65,6 +70,8 @@ class SipuniProvider(TelephonyProvider):
         """
         Make authenticated API request to Sipuni
 
+        Uses shared connection pool for optimal performance.
+
         Args:
             endpoint: API endpoint path
             params: Query parameters
@@ -77,24 +84,22 @@ class SipuniProvider(TelephonyProvider):
         """
         params['user'] = self.cabinet_id
 
-        # Generate hash based on specific endpoint requirements
-        # Hash is already computed in calling methods
-
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{self.BASE_URL}{endpoint}",
-                    params=params,
-                    timeout=aiohttp.ClientTimeout(total=50)
-                ) as response:
-                    if response.status != 200:
-                        raise ProviderException(
-                            f"Sipuni API returned status {response.status}",
-                            provider="sipuni",
-                            details={"endpoint": endpoint, "status": response.status}
-                        )
+            # Use shared connection pool
+            client = await get_http_client()
+            async with await client.get(
+                f"{self.BASE_URL}{endpoint}",
+                params=params,
+                timeout=50
+            ) as response:
+                if response.status != 200:
+                    raise ProviderException(
+                        f"Sipuni API returned status {response.status}",
+                        provider="sipuni",
+                        details={"endpoint": endpoint, "status": response.status}
+                    )
 
-                    return await response.json()
+                return await response.json()
 
         except aiohttp.ClientError as e:
             raise ProviderException(

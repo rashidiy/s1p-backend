@@ -29,7 +29,7 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 @require_permissions(Permissions.TASKS_WRITE)
 async def create_task(
     data: TaskCreateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -59,7 +59,7 @@ async def create_task(
 @router.get("/", response_model=PaginatedResponse)
 @require_permissions(Permissions.TASKS_READ)
 async def list_tasks(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -141,17 +141,9 @@ async def list_tasks(
             if assignee:
                 assigned_to_name = assignee.full_name
 
-        # Get contact name
-        contact_name = None
-        if task.contact_id:
-            contact = await Contact.get(session=session, id=task.contact_id)
-            if contact:
-                contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-
         task_dict = {
             **{k: v for k, v in task.__dict__.items() if not k.startswith('_')},
-            "assigned_to_name": assigned_to_name,
-            "contact_name": contact_name
+            "assigned_to_name": assigned_to_name
         }
         enhanced_tasks.append(TaskResponse(**task_dict))
 
@@ -166,7 +158,7 @@ async def list_tasks(
 
 @router.get("/my-today", response_model=list)
 async def get_my_tasks_today(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -207,7 +199,7 @@ async def get_my_tasks_today(
 @require_permissions(Permissions.TASKS_READ)
 async def get_task(
     task_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """Get task details"""
@@ -224,17 +216,9 @@ async def get_task(
         if assignee:
             assigned_to_name = assignee.full_name
 
-    # Get contact name
-    contact_name = None
-    if task.contact_id:
-        contact = await Contact.get(session=session, id=task.contact_id)
-        if contact:
-            contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-
     task_dict = {
         **{k: v for k, v in task.__dict__.items() if not k.startswith('_')},
-        "assigned_to_name": assigned_to_name,
-        "contact_name": contact_name
+        "assigned_to_name": assigned_to_name
     }
 
     return TaskResponse(**task_dict)
@@ -245,7 +229,7 @@ async def get_task(
 async def update_task(
     task_id: UUID,
     data: TaskUpdateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -275,12 +259,6 @@ async def update_task(
             company_id=user.company_id
         )
 
-    # Auto-set completed_at if marking as completed
-    if data.status == TaskStatusEnum.COMPLETED.value and not task.completed_at:
-        task.completed_at = datetime.now()
-    elif data.status and data.status != TaskStatusEnum.COMPLETED.value:
-        task.completed_at = None
-
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -295,7 +273,7 @@ async def update_task(
 @require_permissions(Permissions.TASKS_DELETE)
 async def delete_task(
     task_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
@@ -314,7 +292,7 @@ async def delete_task(
 @require_permissions(Permissions.TASKS_WRITE)
 async def complete_task(
     task_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """

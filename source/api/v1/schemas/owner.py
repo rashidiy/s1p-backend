@@ -43,6 +43,7 @@ class OwnerWithCredentials(OwnerResponse):
 class CompanyCreateRequest(BaseModel):
     """Create company request"""
     name: str = Field(..., min_length=1, max_length=255)
+    subdomain: Optional[str] = Field(None, min_length=1, max_length=100, description="Company subdomain (auto-generated if not provided)")
     provider_type: str = Field(..., description="Provider: sipuni or binotel")
     provider_config: dict = Field(..., description="Provider-specific configuration")
     settings: Optional[dict] = Field(default_factory=dict)
@@ -51,6 +52,7 @@ class CompanyCreateRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "name": "My Company LLC",
+                "subdomain": "mycompany",
                 "provider_type": "sipuni",
                 "provider_config": {
                     "sipuni_user": "user@example.com",
@@ -88,7 +90,7 @@ class CompanyResponse(BaseModel):
 class CompanyDetailResponse(CompanyResponse):
     """Detailed company response with config"""
     provider_config: dict
-    settings: dict
+    settings: Optional[dict] = None
     webhook_token: str
 
     class Config:

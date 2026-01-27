@@ -29,7 +29,7 @@ router = APIRouter(prefix="/leads", tags=["Leads"])
 @require_permissions(Permissions.LEADS_WRITE)
 async def create_lead(
     data: LeadCreateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -66,7 +66,7 @@ async def create_lead(
 @router.get("/", response_model=PaginatedResponse)
 @require_permissions(Permissions.LEADS_READ)
 async def list_leads(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -166,7 +166,7 @@ async def list_leads(
 @require_permissions(Permissions.LEADS_READ)
 async def get_lead(
     lead_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """Get lead details"""
@@ -204,7 +204,7 @@ async def get_lead(
 async def update_lead(
     lead_id: UUID,
     data: LeadUpdateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -234,16 +234,6 @@ async def update_lead(
             company_id=user.company_id
         )
 
-    # Validate status if changing
-    if data.status:
-        try:
-            status_enum = LeadStatusEnum(data.status)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status. Must be one of: {[s.value for s in LeadStatusEnum]}"
-            )
-
     # Update fields
     update_data = data.model_dump(exclude_unset=True, exclude={'tags'})
     for field, value in update_data.items():
@@ -258,7 +248,7 @@ async def update_lead(
 @require_permissions(Permissions.LEADS_DELETE)
 async def delete_lead(
     lead_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
@@ -278,7 +268,7 @@ async def delete_lead(
 async def convert_lead(
     lead_id: UUID,
     create_deal: bool = Query(True, description="Create deal from lead"),
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -302,12 +292,11 @@ async def convert_lead(
         deal = await Deal.create(
             session=session,
             company_id=user.company_id,
-            created_by=user.id,
             title=lead.title,
             contact_id=lead.contact_id,
             lead_id=lead.id,
             assigned_to=lead.assigned_to,
-            value=lead.value or 0,
+            amount=lead.estimated_value or 0,
             probability=50,
             description=lead.description
         )
@@ -325,7 +314,7 @@ async def convert_lead(
 async def assign_lead(
     lead_id: UUID,
     assigned_to: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """

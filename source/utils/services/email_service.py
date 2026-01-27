@@ -75,15 +75,9 @@ Best regards,
         """.strip()
 
         # For production: Send actual email via SMTP/SendGrid/SES
-        # For now: Log the email
-        logger.info(f"""
-========================================
-EMAIL SENT TO: {to_email}
-SUBJECT: {subject}
-BODY:
-{body}
-========================================
-        """)
+        # SECURITY: Do not log sensitive data (passwords, tokens) in production
+        # Only log that email was sent, not the content
+        logger.info(f"Operator invitation email sent to: {to_email}")
 
         # TODO: Integrate with actual email service
         # Example:
@@ -126,14 +120,8 @@ Best regards,
 CRM Team
         """.strip()
 
-        logger.info(f"""
-========================================
-PASSWORD RESET EMAIL TO: {to_email}
-SUBJECT: {subject}
-BODY:
-{body}
-========================================
-        """)
+        # SECURITY: Do not log sensitive data (tokens) in production
+        logger.info(f"Password reset email sent to: {to_email}")
 
         # TODO: Integrate with actual email service
         return True
@@ -176,13 +164,6 @@ Best regards,
 {company_name} Team
         """.strip()
 
-        logger.info(f"""
-========================================
-WELCOME EMAIL TO: {to_email}
-SUBJECT: {subject}
-BODY:
-{body}
-========================================
-        """)
+        logger.info(f"Welcome email sent to: {to_email}")
 
         return True

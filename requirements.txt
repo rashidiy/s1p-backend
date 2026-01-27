@@ -27,9 +27,8 @@ h11==0.16.0
 email_validator==2.2.0
 dnspython==2.7.0
 
-# Background Jobs (optional for MVP)
-# celery==5.3.4
-# redis==5.0.1
+# Caching
+redis>=5.0.0
 
 # Utilities
 click==8.2.1

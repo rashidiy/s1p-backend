@@ -11,10 +11,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
+from db.mixins.object_manager import ObjectManagerMixin
 from db.models.enums import TaskStatusEnum, TaskPriorityEnum
 
 
-class Task(Base):
+class Task(Base, ObjectManagerMixin):
     """
     Task model - Tasks, todos, and reminders
 

@@ -3,6 +3,7 @@ Owner authentication endpoints
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
@@ -55,10 +56,15 @@ async def register_owner(
     return owner
 
 
+class OwnerLoginRequest(BaseModel):
+    """Owner login request schema"""
+    email: str
+    password: str
+
+
 @router.post('/login', response_model=OwnerWithCredentials)
 async def login_owner(
-    email: str,
-    password: str,
+    data: OwnerLoginRequest,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -66,14 +72,14 @@ async def login_owner(
 
     Returns JWT tokens for authenticated owner.
     """
-    owner = await Owner.get(email=email, session=session)
+    owner = await Owner.get(email=data.email, session=session)
     if not owner:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
-    if not PasswordManager.verify(password, owner.password_hash):
+    if not PasswordManager.verify(data.password, owner.password_hash):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid email or password"
@@ -97,7 +103,7 @@ async def login_owner(
 
 
 @router.get('/me', response_model=OwnerResponse)
-async def get_current_owner(owner: Owner = Depends(Owner.current)):
+async def get_current_owner(owner: Owner = Owner.current()):
     """
     Get current owner profile
 

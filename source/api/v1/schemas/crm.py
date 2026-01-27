@@ -16,13 +16,9 @@ class ContactBase(BaseModel):
     last_name: Optional[str] = Field(None, max_length=255)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
-    phone_2: Optional[str] = Field(None, max_length=50)
     company_name: Optional[str] = Field(None, max_length=255)
     position: Optional[str] = Field(None, max_length=255)
-    address: Optional[str] = Field(None, max_length=500)
-    city: Optional[str] = Field(None, max_length=100)
-    country: Optional[str] = Field(None, max_length=100)
-    notes: Optional[str] = None
+    source: Optional[str] = Field(None, max_length=100)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -37,13 +33,9 @@ class ContactUpdateRequest(BaseModel):
     last_name: Optional[str] = Field(None, max_length=255)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=50)
-    phone_2: Optional[str] = Field(None, max_length=50)
     company_name: Optional[str] = Field(None, max_length=255)
     position: Optional[str] = Field(None, max_length=255)
-    address: Optional[str] = Field(None, max_length=500)
-    city: Optional[str] = Field(None, max_length=100)
-    country: Optional[str] = Field(None, max_length=100)
-    notes: Optional[str] = None
+    source: Optional[str] = Field(None, max_length=100)
     custom_fields: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
@@ -53,6 +45,8 @@ class ContactResponse(ContactBase):
     id: UUID
     company_id: UUID
     created_by: Optional[UUID]
+    assigned_to: Optional[UUID] = None
+    tags: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -71,11 +65,10 @@ class LeadBase(BaseModel):
     """Base lead schema"""
     title: str = Field(..., min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
-    status: str = Field(default="new")
     source: Optional[str] = Field(None, max_length=100)
-    value: Optional[float] = Field(None, ge=0)
-    score: Optional[int] = Field(None, ge=0, le=100)
     description: Optional[str] = None
+    estimated_value: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = Field("USD", max_length=10)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -90,11 +83,10 @@ class LeadUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
-    status: Optional[str] = None
     source: Optional[str] = Field(None, max_length=100)
-    value: Optional[float] = Field(None, ge=0)
-    score: Optional[int] = Field(None, ge=0, le=100)
     description: Optional[str] = None
+    estimated_value: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, max_length=10)
     custom_fields: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
@@ -103,8 +95,10 @@ class LeadResponse(LeadBase):
     """Lead response"""
     id: UUID
     company_id: UUID
-    assigned_to: Optional[UUID]
-    created_by: Optional[UUID]
+    status: Optional[str] = None
+    pipeline_stage: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    tags: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -123,9 +117,9 @@ class DealBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
-    stage: str = Field(default="prospecting")
-    value: float = Field(..., ge=0)
-    probability: Optional[int] = Field(None, ge=0, le=100)
+    amount: float = Field(..., ge=0)
+    currency: Optional[str] = Field("USD", max_length=10)
+    probability: Optional[int] = Field(0, ge=0, le=100)
     expected_close_date: Optional[date] = None
     description: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -143,13 +137,11 @@ class DealUpdateRequest(BaseModel):
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
-    stage: Optional[str] = None
-    value: Optional[float] = Field(None, ge=0)
+    amount: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, max_length=10)
     probability: Optional[int] = Field(None, ge=0, le=100)
     expected_close_date: Optional[date] = None
     description: Optional[str] = None
-    win_reason: Optional[str] = None
-    loss_reason: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
@@ -158,18 +150,17 @@ class DealResponse(DealBase):
     """Deal response"""
     id: UUID
     company_id: UUID
-    assigned_to: Optional[UUID]
-    created_by: Optional[UUID]
-    win_reason: Optional[str]
-    loss_reason: Optional[str]
-    closed_at: Optional[datetime]
+    stage: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    tags: Optional[List[str]] = None
+    closed_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 
     # Related info
     contact_name: Optional[str] = None
     assigned_to_name: Optional[str] = None
-    weighted_value: float = 0.0  # value * probability / 100
+    weighted_value: float = 0.0  # amount * probability / 100
 
     class Config:
         from_attributes = True
@@ -182,13 +173,10 @@ class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     due_date: Optional[datetime] = None
-    priority: str = Field(default="medium")
-    status: str = Field(default="pending")
 
-    # Link to entities
-    contact_id: Optional[UUID] = None
-    lead_id: Optional[UUID] = None
-    deal_id: Optional[UUID] = None
+    # Link to entities (polymorphic)
+    entity_type: Optional[str] = Field(None, max_length=50)  # 'lead', 'contact', 'deal'
+    entity_id: Optional[UUID] = None
 
 
 class TaskCreateRequest(TaskBase):
@@ -201,27 +189,25 @@ class TaskUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     due_date: Optional[datetime] = None
-    priority: Optional[str] = None
-    status: Optional[str] = None
     assigned_to: Optional[UUID] = None
-    contact_id: Optional[UUID] = None
-    lead_id: Optional[UUID] = None
-    deal_id: Optional[UUID] = None
+    entity_type: Optional[str] = Field(None, max_length=50)
+    entity_id: Optional[UUID] = None
 
 
 class TaskResponse(TaskBase):
     """Task response"""
     id: UUID
     company_id: UUID
-    assigned_to: Optional[UUID]
-    created_by: Optional[UUID]
-    completed_at: Optional[datetime]
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    created_by: Optional[UUID] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     # Related info
     assigned_to_name: Optional[str] = None
-    contact_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -233,12 +219,9 @@ class NoteBase(BaseModel):
     """Base note schema"""
     content: str = Field(..., min_length=1)
 
-    # Link to entities
-    contact_id: Optional[UUID] = None
-    lead_id: Optional[UUID] = None
-    deal_id: Optional[UUID] = None
-    task_id: Optional[UUID] = None
-    call_id: Optional[UUID] = None
+    # Link to entities (polymorphic)
+    entity_type: str = Field(..., max_length=50)  # 'lead', 'contact', 'deal', 'call'
+    entity_id: UUID
 
 
 class NoteCreateRequest(NoteBase):
