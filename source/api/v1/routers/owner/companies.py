@@ -2,11 +2,12 @@
 Owner's company management endpoints
 """
 
+import re
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from db import get_session
 from db.models.owner import Owner
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
 @router.post("/", response_model=CompanyDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
     data: CompanyCreateRequest,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -49,14 +50,26 @@ async def create_company(
     # Generate unique webhook token
     webhook_token = secrets.token_urlsafe(32)
 
+    # Generate subdomain if not provided
+    subdomain = data.subdomain
+    if not subdomain:
+        # Generate from company name
+        subdomain = re.sub(r'[^a-z0-9]', '', data.name.lower())[:20]
+        if not subdomain:
+            subdomain = f"company_{uuid4().hex[:8]}"
+        # Check uniqueness and append random suffix if needed
+        existing = await Company.get(session=session, subdomain=subdomain)
+        if existing:
+            subdomain = f"{subdomain}_{uuid4().hex[:6]}"
+
     # Create company
     company = await Company.create(
         session=session,
         name=data.name,
+        subdomain=subdomain,
         owner_id=owner.id,
         provider_type=provider_type,
         provider_config=data.provider_config,
-        settings=data.settings or {},
         webhook_token=webhook_token,
         is_active=True
     )
@@ -69,7 +82,7 @@ async def create_company(
 
 @router.get("/", response_model=List[CompanyResponse])
 async def list_companies(
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -93,7 +106,7 @@ async def list_companies(
 @router.get("/{company_id}", response_model=CompanyDetailResponse)
 async def get_company(
     company_id: UUID,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -117,7 +130,7 @@ async def get_company(
 async def update_company(
     company_id: UUID,
     data: CompanyUpdateRequest,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -152,7 +165,7 @@ async def update_company(
 async def delete_company(
     company_id: UUID,
     hard: bool = False,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -175,7 +188,7 @@ async def delete_company(
 @router.post("/{company_id}/activate", response_model=CompanyResponse)
 async def activate_company(
     company_id: UUID,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -198,7 +211,7 @@ async def activate_company(
 @router.post("/{company_id}/deactivate", response_model=CompanyResponse)
 async def deactivate_company(
     company_id: UUID,
-    owner: Owner = Depends(Owner.current),
+    owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """

@@ -10,9 +10,10 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
+from db.mixins.object_manager import ObjectManagerMixin
 
 
-class Contact(Base):
+class Contact(Base, ObjectManagerMixin):
     """
     Contact model - CRM contact/customer records
 

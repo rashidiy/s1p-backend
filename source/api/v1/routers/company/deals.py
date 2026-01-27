@@ -30,7 +30,7 @@ router = APIRouter(prefix="/deals", tags=["Deals"])
 @require_permissions(Permissions.DEALS_WRITE)
 async def create_deal(
     data: DealCreateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -75,7 +75,7 @@ async def create_deal(
 @router.get("/", response_model=PaginatedResponse)
 @require_permissions(Permissions.DEALS_READ)
 async def list_deals(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -120,9 +120,9 @@ async def list_deals(
     if assigned_to:
         query = query.where(Deal.assigned_to == assigned_to)
     if min_value is not None:
-        query = query.where(Deal.value >= min_value)
+        query = query.where(Deal.amount >= min_value)
     if max_value is not None:
-        query = query.where(Deal.value <= max_value)
+        query = query.where(Deal.amount <= max_value)
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
@@ -153,7 +153,7 @@ async def list_deals(
                 assigned_to_name = assignee.full_name
 
         # Calculate weighted value
-        weighted_value = (deal.value or 0) * (deal.probability or 0) / 100
+        weighted_value = float(deal.amount or 0) * (deal.probability or 0) / 100
 
         deal_dict = {
             **{k: v for k, v in deal.__dict__.items() if not k.startswith('_')},
@@ -176,7 +176,7 @@ async def list_deals(
 @require_permissions(Permissions.DEALS_READ)
 async def get_deal(
     deal_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """Get deal details"""
@@ -201,7 +201,7 @@ async def get_deal(
             assigned_to_name = assignee.full_name
 
     # Calculate weighted value
-    weighted_value = (deal.value or 0) * (deal.probability or 0) / 100
+    weighted_value = float(deal.amount or 0) * (deal.probability or 0) / 100
 
     deal_dict = {
         **{k: v for k, v in deal.__dict__.items() if not k.startswith('_')},
@@ -218,7 +218,7 @@ async def get_deal(
 async def update_deal(
     deal_id: UUID,
     data: DealUpdateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -248,19 +248,6 @@ async def update_deal(
             company_id=user.company_id
         )
 
-    # Validate stage if changing
-    if data.stage:
-        try:
-            stage_enum = DealStageEnum(data.stage)
-            # Auto-set closed_at if marking as won/lost
-            if stage_enum in [DealStageEnum.WON, DealStageEnum.LOST] and not deal.closed_at:
-                deal.closed_at = datetime.now()
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid stage. Must be one of: {[s.value for s in DealStageEnum]}"
-            )
-
     # Update fields
     update_data = data.model_dump(exclude_unset=True, exclude={'tags'})
     for field, value in update_data.items():
@@ -275,7 +262,7 @@ async def update_deal(
 @require_permissions(Permissions.DEALS_DELETE)
 async def delete_deal(
     deal_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
@@ -295,7 +282,7 @@ async def delete_deal(
 async def mark_deal_won(
     deal_id: UUID,
     win_reason: Optional[str] = Query(None),
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -309,9 +296,8 @@ async def mark_deal_won(
         company_id=user.company_id
     )
 
-    deal.stage = DealStageEnum.WON
-    deal.win_reason = win_reason
-    deal.closed_at = datetime.now()
+    deal.stage = DealStageEnum.CLOSED_WON
+    deal.closed_date = datetime.now().date()
     deal.probability = 100
 
     await deal.update(session=session)
@@ -324,7 +310,7 @@ async def mark_deal_won(
 async def mark_deal_lost(
     deal_id: UUID,
     loss_reason: Optional[str] = Query(None),
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -338,9 +324,8 @@ async def mark_deal_lost(
         company_id=user.company_id
     )
 
-    deal.stage = DealStageEnum.LOST
-    deal.loss_reason = loss_reason
-    deal.closed_at = datetime.now()
+    deal.stage = DealStageEnum.CLOSED_LOST
+    deal.closed_date = datetime.now().date()
     deal.probability = 0
 
     await deal.update(session=session)
@@ -351,7 +336,7 @@ async def mark_deal_lost(
 @router.get("/pipeline/summary")
 @require_permissions(Permissions.DEALS_READ)
 async def get_pipeline_summary(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -362,7 +347,7 @@ async def get_pipeline_summary(
     # Get all active deals
     query = select(Deal).where(
         Deal.company_id == user.company_id,
-        Deal.stage.notin_([DealStageEnum.WON, DealStageEnum.LOST])
+        Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
     )
     result = await session.execute(query)
     deals = result.scalars().all()
@@ -373,14 +358,14 @@ async def get_pipeline_summary(
         stage_deals = [d for d in deals if d.stage == stage]
         summary[stage.value] = {
             "count": len(stage_deals),
-            "total_value": sum(d.value or 0 for d in stage_deals),
-            "weighted_value": sum((d.value or 0) * (d.probability or 0) / 100 for d in stage_deals)
+            "total_value": sum(float(d.amount or 0) for d in stage_deals),
+            "weighted_value": sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in stage_deals)
         }
 
     # Overall stats
     total_deals = len(deals)
-    total_value = sum(d.value or 0 for d in deals)
-    weighted_value = sum((d.value or 0) * (d.probability or 0) / 100 for d in deals)
+    total_value = sum(float(d.amount or 0) for d in deals)
+    weighted_value = sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in deals)
 
     return {
         "by_stage": summary,

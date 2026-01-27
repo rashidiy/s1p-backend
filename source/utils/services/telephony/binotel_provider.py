@@ -1,5 +1,9 @@
 """
 Binotel telephony provider implementation
+
+Optimized for production:
+- Uses shared connection pool
+- Automatic retry on failures
 """
 
 from typing import Dict, Any, Optional
@@ -14,6 +18,7 @@ from .base import (
     CallStatus,
     ProviderException
 )
+from .http_client import get_http_client
 
 
 class BinotelProvider(TelephonyProvider):
@@ -51,6 +56,8 @@ class BinotelProvider(TelephonyProvider):
         """
         Make authenticated API request to Binotel
 
+        Uses shared connection pool for optimal performance.
+
         Args:
             endpoint: API endpoint path (e.g., '/api/4.0/calls/...')
             data: Request payload (will include key and secret)
@@ -66,26 +73,27 @@ class BinotelProvider(TelephonyProvider):
         data['secret'] = self.security_key
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.BASE_URL}{endpoint}",
-                    json=data,
-                    timeout=aiohttp.ClientTimeout(total=50)
-                ) as response:
-                    result = await response.json()
+            # Use shared connection pool
+            client = await get_http_client()
+            async with await client.post(
+                f"{self.BASE_URL}{endpoint}",
+                json=data,
+                timeout=50
+            ) as response:
+                result = await response.json()
 
-                    if response.status != 200:
-                        raise ProviderException(
-                            f"Binotel API returned status {response.status}",
-                            provider="binotel",
-                            details={
-                                "endpoint": endpoint,
-                                "status": response.status,
-                                "response": result
-                            }
-                        )
+                if response.status != 200:
+                    raise ProviderException(
+                        f"Binotel API returned status {response.status}",
+                        provider="binotel",
+                        details={
+                            "endpoint": endpoint,
+                            "status": response.status,
+                            "response": result
+                        }
+                    )
 
-                    return result
+                return result
 
         except aiohttp.ClientError as e:
             raise ProviderException(

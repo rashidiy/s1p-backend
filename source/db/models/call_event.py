@@ -12,10 +12,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
+from db.mixins.object_manager import ObjectManagerMixin
 from db.models.enums import CallStatusEnum, ProviderEnum, CallDirectionEnum, CallOutcomeEnum
 
 
-class CallEvent(Base):
+class CallEvent(Base, ObjectManagerMixin):
     """
     Unified Call Event model for all telephony providers
 

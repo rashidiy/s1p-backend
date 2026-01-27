@@ -26,7 +26,7 @@ router = APIRouter(prefix="/notes", tags=["Notes"])
 @require_permissions(Permissions.NOTES_WRITE)
 async def create_note(
     data: NoteCreateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -47,7 +47,7 @@ async def create_note(
 @router.get("/", response_model=PaginatedResponse)
 @require_permissions(Permissions.NOTES_READ)
 async def list_notes(
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -124,7 +124,7 @@ async def list_notes(
 @require_permissions(Permissions.NOTES_READ)
 async def get_note(
     note_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """Get note details"""
@@ -153,7 +153,7 @@ async def get_note(
 async def update_note(
     note_id: UUID,
     data: NoteUpdateRequest,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -189,7 +189,7 @@ async def update_note(
 @require_permissions(Permissions.NOTES_DELETE)
 async def delete_note(
     note_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
@@ -221,7 +221,7 @@ async def delete_note(
 async def get_entity_notes(
     entity_type: str,
     entity_id: UUID,
-    user: User = Depends(User.current),
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """
