@@ -27,6 +27,15 @@ make db-shell         # PostgreSQL CLI in container
 make redis-shell      # Redis CLI in container
 ```
 
+### Management Commands (run via Docker)
+```bash
+make createsuperuser              # Interactive: create a new owner account
+make listowners                   # List all owners
+make changepassword email=x@y.z  # Change an owner's password
+```
+
+Owners can only be created via CLI (`manage.py`). There is no registration endpoint.
+
 ### Single Test
 ```bash
 python -m pytest tests/path/to/test_file.py::test_function -v
@@ -69,7 +78,15 @@ Required env vars (loaded from `.env` via python-dotenv): `POSTGRES_HOST`, `POST
 
 ### API Docs
 
-Swagger UI is served at `/` (root URL) with `persistAuthorization` enabled.
+Swagger UI is split by audience at `/swagger`:
+- `/swagger?type=owner` — Owner endpoints (`/api/v1/owner/*`)
+- `/swagger?type=company` — Company user endpoints (`/api/v1/auth/*` + `/api/v1/company/*`)
+
+`/` redirects to `/swagger?type=owner`. Filtered OpenAPI schemas served at `/openapi.json?type=owner|company`.
+
+### Docker Setup
+
+The project root is mounted into the container (`.:/app`), so code changes trigger uvicorn's `--reload`. Uses `docker compose` v2 (not the legacy `docker-compose` v1). The Dockerfile copies all files but the volume mount overrides them in dev.
 
 ### Tech Stack
 

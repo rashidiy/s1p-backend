@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ===========================================
   # FastAPI Application
@@ -50,10 +48,7 @@ services:
     networks:
       - siptools-network
     volumes:
-      # Mount for development hot-reload (optional)
-      # Uncomment for development:
-      - ./source:/app/source:ro
-      - ./main.py:/app/main.py:ro
+      - .:/app
       - app-logs:/app/logs
 
   # ===========================================

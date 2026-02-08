@@ -5,10 +5,16 @@ import click
 
 sys.path.append('source')
 
+from db.base import AsyncDatabaseSession
+
 
 def run_async(coro):
-    """Run an async function in a sync context."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 
 @click.group()
@@ -25,12 +31,11 @@ def cli():
 @click.option('--phone', default=None, help='Owner phone number')
 def createsuperuser(email, password, first_name, last_name, phone):
     """Create a new owner (superuser) account."""
-    from db import get_session, AsyncDatabaseSession
     from db.models.owner import Owner
     from utils.managers import PasswordManager
 
     async def _create():
-        async for session in AsyncDatabaseSession()():
+        async with AsyncDatabaseSession._session_factory() as session:
             existing = await Owner.get(email=email, session=session)
             if existing:
                 click.echo(click.style(f'Error: Owner with email "{email}" already exists.', fg='red'))
@@ -46,7 +51,7 @@ def createsuperuser(email, password, first_name, last_name, phone):
                 is_active=True,
                 email_verified=True,
             )
-            click.echo(click.style(f'Owner created successfully: {owner.email} (id: {owner.id})', fg='green'))
+            click.echo(click.style(f'Owner created: {owner.email} (id: {owner.id})', fg='green'))
 
     run_async(_create())
 
@@ -54,11 +59,10 @@ def createsuperuser(email, password, first_name, last_name, phone):
 @cli.command()
 def listowners():
     """List all owner accounts."""
-    from db import AsyncDatabaseSession
     from db.models.owner import Owner
 
     async def _list():
-        async for session in AsyncDatabaseSession()():
+        async with AsyncDatabaseSession._session_factory() as session:
             owners = await Owner.get_all(session=session)
             if not owners:
                 click.echo('No owners found.')
@@ -77,12 +81,11 @@ def listowners():
 @click.option('--password', prompt=True, hide_input=True, confirmation_prompt=True, help='New password')
 def changepassword(email, password):
     """Change an owner's password."""
-    from db import AsyncDatabaseSession
     from db.models.owner import Owner
     from utils.managers import PasswordManager
 
     async def _change():
-        async for session in AsyncDatabaseSession()():
+        async with AsyncDatabaseSession._session_factory() as session:
             owner = await Owner.get(email=email, session=session)
             if not owner:
                 click.echo(click.style(f'Error: Owner with email "{email}" not found.', fg='red'))
