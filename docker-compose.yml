@@ -52,8 +52,8 @@ services:
     volumes:
       # Mount for development hot-reload (optional)
       # Uncomment for development:
-      # - ./source:/app/source:ro
-      # - ./main.py:/app/main.py:ro
+      - ./source:/app/source:ro
+      - ./main.py:/app/main.py:ro
       - app-logs:/app/logs
 
   # ===========================================
@@ -112,7 +112,7 @@ services:
     container_name: siptools-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@siptools.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@siptools.dev}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
