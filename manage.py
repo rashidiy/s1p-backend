@@ -1,3 +1,4 @@
+import re
 import sys
 import asyncio
 
@@ -6,6 +7,14 @@ import click
 sys.path.append('source')
 
 from db.base import AsyncDatabaseSession
+
+PASSWORD_PATTERN = re.compile(r'^(?=.*[A-Z])(?=.*\d).{8,}$')
+
+
+def validate_password(password: str) -> str:
+    if not PASSWORD_PATTERN.match(password):
+        raise click.BadParameter('Must be 8+ chars with at least one uppercase letter and one digit.')
+    return password
 
 
 def run_async(coro):
@@ -31,6 +40,7 @@ def cli():
 @click.option('--phone', default=None, help='Owner phone number')
 def createsuperuser(email, password, first_name, last_name, phone):
     """Create a new owner (superuser) account."""
+    validate_password(password)
     from db.models.owner import Owner
     from utils.managers import PasswordManager
 
@@ -81,6 +91,7 @@ def listowners():
 @click.option('--password', prompt=True, hide_input=True, confirmation_prompt=True, help='New password')
 def changepassword(email, password):
     """Change an owner's password."""
+    validate_password(password)
     from db.models.owner import Owner
     from utils.managers import PasswordManager
 
