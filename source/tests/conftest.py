@@ -120,7 +120,7 @@ async def test_company(db_session: AsyncSession, test_owner: Owner) -> Company:
         name="Test Company",
         subdomain=f"test_{uuid.uuid4().hex[:8]}",
         provider_type=ProviderEnum.SIPUNI,
-        provider_config={"sipuni_user": "test", "sipuni_secret": "secret"},
+        provider_config={"cabinet_id": "12345", "security_key": "test-secret"},
         webhook_token=str(uuid.uuid4()),
         is_active=True
     )

@@ -121,7 +121,7 @@ Webhook: Only processes hangup events (`event == 2`). Direction: `src_type=1` (e
 
 ### Binotel
 
-Config: `{"cabinet_key": "...", "security_key": "...", "company_number": "100"}`
+Config: `{"cabinet_id": "...", "security_key": "...", "company_number": "100"}`
 
 API base: `https://api.binotel.com`. Auth: `key` + `secret` in JSON POST body.
 

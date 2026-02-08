@@ -52,7 +52,7 @@ class Company(Base, ObjectManagerMixin):
 
     # Provider-specific configuration stored as JSON
     # For Sipuni: {cabinet_id, security_key, token}
-    # For Binotel: {cabinet_key, security_key, company_number}
+    # For Binotel: {cabinet_id, security_key, company_number}
     provider_config = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
     # Webhook token for receiving provider webhooks
