@@ -7,6 +7,8 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
+from api.v1.schemas.validators import PasswordValidator
+
 
 class UserBase(BaseModel):
     """Base user schema"""
@@ -22,7 +24,7 @@ class UserInviteRequest(UserBase):
     permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
 
 
-class UserCreateRequest(UserBase):
+class UserCreateRequest(PasswordValidator, UserBase):
     """Create user with password (internal use)"""
     password: str = Field(..., min_length=8, max_length=100)
     role: str = Field(default="company_operator")
@@ -40,13 +42,13 @@ class UserUpdateRequest(BaseModel):
     permissions: Optional[List[str]] = None
 
 
-class PasswordChangeRequest(BaseModel):
+class PasswordChangeRequest(PasswordValidator, BaseModel):
     """Change password request"""
     old_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8, max_length=100)
 
 
-class PasswordResetRequest(BaseModel):
+class PasswordResetRequest(PasswordValidator, BaseModel):
     """Reset password (for temporary passwords)"""
     email: EmailStr
     temporary_password: str = Field(..., min_length=1)

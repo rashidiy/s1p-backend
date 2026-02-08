@@ -1,14 +1,16 @@
 import uuid
 
-from pydantic import BaseModel, constr, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+
+from api.v1.schemas.validators import PasswordValidator
 
 
 class AuthSchema:
-    class RegisterRequest(BaseModel):
-        first_name: constr(max_length=255)
-        last_name: constr(max_length=255)
+    class RegisterRequest(PasswordValidator, BaseModel):
+        first_name: str = Field(..., max_length=255)
+        last_name: str = Field(..., max_length=255)
         email: EmailStr
-        password: constr(min_length=8)
+        password: str = Field(..., min_length=8)
 
     class BearerToken(BaseModel):
         type: str = "Bearer"
@@ -17,12 +19,12 @@ class AuthSchema:
 
     class LoginRequest(BaseModel):
         email: EmailStr
-        password: constr(min_length=8)
+        password: str
 
     class AuthorizedResponse(BaseModel):
         id: uuid.UUID
-        first_name: constr(max_length=255)
-        last_name: constr(max_length=255)
-        email: constr(max_length=2048)
+        first_name: str = Field(..., max_length=255)
+        last_name: str = Field(..., max_length=255)
+        email: str = Field(..., max_length=2048)
         is_active: bool
         credentials: "AuthSchema.BearerToken"

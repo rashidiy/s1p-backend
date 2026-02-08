@@ -3,7 +3,7 @@ Owner authentication endpoints
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/auth", tags=["Owner Auth"])
 
 class OwnerLoginRequest(BaseModel):
     """Owner login request schema"""
-    email: str
+    email: EmailStr
     password: str
 
 
