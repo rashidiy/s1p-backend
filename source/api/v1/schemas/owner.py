@@ -5,7 +5,21 @@ Owner schemas for API requests and responses
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
+
+
+class SipuniConfigSchema(BaseModel):
+    """Sipuni provider configuration"""
+    cabinet_id: str = Field(..., min_length=1, description="Sipuni cabinet ID")
+    security_key: str = Field(..., min_length=1, description="Sipuni security key")
+    token: Optional[str] = Field(None, description="Webhook validation token")
+
+
+class BinotelConfigSchema(BaseModel):
+    """Binotel provider configuration"""
+    cabinet_id: str = Field(..., min_length=1, description="Binotel API key (cabinet ID)")
+    security_key: str = Field(..., min_length=1, description="Binotel API secret")
+    company_number: Optional[str] = Field(None, description="Default PBX number")
 
 
 class OwnerBase(BaseModel):
@@ -40,8 +54,23 @@ class CompanyCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     subdomain: Optional[str] = Field(None, min_length=1, max_length=100, description="Company subdomain (auto-generated if not provided)")
     provider_type: str = Field(..., description="Provider: sipuni or binotel")
-    provider_config: dict = Field(..., description="Provider-specific configuration")
+    provider_config: dict = Field(..., description="Provider-specific configuration (requires cabinet_id and security_key)")
     settings: Optional[dict] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def validate_provider_config(self):
+        provider = self.provider_type.lower()
+        config = self.provider_config
+
+        if provider == 'sipuni':
+            validated = SipuniConfigSchema(**config)
+        elif provider == 'binotel':
+            validated = BinotelConfigSchema(**config)
+        else:
+            raise ValueError(f"Invalid provider type: {provider}. Must be 'sipuni' or 'binotel'")
+
+        self.provider_config = validated.model_dump(exclude_none=True)
+        return self
 
     class Config:
         json_schema_extra = {
@@ -50,8 +79,8 @@ class CompanyCreateRequest(BaseModel):
                 "subdomain": "mycompany",
                 "provider_type": "sipuni",
                 "provider_config": {
-                    "sipuni_user": "user@example.com",
-                    "sipuni_secret": "your-secret-key"
+                    "cabinet_id": "12345",
+                    "security_key": "your-secret-key"
                 },
                 "settings": {
                     "timezone": "Asia/Tashkent",

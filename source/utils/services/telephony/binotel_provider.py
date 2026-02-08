@@ -27,7 +27,7 @@ class BinotelProvider(TelephonyProvider):
 
     Config structure:
     {
-        "cabinet_key": "your_api_key",
+        "cabinet_id": "your_api_key",
         "security_key": "your_api_secret",
         "company_number": "100"  # Default company line/pbx number
     }
@@ -37,13 +37,13 @@ class BinotelProvider(TelephonyProvider):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.cabinet_key = config.get('cabinet_key')
+        self.cabinet_id = config.get('cabinet_id')
         self.security_key = config.get('security_key')
         self.company_number = config.get('company_number', '100')
 
-        if not self.cabinet_key or not self.security_key:
+        if not self.cabinet_id or not self.security_key:
             raise ProviderException(
-                "Missing required config: cabinet_key and security_key",
+                "Missing required config: cabinet_id and security_key",
                 provider="binotel",
                 details=config
             )
@@ -69,7 +69,7 @@ class BinotelProvider(TelephonyProvider):
             ProviderException: If API call fails
         """
         # Add authentication
-        data['key'] = self.cabinet_key
+        data['key'] = self.cabinet_id
         data['secret'] = self.security_key
 
         try:

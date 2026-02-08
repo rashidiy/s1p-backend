@@ -20,8 +20,8 @@ class TestCreateCompany:
                 "name": "New Test Company",
                 "provider_type": "sipuni",
                 "provider_config": {
-                    "sipuni_user": "test@example.com",
-                    "sipuni_secret": "test-secret"
+                    "cabinet_id": "12345",
+                    "security_key": "test-secret"
                 }
             }
         )
@@ -42,7 +42,7 @@ class TestCreateCompany:
                 "name": "Binotel Company",
                 "provider_type": "binotel",
                 "provider_config": {
-                    "cabinet_key": "key123",
+                    "cabinet_id": "key123",
                     "security_key": "secret123"
                 }
             }
@@ -60,10 +60,13 @@ class TestCreateCompany:
             json={
                 "name": "Test Company",
                 "provider_type": "invalid_provider",
-                "provider_config": {}
+                "provider_config": {
+                    "cabinet_id": "12345",
+                    "security_key": "secret"
+                }
             }
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     @pytest.mark.asyncio
     async def test_create_company_unauthorized(self, client: AsyncClient):
