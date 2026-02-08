@@ -1,4 +1,4 @@
-.PHONY: help mig build up down restart logs shell db-shell redis-shell test clean dev prod
+.PHONY: help mig build up down restart logs shell db-shell redis-shell test clean dev prod createsuperuser listowners changepassword
 
 # ===========================================
 # Help
@@ -32,6 +32,11 @@ help:
 	@echo "  make db-migrate   - Run migrations in container"
 	@echo "  make db-reset     - Reset database (WARNING: destroys data)"
 	@echo ""
+	@echo "Management:"
+	@echo "  make createsuperuser - Create a new owner account"
+	@echo "  make listowners      - List all owner accounts"
+	@echo "  make changepassword  - Change owner password (email=...)"
+	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean        - Remove containers and volumes"
 	@echo "  make clean-all    - Remove everything including images"
@@ -48,6 +53,18 @@ run:
 
 test:
 	python -m pytest tests/ -v --tb=short
+
+# ===========================================
+# Management Commands
+# ===========================================
+createsuperuser:
+	python manage.py createsuperuser
+
+listowners:
+	python manage.py listowners
+
+changepassword:
+	python manage.py changepassword $(email)
 
 # ===========================================
 # Docker Build

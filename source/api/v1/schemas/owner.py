@@ -16,11 +16,6 @@ class OwnerBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=50)
 
 
-class OwnerRegisterRequest(OwnerBase):
-    """Owner registration request"""
-    password: str = Field(..., min_length=8, max_length=100)
-
-
 class OwnerResponse(OwnerBase):
     """Owner response"""
     id: UUID
