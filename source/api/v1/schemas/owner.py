@@ -101,6 +101,7 @@ class CompanyResponse(BaseModel):
     """Company response"""
     id: UUID
     name: str
+    subdomain: str
     provider_type: str
     is_active: bool
     webhook_url: Optional[str] = None  # Computed field
