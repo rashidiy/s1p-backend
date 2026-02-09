@@ -24,7 +24,7 @@ from core.config import AppConfig
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
 
 
-@router.post("/", response_model=CompanyDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CompanyDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
     data: CompanyCreateRequest,
     owner: Owner = Owner.current(),
@@ -80,7 +80,7 @@ async def create_company(
     return company
 
 
-@router.get("/", response_model=List[CompanyResponse])
+@router.get("", response_model=List[CompanyResponse])
 async def list_companies(
     owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session)

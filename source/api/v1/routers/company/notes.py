@@ -22,7 +22,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/notes", tags=["Notes"])
 
 
-@router.post("/", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.NOTES_WRITE)
 async def create_note(
     data: NoteCreateRequest,
@@ -44,7 +44,7 @@ async def create_note(
     return note
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 @require_permissions(Permissions.NOTES_READ)
 async def list_notes(
     user: User = User.current(),

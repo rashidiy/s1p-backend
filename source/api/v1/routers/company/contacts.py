@@ -31,7 +31,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
 
-@router.post("/", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.CONTACTS_WRITE)
 async def create_contact(
     data: ContactCreateRequest,
@@ -71,7 +71,7 @@ async def create_contact(
     return contact
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 @require_permissions(Permissions.CONTACTS_READ)
 async def list_contacts(
     user: User = User.current(),

@@ -25,7 +25,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
-@router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.TASKS_WRITE)
 async def create_task(
     data: TaskCreateRequest,
@@ -56,7 +56,7 @@ async def create_task(
     return task
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 @require_permissions(Permissions.TASKS_READ)
 async def list_tasks(
     user: User = User.current(),

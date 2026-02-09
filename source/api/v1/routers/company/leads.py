@@ -25,7 +25,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
 
-@router.post("/", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.LEADS_WRITE)
 async def create_lead(
     data: LeadCreateRequest,
@@ -63,7 +63,7 @@ async def create_lead(
     return lead
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 @require_permissions(Permissions.LEADS_READ)
 async def list_leads(
     user: User = User.current(),
