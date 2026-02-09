@@ -19,6 +19,9 @@ from .task import Task
 from .note import Note
 from .tag import Tag
 
+# Billing
+from .contract import Contract
+
 # System models
 from .audit_log import AuditLog
 
@@ -40,6 +43,8 @@ __all__ = [
     "Task",
     "Note",
     "Tag",
+    # Billing
+    "Contract",
     # System
     "AuditLog",
     # Enums module

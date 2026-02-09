@@ -52,6 +52,11 @@ class Owner(Base, ObjectManagerMixin, AuthenticationManagerMixin):
         back_populates="owner",
         cascade="all, delete-orphan"
     )
+    contracts = relationship(
+        "Contract",
+        back_populates="owner",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Owner(id={self.id}, email='{self.email}')>"
