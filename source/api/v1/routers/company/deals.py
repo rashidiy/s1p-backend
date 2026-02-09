@@ -26,7 +26,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/deals", tags=["Deals"])
 
 
-@router.post("/", response_model=DealResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DealResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.DEALS_WRITE)
 async def create_deal(
     data: DealCreateRequest,
@@ -72,7 +72,7 @@ async def create_deal(
     return deal
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 @require_permissions(Permissions.DEALS_READ)
 async def list_deals(
     user: User = User.current(),

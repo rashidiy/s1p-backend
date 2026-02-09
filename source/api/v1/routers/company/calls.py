@@ -18,7 +18,7 @@ from core.config import WebhookConfig, AppConfig
 router = APIRouter(prefix="/calls", tags=["Calls"])
 
 
-@router.post("/", response_model=CallResponse)
+@router.post("", response_model=CallResponse)
 @require_permissions(Permissions.CALLS_MAKE)
 async def make_call(
     request: CallRequest,
@@ -73,7 +73,7 @@ async def make_call(
         )
 
 
-@router.get("/", response_model=List[CallEventResponse])
+@router.get("", response_model=List[CallEventResponse])
 @require_permissions(Permissions.CALLS_READ)
 async def list_calls(
     skip: int = 0,

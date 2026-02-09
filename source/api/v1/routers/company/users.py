@@ -105,7 +105,7 @@ async def invite_operator(
     return user
 
 
-@router.get("/", response_model=UserListResponse)
+@router.get("", response_model=UserListResponse)
 @require_permissions(Permissions.USERS_READ)
 async def list_users(
     admin: User = User.current(),
