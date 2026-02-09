@@ -26,6 +26,7 @@ from api.v1.schemas.user import (
 )
 from utils.managers import PasswordManager
 from utils.permissions import require_permissions, Permissions
+from utils.contract_enforcement import check_user_limit
 from utils.services.email_service import EmailService
 from core.config import AppConfig
 
@@ -70,6 +71,9 @@ async def invite_operator(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid role. Must be one of: {[e.value for e in RoleEnum if e != RoleEnum.OWNER]}"
         )
+
+    # Check contract user limit
+    await check_user_limit(admin.company_id, role, session)
 
     # Generate temporary password
     temporary_password = EmailService.generate_temporary_password()

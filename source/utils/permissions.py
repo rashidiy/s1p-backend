@@ -192,6 +192,9 @@ class Permissions:
     COMPANY_MANAGE = "company.manage"
     COMPANY_DELETE = "company.delete"
 
+    # Contract
+    CONTRACT_READ = "contract.read"
+
 
 # Role-Permission mapping
 ROLE_PERMISSIONS = {
@@ -245,6 +248,8 @@ ROLE_PERMISSIONS = {
         # Company
         Permissions.COMPANY_READ,
         Permissions.COMPANY_MANAGE,
+        # Contract
+        Permissions.CONTRACT_READ,
     ],
     RoleEnum.COMPANY_MANAGER: [
         # Leads

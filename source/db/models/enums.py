@@ -105,3 +105,27 @@ class CallOutcomeEnum(str, enum.Enum):
 
     # Other
     OTHER = "other"
+
+
+class ContractStatusEnum(str, enum.Enum):
+    """Contract status enumeration"""
+    ACTIVE = "active"
+    WARNING = "warning"
+    GRACE_PERIOD = "grace_period"
+    EXPIRED = "expired"
+    SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
+
+
+class BillingPeriodEnum(str, enum.Enum):
+    """Billing period enumeration"""
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
+class PaymentStatusEnum(str, enum.Enum):
+    """Payment status enumeration"""
+    PAID = "paid"
+    PENDING = "pending"
+    OVERDUE = "overdue"
+    FAILED = "failed"

@@ -120,6 +120,11 @@ class Company(Base, ObjectManagerMixin):
         back_populates="company",
         cascade="all, delete-orphan"
     )
+    contracts = relationship(
+        "Contract",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
     audit_logs = relationship(
         "AuditLog",
         back_populates="company",

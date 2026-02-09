@@ -49,6 +49,11 @@ class AuthenticationManagerMixin:
                 if user.is_suspended:
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended.")
 
+            # Check contract status for company users
+            if hasattr(user, 'company_id') and user.company_id:
+                from utils.contract_enforcement import check_contract_active
+                await check_contract_active(user.company_id, session)
+
             return user
 
         return Depends(authenticate)
