@@ -5,9 +5,22 @@ User management schemas
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.v1.schemas.validators import PasswordValidator
+from utils.permissions import Permissions
+
+VALID_PERMISSIONS = Permissions.all()
+
+
+def _validate_permissions(permissions: List[str]) -> List[str]:
+    invalid = [p for p in permissions if p not in VALID_PERMISSIONS]
+    if invalid:
+        raise ValueError(
+            f"Invalid permissions: {invalid}. "
+            f"Valid permissions: {sorted(VALID_PERMISSIONS)}"
+        )
+    return permissions
 
 
 class UserBase(BaseModel):
@@ -23,6 +36,13 @@ class UserInviteRequest(UserBase):
     role: str = Field(default="company_operator", description="Role: company_admin or company_operator")
     permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
     permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
+
+    @field_validator("permissions")
+    @classmethod
+    def check_permissions(cls, v):
+        if v:
+            return _validate_permissions(v)
+        return v
 
 
 class UserCreateRequest(PasswordValidator, UserBase):
@@ -42,6 +62,13 @@ class UserUpdateRequest(BaseModel):
     role: Optional[str] = None
     permissions: Optional[List[str]] = None
     permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
+
+    @field_validator("permissions")
+    @classmethod
+    def check_permissions(cls, v):
+        if v is not None:
+            return _validate_permissions(v)
+        return v
 
 
 class PasswordChangeRequest(PasswordValidator, BaseModel):
