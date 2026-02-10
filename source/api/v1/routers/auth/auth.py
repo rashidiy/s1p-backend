@@ -3,12 +3,9 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
-
-http_bearer = HTTPBearer()
 
 from api.v1.schemas import AuthSchema
 from core.config import AppConfig
@@ -137,7 +134,6 @@ async def refresh_token(data: RefreshTokenRequest):
 @router.post('/set-password', response_model=AuthSchema.AuthorizedResponse)
 async def set_password(
     data: AuthSchema.SetPasswordRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -146,7 +142,7 @@ async def set_password(
     Requires the restricted temporary_token returned by login.
     Returns full access/refresh credentials on success.
     """
-    payload = JWTManager.verify(credentials.credentials, TokenType.TEMPORARY)
+    payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
     if not payload.data or payload.data.get("purpose") != "set_password":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
