@@ -204,6 +204,14 @@ class Permissions:
     # Contract
     CONTRACT_READ = "contract.read"
 
+    @classmethod
+    def all(cls) -> set:
+        """Return set of all valid permission strings."""
+        return {
+            v for k, v in vars(cls).items()
+            if isinstance(v, str) and not k.startswith("_") and "." in v
+        }
+
 
 # Role-Permission mapping
 ROLE_PERMISSIONS = {

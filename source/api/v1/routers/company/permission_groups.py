@@ -21,6 +21,21 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/permission-groups", tags=["Permission Groups"])
 
 
+@router.get("/permissions", tags=["Permission Groups"])
+async def list_available_permissions(user: User = User.current()):
+    """
+    List all available permission strings
+
+    Returns permissions grouped by resource.
+    """
+    all_perms = sorted(Permissions.all())
+    grouped = {}
+    for perm in all_perms:
+        resource = perm.split(".")[0]
+        grouped.setdefault(resource, []).append(perm)
+    return {"permissions": all_perms, "grouped": grouped}
+
+
 @router.get("", response_model=PermissionGroupListResponse)
 @require_permissions(Permissions.SETTINGS_READ)
 async def list_permission_groups(
