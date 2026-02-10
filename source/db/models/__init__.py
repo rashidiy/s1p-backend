@@ -22,6 +22,9 @@ from .tag import Tag
 # Billing
 from .contract import Contract
 
+# Permission groups
+from .permission_group import PermissionGroup
+
 # System models
 from .audit_log import AuditLog
 
@@ -45,6 +48,8 @@ __all__ = [
     "Tag",
     # Billing
     "Contract",
+    # Permission groups
+    "PermissionGroup",
     # System
     "AuditLog",
     # Enums module

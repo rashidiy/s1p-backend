@@ -98,6 +98,15 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     call_events = relationship("CallEvent", back_populates="operator")
     audit_logs = relationship("AuditLog", back_populates="user")
 
+    # Permission group
+    permission_group_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("permission_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    permission_group = relationship("PermissionGroup", back_populates="users")
+
     # Legacy Sipuni integrations
     sipuni_integrations = relationship("Sipuni", back_populates="user")
 
@@ -115,6 +124,8 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
         """
         Check if user has a specific permission
 
+        Effective permissions = group permissions ∪ individual permissions
+
         Args:
             permission: Permission string (e.g., "leads.read")
 
@@ -124,4 +135,8 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
         if self.role == RoleEnum.OWNER:
             return True  # Owners have all permissions
 
-        return permission in (self.permissions or [])
+        effective = set(self.permissions or [])
+        if self.permission_group and self.permission_group.permissions:
+            effective |= set(self.permission_group.permissions)
+
+        return permission in effective

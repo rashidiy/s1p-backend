@@ -22,7 +22,12 @@ class AuthenticationManagerMixin:
             token = credentials.credentials
             payload = JWTManager.verify(token, TokenType.ACCESS)
 
-            user = await cls.get(id=payload.sub, session=session)
+            # Eagerly load permission_group for User model
+            relationships = None
+            if hasattr(cls, 'permission_group'):
+                relationships = (cls.permission_group,)
+
+            user = await cls.get(id=payload.sub, session=session, relationships=relationships)
 
             if not user:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found.")
