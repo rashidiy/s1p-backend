@@ -68,7 +68,10 @@ def require_permissions(*required_permissions: str):
                 return await func(*args, **kwargs)
 
             # Check if user has all required permissions
+            # Effective permissions = individual ∪ group permissions
             user_permissions = set(user.permissions or [])
+            if hasattr(user, 'permission_group') and user.permission_group and user.permission_group.permissions:
+                user_permissions |= set(user.permission_group.permissions)
 
             # Wildcard permission grants all access
             if "*" in user_permissions:
@@ -329,6 +332,8 @@ def check_permission(user: User, permission: str) -> bool:
     """
     Check if user has a specific permission
 
+    Effective permissions = individual ∪ group permissions
+
     Args:
         user: User object
         permission: Permission string
@@ -339,4 +344,8 @@ def check_permission(user: User, permission: str) -> bool:
     if user.role == RoleEnum.OWNER:
         return True
 
-    return permission in (user.permissions or [])
+    effective = set(user.permissions or [])
+    if hasattr(user, 'permission_group') and user.permission_group and user.permission_group.permissions:
+        effective |= set(user.permission_group.permissions)
+
+    return permission in effective

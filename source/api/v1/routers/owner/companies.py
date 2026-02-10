@@ -96,10 +96,10 @@ async def invite_admin(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Invite the first Company Admin to a company (Owner only)
+    Invite a superadmin to a company (Owner only)
 
-    Creates a COMPANY_ADMIN user and sends an email invitation
-    with a temporary password.
+    Creates a COMPANY_ADMIN user with full admin permissions
+    and sends an email invitation with a temporary password.
     """
     company = await Company.get_or_404(
         session=session,
@@ -134,7 +134,7 @@ async def invite_admin(
         phone=data.phone,
         company_id=company.id,
         role=RoleEnum.COMPANY_ADMIN,
-        permissions=data.permissions if data.permissions else ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
+        permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
         password_hash=PasswordManager.hash(temporary_password),
         is_active=True,
         is_suspended=False,

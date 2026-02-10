@@ -14,6 +14,7 @@ from db.models.call_event import CallEvent
 from db.models.lead import Lead
 from db.models.deal import Deal
 from db.models.task import Task
+from db.models.permission_group import PermissionGroup
 from db.models.enums import RoleEnum
 from api.v1.schemas.user import (
     UserInviteRequest,
@@ -76,6 +77,16 @@ async def invite_operator(
     # Check contract user limit
     await check_user_limit(admin.company_id, role, session)
 
+    # Validate permission_group_id if provided
+    permission_group_id = None
+    if data.permission_group_id:
+        group = await PermissionGroup.get(id=data.permission_group_id, session=session)
+        if not group:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group not found")
+        if group.company_id is not None and group.company_id != admin.company_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group does not belong to this company")
+        permission_group_id = group.id
+
     # Generate temporary password
     temporary_password = EmailService.generate_temporary_password()
 
@@ -89,6 +100,7 @@ async def invite_operator(
         company_id=admin.company_id,
         role=role,
         permissions=data.permissions if data.permissions else ROLE_PERMISSIONS.get(role, []),
+        permission_group_id=permission_group_id,
         password_hash=PasswordManager.hash(temporary_password),
         is_active=True,
         is_suspended=False,
@@ -267,6 +279,13 @@ async def update_user(
         user.role = role
     if data.permissions is not None:
         user.permissions = data.permissions
+    if data.permission_group_id is not None:
+        group = await PermissionGroup.get(id=data.permission_group_id, session=session)
+        if not group:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group not found")
+        if group.company_id is not None and group.company_id != admin.company_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group does not belong to this company")
+        user.permission_group_id = group.id
 
     await user.update(session=session)
     return user

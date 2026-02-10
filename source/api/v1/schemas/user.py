@@ -22,6 +22,7 @@ class UserInviteRequest(UserBase):
     """Admin invites operator via email"""
     role: str = Field(default="company_operator", description="Role: company_admin or company_operator")
     permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
+    permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
 
 
 class UserCreateRequest(PasswordValidator, UserBase):
@@ -40,6 +41,7 @@ class UserUpdateRequest(BaseModel):
     is_suspended: Optional[bool] = None
     role: Optional[str] = None
     permissions: Optional[List[str]] = None
+    permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
 
 
 class PasswordChangeRequest(PasswordValidator, BaseModel):
@@ -61,6 +63,7 @@ class UserResponse(UserBase):
     company_id: Optional[UUID]
     role: str
     permissions: List[str]
+    permission_group_id: Optional[UUID] = None
     is_active: bool
     is_suspended: bool
     email_verified: bool

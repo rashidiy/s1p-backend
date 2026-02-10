@@ -91,12 +91,11 @@ class CompanyCreateRequest(BaseModel):
 
 
 class InviteAdminRequest(BaseModel):
-    """Owner invites the first admin to a company"""
+    """Owner invites a superadmin to a company (gets full admin permissions)"""
     email: EmailStr
     first_name: str = Field(..., min_length=1, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
-    permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
 
 
 class CompanyUpdateRequest(BaseModel):
