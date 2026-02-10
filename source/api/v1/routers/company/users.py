@@ -22,6 +22,7 @@ from api.v1.schemas.user import (
     UserResponse,
     UserDetailResponse,
     UserListResponse,
+    ProfileUpdateRequest,
 )
 from utils.managers import PasswordManager
 from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
@@ -121,6 +122,38 @@ async def invite_operator(
         login_url=f"{AppConfig.BASE_URL}/login",
     )
 
+    return user
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_my_profile(user: User = User.current()):
+    """
+    Get current user's own profile
+    """
+    return user
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_my_profile(
+    data: ProfileUpdateRequest,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Update current user's own profile
+
+    Only personal fields can be updated (name, phone, language).
+    """
+    if data.first_name is not None:
+        user.first_name = data.first_name
+    if data.last_name is not None:
+        user.last_name = data.last_name
+    if data.phone is not None:
+        user.phone = data.phone
+    if data.language is not None:
+        user.language = data.language
+
+    await user.update(session=session)
     return user
 
 
