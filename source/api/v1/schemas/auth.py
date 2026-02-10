@@ -36,10 +36,6 @@ class AuthSchema:
         old_password: str = Field(..., min_length=1)
         new_password: str = Field(..., min_length=8, max_length=100)
 
-    class UpdatePasswordRequest(PasswordValidator, BaseModel):
-        token: str
-        new_password: str = Field(..., min_length=8, max_length=100)
-
     class SetPasswordRequest(PasswordValidator, BaseModel):
         token: str
         new_password: str = Field(..., min_length=8, max_length=100)

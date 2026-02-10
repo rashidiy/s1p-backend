@@ -132,7 +132,7 @@ async def forgot_password(
             duration=timedelta(hours=1),
             data={"purpose": "owner_password_reset"},
         )
-        reset_url = f"{AppConfig.BASE_URL}/owner/update-password"
+        reset_url = f"{AppConfig.BASE_URL}/owner/set-password"
         EmailService.send_password_reset(
             background_tasks=background_tasks,
             to_email=owner.email,
@@ -144,22 +144,26 @@ async def forgot_password(
     return {"message": "If the email exists, a reset link has been sent"}
 
 
-@router.post('/update-password', response_model=OwnerWithCredentials)
-async def update_password(
-    data: AuthSchema.UpdatePasswordRequest,
+@router.post('/set-password', response_model=OwnerWithCredentials)
+async def set_password(
+    data: AuthSchema.SetPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Update owner password using a token from the forgot-password email.
+    Set new owner password using a temporary token.
 
-    No old password required — the token itself grants permission.
+    Works for both flows:
+    - First login: token from login response (purpose=set_password)
+    - Forgot password: token from reset email (purpose=owner_password_reset)
+
     Returns full access/refresh credentials on success.
     """
     payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
-    if not payload.data or payload.data.get("purpose") != "owner_password_reset":
+    purpose = payload.data.get("purpose") if payload.data else None
+    if purpose not in ("set_password", "owner_password_reset"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid reset token",
+            detail="Invalid token",
         )
 
     owner = await Owner.get(id=payload.sub, session=session)
