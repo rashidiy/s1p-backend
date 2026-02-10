@@ -3,10 +3,12 @@ Unified webhook handler for all telephony providers
 """
 
 import logging
-from fastapi import APIRouter, Request, HTTPException, status
+from fastapi import APIRouter, Depends, Request, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from core.config import WebhookConfig
+from db import get_session
 from db.models.company import Company
 from db.models.call_event import CallEvent
 from db.models.enums import ProviderEnum
@@ -53,7 +55,11 @@ def validate_webhook_ip(request: Request, provider_type: ProviderEnum) -> bool:
 
 
 @router.post("/{token}")
-async def handle_webhook(token: str, request: Request):
+async def handle_webhook(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Unified webhook endpoint for all telephony providers
 
@@ -75,7 +81,7 @@ async def handle_webhook(token: str, request: Request):
         payload = dict(form_data)
 
     # Find company by webhook token
-    company = await Company.get_one(webhook_token=token)
+    company = await Company.get(session=session, webhook_token=token)
     if not company:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -116,7 +122,8 @@ async def handle_webhook(token: str, request: Request):
         call_data['provider_type'] = company.provider_type
 
         # Check if call event already exists (for updates)
-        existing_call = await CallEvent.get_one(
+        existing_call = await CallEvent.get(
+            session=session,
             company_id=company.id,
             provider_type=company.provider_type,
             provider_call_id=call_data['provider_call_id']
@@ -125,13 +132,14 @@ async def handle_webhook(token: str, request: Request):
         if existing_call:
             # Update existing call event
             await CallEvent.update_by(
-                {'id': existing_call.id},
-                call_data
+                session=session,
+                values=call_data,
+                id=existing_call.id
             )
             return {"status": "updated", "call_id": str(existing_call.id)}
         else:
             # Create new call event
-            call_event = await CallEvent.create(**call_data)
+            call_event = await CallEvent.create(session=session, **call_data)
             return {"status": "created", "call_id": str(call_event.id)}
 
     except Exception as e:

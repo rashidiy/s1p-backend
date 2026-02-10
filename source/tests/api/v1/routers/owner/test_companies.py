@@ -14,7 +14,7 @@ class TestCreateCompany:
     async def test_create_company_success(self, client: AsyncClient, owner_auth_headers):
         """Test successful company creation."""
         response = await client.post(
-            "/api/v1/owner/companies/",
+            "/api/v1/owner/companies",
             headers=owner_auth_headers,
             json={
                 "name": "New Test Company",
@@ -36,7 +36,7 @@ class TestCreateCompany:
     async def test_create_company_binotel(self, client: AsyncClient, owner_auth_headers):
         """Test creating company with Binotel provider."""
         response = await client.post(
-            "/api/v1/owner/companies/",
+            "/api/v1/owner/companies",
             headers=owner_auth_headers,
             json={
                 "name": "Binotel Company",
@@ -55,7 +55,7 @@ class TestCreateCompany:
     async def test_create_company_invalid_provider(self, client: AsyncClient, owner_auth_headers):
         """Test creating company with invalid provider fails."""
         response = await client.post(
-            "/api/v1/owner/companies/",
+            "/api/v1/owner/companies",
             headers=owner_auth_headers,
             json={
                 "name": "Test Company",
@@ -72,7 +72,7 @@ class TestCreateCompany:
     async def test_create_company_unauthorized(self, client: AsyncClient):
         """Test creating company without auth fails."""
         response = await client.post(
-            "/api/v1/owner/companies/",
+            "/api/v1/owner/companies",
             json={
                 "name": "Test Company",
                 "provider_type": "sipuni",
@@ -89,7 +89,7 @@ class TestListCompanies:
     async def test_list_companies(self, client: AsyncClient, owner_auth_headers, test_company):
         """Test listing owner's companies."""
         response = await client.get(
-            "/api/v1/owner/companies/",
+            "/api/v1/owner/companies",
             headers=owner_auth_headers
         )
         assert response.status_code == 200
@@ -101,7 +101,7 @@ class TestListCompanies:
     @pytest.mark.asyncio
     async def test_list_companies_unauthorized(self, client: AsyncClient):
         """Test listing companies without auth fails."""
-        response = await client.get("/api/v1/owner/companies/")
+        response = await client.get("/api/v1/owner/companies")
         assert response.status_code in [401, 403, 422]
 
 

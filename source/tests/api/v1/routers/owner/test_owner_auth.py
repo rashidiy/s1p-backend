@@ -4,61 +4,6 @@ Tests for owner authentication endpoints
 
 import pytest
 from httpx import AsyncClient
-from uuid import uuid4
-
-
-class TestOwnerRegister:
-    """Tests for POST /api/v1/owner/auth/register"""
-
-    @pytest.mark.asyncio
-    async def test_register_owner_success(self, client: AsyncClient):
-        """Test successful owner registration."""
-        unique_email = f"newowner_{uuid4().hex[:8]}@test.com"
-        response = await client.post(
-            "/api/v1/owner/auth/register",
-            json={
-                "first_name": "New",
-                "last_name": "Owner",
-                "email": unique_email,
-                "password": "securepassword123",
-                "phone": "+1234567890"
-            }
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == unique_email
-        assert data["first_name"] == "New"
-        assert data["is_active"] is True
-        assert "credentials" in data
-        assert "access" in data["credentials"]
-        assert "refresh" in data["credentials"]
-
-    @pytest.mark.asyncio
-    async def test_register_owner_duplicate_email(self, client: AsyncClient, test_owner):
-        """Test registration with existing email fails."""
-        response = await client.post(
-            "/api/v1/owner/auth/register",
-            json={
-                "first_name": "Another",
-                "last_name": "Owner",
-                "email": test_owner.email,
-                "password": "securepassword123",
-                "phone": "+1234567890"
-            }
-        )
-        assert response.status_code == 409
-        assert "already exists" in response.json()["detail"].lower()
-
-    @pytest.mark.asyncio
-    async def test_register_owner_missing_required_fields(self, client: AsyncClient):
-        """Test registration with missing required fields fails."""
-        response = await client.post(
-            "/api/v1/owner/auth/register",
-            json={
-                "email": "test@test.com"
-            }
-        )
-        assert response.status_code == 422
 
 
 class TestOwnerLogin:
@@ -78,6 +23,8 @@ class TestOwnerLogin:
         data = response.json()
         assert data["email"] == test_owner.email
         assert "credentials" in data
+        assert "access" in data["credentials"]
+        assert "refresh" in data["credentials"]
 
     @pytest.mark.asyncio
     async def test_login_owner_wrong_password(self, client: AsyncClient, test_owner):

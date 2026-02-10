@@ -14,7 +14,7 @@ class TestCreateLead:
     async def test_create_lead_success(self, client: AsyncClient, auth_headers, test_contact):
         """Test successful lead creation."""
         response = await client.post(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers,
             json={
                 "title": "New Lead",
@@ -34,7 +34,7 @@ class TestCreateLead:
     async def test_create_lead_minimal(self, client: AsyncClient, auth_headers):
         """Test creating lead with minimal fields."""
         response = await client.post(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers,
             json={
                 "title": "Minimal Lead"
@@ -50,7 +50,7 @@ class TestCreateLead:
     async def test_create_lead_with_assignment(self, client: AsyncClient, auth_headers, test_user):
         """Test creating lead with assignment."""
         response = await client.post(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers,
             json={
                 "title": "Assigned Lead",
@@ -65,7 +65,7 @@ class TestCreateLead:
     async def test_create_lead_unauthorized(self, client: AsyncClient):
         """Test creating lead without auth fails."""
         response = await client.post(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             json={"title": "Test"}
         )
         assert response.status_code in [401, 403, 422]
@@ -78,7 +78,7 @@ class TestListLeads:
     async def test_list_leads(self, client: AsyncClient, auth_headers, test_lead):
         """Test listing leads."""
         response = await client.get(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers
         )
         assert response.status_code == 200
@@ -91,7 +91,7 @@ class TestListLeads:
     async def test_list_leads_filter_status(self, client: AsyncClient, auth_headers, test_lead):
         """Test filtering leads by status."""
         response = await client.get(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers,
             params={"status_filter": "new"}
         )
@@ -103,7 +103,7 @@ class TestListLeads:
     async def test_list_leads_search(self, client: AsyncClient, auth_headers, test_lead):
         """Test searching leads."""
         response = await client.get(
-            "/api/v1/company/leads/",
+            "/api/v1/company/leads",
             headers=auth_headers,
             params={"search": test_lead.title}
         )

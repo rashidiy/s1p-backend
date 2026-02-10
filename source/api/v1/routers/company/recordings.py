@@ -3,10 +3,12 @@ Call recording proxy endpoints
 Provides secure access to call recordings via signed tokens
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 import aiohttp
 
+from db import get_session
 from db.models.call_event import CallEvent
 from utils.managers import RecordTokenManager
 
@@ -14,24 +16,16 @@ router = APIRouter(prefix="/recordings", tags=["Recordings"])
 
 
 @router.get("/proxy/{token}")
-async def proxy_recording(token: str):
+async def proxy_recording(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Proxy endpoint for call recordings
 
     Validates the signed token and redirects to the actual recording URL.
     This provides secure, time-limited access to call recordings without
     exposing provider URLs directly.
-
-    Args:
-        token: Signed token containing call_id, company_id, and expiry
-
-    Returns:
-        Redirect to the actual recording URL
-
-    Security:
-    - Token must be valid and not expired
-    - Token signature must match
-    - Call must belong to the company in the token
     """
     # Validate token and extract call_id, company_id
     token_data = RecordTokenManager.validate_token(token)
@@ -39,7 +33,7 @@ async def proxy_recording(token: str):
     company_id = token_data["company_id"]
 
     # Get call event and verify it belongs to the company
-    call = await CallEvent.get_one(id=call_id, company_id=company_id)
+    call = await CallEvent.get(session=session, id=call_id, company_id=company_id)
     if not call:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -59,14 +53,15 @@ async def proxy_recording(token: str):
 
 
 @router.get("/stream/{token}")
-async def stream_recording(token: str):
+async def stream_recording(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Stream call recording directly (more secure than redirect)
 
     Validates the token and streams the recording file directly
     without exposing the provider URL.
-
-    This is more secure than redirect but requires more resources.
     """
     # Validate token
     token_data = RecordTokenManager.validate_token(token)
@@ -74,7 +69,7 @@ async def stream_recording(token: str):
     company_id = token_data["company_id"]
 
     # Get call event
-    call = await CallEvent.get_one(id=call_id, company_id=company_id)
+    call = await CallEvent.get(session=session, id=call_id, company_id=company_id)
     if not call or not call.record_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,8 +78,8 @@ async def stream_recording(token: str):
 
     # Stream the file from provider
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(call.record_url) as response:
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.get(call.record_url) as response:
                 if response.status != 200:
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,

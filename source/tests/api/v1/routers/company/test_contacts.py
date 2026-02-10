@@ -14,7 +14,7 @@ class TestCreateContact:
     async def test_create_contact_success(self, client: AsyncClient, auth_headers):
         """Test successful contact creation."""
         response = await client.post(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers,
             json={
                 "first_name": "Jane",
@@ -36,7 +36,7 @@ class TestCreateContact:
     async def test_create_contact_minimal(self, client: AsyncClient, auth_headers):
         """Test creating contact with minimal fields."""
         response = await client.post(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers,
             json={
                 "first_name": "Minimal"
@@ -50,7 +50,7 @@ class TestCreateContact:
     async def test_create_contact_duplicate_email(self, client: AsyncClient, auth_headers, test_contact):
         """Test creating contact with duplicate email fails."""
         response = await client.post(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers,
             json={
                 "first_name": "Another",
@@ -63,7 +63,7 @@ class TestCreateContact:
     async def test_create_contact_unauthorized(self, client: AsyncClient):
         """Test creating contact without auth fails."""
         response = await client.post(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             json={"first_name": "Test"}
         )
         assert response.status_code in [401, 403, 422]
@@ -76,7 +76,7 @@ class TestListContacts:
     async def test_list_contacts(self, client: AsyncClient, auth_headers, test_contact):
         """Test listing contacts."""
         response = await client.get(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers
         )
         assert response.status_code == 200
@@ -90,7 +90,7 @@ class TestListContacts:
     async def test_list_contacts_pagination(self, client: AsyncClient, auth_headers):
         """Test contacts pagination."""
         response = await client.get(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers,
             params={"page": 1, "page_size": 10}
         )
@@ -103,7 +103,7 @@ class TestListContacts:
     async def test_list_contacts_search(self, client: AsyncClient, auth_headers, test_contact):
         """Test contacts search."""
         response = await client.get(
-            "/api/v1/company/contacts/",
+            "/api/v1/company/contacts",
             headers=auth_headers,
             params={"search": test_contact.first_name}
         )

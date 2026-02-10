@@ -73,15 +73,15 @@ async def list_notes(
 
     # Filters
     if contact_id:
-        query = query.where(Note.contact_id == contact_id)
+        query = query.where(Note.entity_type == "contact", Note.entity_id == contact_id)
     if lead_id:
-        query = query.where(Note.lead_id == lead_id)
+        query = query.where(Note.entity_type == "lead", Note.entity_id == lead_id)
     if deal_id:
-        query = query.where(Note.deal_id == deal_id)
+        query = query.where(Note.entity_type == "deal", Note.entity_id == deal_id)
     if task_id:
-        query = query.where(Note.task_id == task_id)
+        query = query.where(Note.entity_type == "task", Note.entity_id == task_id)
     if call_id:
-        query = query.where(Note.call_id == call_id)
+        query = query.where(Note.entity_type == "call", Note.entity_id == call_id)
     if created_by:
         query = query.where(Note.created_by == created_by)
 
@@ -232,21 +232,14 @@ async def get_entity_notes(
     """
     query = select(Note).where(Note.company_id == user.company_id)
 
-    if entity_type == "contact":
-        query = query.where(Note.contact_id == entity_id)
-    elif entity_type == "lead":
-        query = query.where(Note.lead_id == entity_id)
-    elif entity_type == "deal":
-        query = query.where(Note.deal_id == entity_id)
-    elif entity_type == "task":
-        query = query.where(Note.task_id == entity_id)
-    elif entity_type == "call":
-        query = query.where(Note.call_id == entity_id)
-    else:
+    valid_entity_types = {"contact", "lead", "deal", "task", "call"}
+    if entity_type not in valid_entity_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid entity_type. Must be: contact, lead, deal, task, or call"
         )
+
+    query = query.where(Note.entity_type == entity_type, Note.entity_id == entity_id)
 
     query = query.order_by(Note.created_at.desc())
 

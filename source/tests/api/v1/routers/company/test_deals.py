@@ -15,7 +15,7 @@ class TestCreateDeal:
     async def test_create_deal_success(self, client: AsyncClient, auth_headers, test_contact):
         """Test successful deal creation."""
         response = await client.post(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers,
             json={
                 "title": "New Deal",
@@ -35,7 +35,7 @@ class TestCreateDeal:
     async def test_create_deal_minimal(self, client: AsyncClient, auth_headers):
         """Test creating deal with minimal fields."""
         response = await client.post(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers,
             json={
                 "title": "Minimal Deal",
@@ -52,7 +52,7 @@ class TestCreateDeal:
     async def test_create_deal_with_lead(self, client: AsyncClient, auth_headers, test_lead):
         """Test creating deal from lead."""
         response = await client.post(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers,
             json={
                 "title": "Deal from Lead",
@@ -68,7 +68,7 @@ class TestCreateDeal:
     async def test_create_deal_unauthorized(self, client: AsyncClient):
         """Test creating deal without auth fails."""
         response = await client.post(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             json={"title": "Test", "value": 1000}
         )
         assert response.status_code in [401, 403, 422]
@@ -81,7 +81,7 @@ class TestListDeals:
     async def test_list_deals(self, client: AsyncClient, auth_headers, test_deal):
         """Test listing deals."""
         response = await client.get(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers
         )
         assert response.status_code == 200
@@ -94,7 +94,7 @@ class TestListDeals:
     async def test_list_deals_filter_stage(self, client: AsyncClient, auth_headers, test_deal):
         """Test filtering deals by stage."""
         response = await client.get(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers,
             params={"stage": "prospecting"}
         )
@@ -104,7 +104,7 @@ class TestListDeals:
     async def test_list_deals_value_range(self, client: AsyncClient, auth_headers, test_deal):
         """Test filtering deals by value range."""
         response = await client.get(
-            "/api/v1/company/deals/",
+            "/api/v1/company/deals",
             headers=auth_headers,
             params={"min_value": 1000, "max_value": 100000}
         )
