@@ -26,7 +26,7 @@ class OwnerLoginRequest(BaseModel):
     password: str
 
 
-@router.post('/login', response_model=OwnerWithCredentials)
+@router.post('/login')
 async def login_owner(
     data: OwnerLoginRequest,
     session: AsyncSession = Depends(get_session)
@@ -35,6 +35,8 @@ async def login_owner(
     Owner login
 
     Returns JWT tokens for authenticated owner.
+    If the owner has a temporary password, returns a restricted token
+    that only works with set-password.
     """
     owner = await Owner.get(email=data.email, session=session)
     if not owner:
@@ -55,14 +57,24 @@ async def login_owner(
             detail="Owner account is inactive"
         )
 
-    # Generate JWT credentials
+    # If owner hasn't changed temporary password, return restricted token
+    if not owner.email_verified:
+        temporary_token = JWTManager.create(
+            sub=owner.id,
+            token_type=TokenType.TEMPORARY,
+            duration=timedelta(hours=1),
+            data={"purpose": "set_password"},
+        )
+        return AuthSchema.PasswordRequiredResponse(temporary_token=temporary_token)
+
+    # Generate full JWT credentials
     owner.credentials = JWTManager.generate_credentials(
         sub=owner.id,
         company_id=None,
         role=RoleEnum.OWNER.value,
         permissions=["*"]
     )
-    owner.must_change_password = not owner.email_verified
+    owner.must_change_password = False
 
     return owner
 
@@ -132,7 +144,7 @@ async def forgot_password(
     return {"message": "If the email exists, a reset link has been sent"}
 
 
-@router.post('/update-password')
+@router.post('/update-password', response_model=OwnerWithCredentials)
 async def update_password(
     data: AuthSchema.UpdatePasswordRequest,
     session: AsyncSession = Depends(get_session),
@@ -141,6 +153,7 @@ async def update_password(
     Update owner password using a token from the forgot-password email.
 
     No old password required — the token itself grants permission.
+    Returns full access/refresh credentials on success.
     """
     payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
     if not payload.data or payload.data.get("purpose") != "owner_password_reset":
@@ -160,4 +173,12 @@ async def update_password(
     owner.email_verified = True
     await owner.update(session=session)
 
-    return {"message": "Password updated successfully"}
+    # Return full credentials
+    owner.credentials = JWTManager.generate_credentials(
+        sub=owner.id,
+        company_id=None,
+        role=RoleEnum.OWNER.value,
+        permissions=["*"],
+    )
+    owner.must_change_password = False
+    return owner

@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -23,6 +24,10 @@ class AuthSchema:
         is_active: bool
         must_change_password: bool = False
         credentials: "AuthSchema.BearerToken"
+
+    class PasswordRequiredResponse(BaseModel):
+        must_change_password: bool = True
+        temporary_token: str
 
     class ForgotPasswordRequest(BaseModel):
         email: EmailStr
