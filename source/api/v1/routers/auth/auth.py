@@ -3,9 +3,12 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
+
+http_bearer = HTTPBearer()
 
 from api.v1.schemas import AuthSchema
 from core.config import AppConfig
@@ -65,7 +68,7 @@ async def _resolve_company(subdomain: str, session: AsyncSession) -> Company:
     return company
 
 
-@router.post('/login', response_model=AuthSchema.AuthorizedResponse)
+@router.post('/login')
 async def login(
     data: AuthSchema.LoginRequest,
     request: Request,
@@ -75,7 +78,8 @@ async def login(
     Login to a company.
 
     Company is identified by the Origin header (subdomain).
-    Each user can have separate credentials per company.
+    If the user has a temporary password (email_verified=False),
+    returns a restricted token that only works with set-password.
     """
     subdomain = _extract_subdomain(request)
     company = await _resolve_company(subdomain, session)
@@ -86,7 +90,18 @@ async def login(
     if not PasswordManager.verify(data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email or password incorrect.")
 
-    # Generate credentials with multi-tenant support
+    # If user hasn't changed temporary password, return restricted token
+    if not user.email_verified:
+        temporary_token = JWTManager.create(
+            sub=user.id,
+            token_type=TokenType.TEMPORARY,
+            company_id=user.company_id,
+            duration=timedelta(hours=1),
+            data={"purpose": "set_password"},
+        )
+        return AuthSchema.PasswordRequiredResponse(temporary_token=temporary_token)
+
+    # Generate full credentials
     user.credentials = JWTManager.generate_credentials(
         sub=user.id,
         company_id=user.company_id,
@@ -94,7 +109,7 @@ async def login(
         permissions=user.permissions or [],
         access_duration=timedelta(days=15)
     )
-    user.must_change_password = not user.email_verified
+    user.must_change_password = False
     return user
 
 
@@ -119,29 +134,52 @@ async def refresh_token(data: RefreshTokenRequest):
     }
 
 
-@router.post('/set-password')
+@router.post('/set-password', response_model=AuthSchema.AuthorizedResponse)
 async def set_password(
     data: AuthSchema.SetPasswordRequest,
-    user: User = User.current(),
+    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
     session: AsyncSession = Depends(get_session),
 ):
     """
     Set new password on first login (replaces temporary password).
 
-    Only available for users who haven't changed their temporary password yet
-    (email_verified=False). The user must be authenticated via JWT from login.
+    Requires the restricted temporary_token returned by login.
+    Returns full access/refresh credentials on success.
     """
+    payload = JWTManager.verify(credentials.credentials, TokenType.TEMPORARY)
+    if not payload.data or payload.data.get("purpose") != "set_password":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid token. Use the temporary_token from login.",
+        )
+
+    user = await User.get(id=payload.sub, session=session)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
     if user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password has already been set. Use change-password instead.",
+            detail="Password has already been set. Use reset-password instead.",
         )
 
     user.password_hash = PasswordManager.hash(data.new_password)
     user.email_verified = True
     await user.update(session=session)
 
-    return {"message": "Password set successfully"}
+    # Return full credentials
+    user.credentials = JWTManager.generate_credentials(
+        sub=user.id,
+        company_id=user.company_id,
+        role=user.role.value if user.role else None,
+        permissions=user.permissions or [],
+        access_duration=timedelta(days=15),
+    )
+    user.must_change_password = False
+    return user
 
 
 @router.post('/reset-password')
@@ -205,7 +243,7 @@ async def forgot_password(
     return {"message": "If the email exists, a reset link has been sent"}
 
 
-@router.post('/update-password')
+@router.post('/update-password', response_model=AuthSchema.AuthorizedResponse)
 async def update_password(
     data: AuthSchema.UpdatePasswordRequest,
     session: AsyncSession = Depends(get_session),
@@ -214,6 +252,7 @@ async def update_password(
     Update password using a token from the forgot-password email.
 
     No old password required — the token itself grants permission.
+    Returns full access/refresh credentials on success.
     """
     payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
     if not payload.data or payload.data.get("purpose") != "password_reset":
@@ -233,4 +272,13 @@ async def update_password(
     user.email_verified = True
     await user.update(session=session)
 
-    return {"message": "Password updated successfully"}
+    # Return full credentials
+    user.credentials = JWTManager.generate_credentials(
+        sub=user.id,
+        company_id=user.company_id,
+        role=user.role.value if user.role else None,
+        permissions=user.permissions or [],
+        access_duration=timedelta(days=15),
+    )
+    user.must_change_password = False
+    return user
