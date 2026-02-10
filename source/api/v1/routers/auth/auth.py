@@ -137,16 +137,20 @@ async def set_password(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Set new password on first login (replaces temporary password).
+    Set new password using a temporary token.
 
-    Requires the restricted temporary_token returned by login.
+    Works for both flows:
+    - First login: token from login response (purpose=set_password)
+    - Forgot password: token from reset email (purpose=password_reset)
+
     Returns full access/refresh credentials on success.
     """
     payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
-    if not payload.data or payload.data.get("purpose") != "set_password":
+    purpose = payload.data.get("purpose") if payload.data else None
+    if purpose not in ("set_password", "password_reset"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token. Use the temporary_token from login.",
+            detail="Invalid token",
         )
 
     user = await User.get(id=payload.sub, session=session)
@@ -154,12 +158,6 @@ async def set_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
-        )
-
-    if user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password has already been set. Use reset-password instead.",
         )
 
     user.password_hash = PasswordManager.hash(data.new_password)
@@ -227,7 +225,7 @@ async def forgot_password(
             duration=timedelta(hours=1),
             data={"purpose": "password_reset"},
         )
-        reset_url = f"{AppConfig.BASE_URL}/update-password"
+        reset_url = f"{AppConfig.BASE_URL}/set-password"
         EmailService.send_password_reset(
             background_tasks=background_tasks,
             to_email=user.email,
@@ -237,44 +235,3 @@ async def forgot_password(
         )
 
     return {"message": "If the email exists, a reset link has been sent"}
-
-
-@router.post('/update-password', response_model=AuthSchema.AuthorizedResponse)
-async def update_password(
-    data: AuthSchema.UpdatePasswordRequest,
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Update password using a token from the forgot-password email.
-
-    No old password required — the token itself grants permission.
-    Returns full access/refresh credentials on success.
-    """
-    payload = JWTManager.verify(data.token, TokenType.TEMPORARY)
-    if not payload.data or payload.data.get("purpose") != "password_reset":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid reset token",
-        )
-
-    user = await User.get(id=payload.sub, session=session)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    user.password_hash = PasswordManager.hash(data.new_password)
-    user.email_verified = True
-    await user.update(session=session)
-
-    # Return full credentials
-    user.credentials = JWTManager.generate_credentials(
-        sub=user.id,
-        company_id=user.company_id,
-        role=user.role.value if user.role else None,
-        permissions=user.permissions or [],
-        access_duration=timedelta(days=15),
-    )
-    user.must_change_password = False
-    return user
