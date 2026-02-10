@@ -63,7 +63,7 @@ class TestListUsers:
     async def test_list_users(self, client: AsyncClient, auth_headers, test_user):
         """Test listing users."""
         response = await client.get(
-            "/api/v1/company/users/",
+            "/api/v1/company/users",
             headers=auth_headers
         )
         assert response.status_code == 200
@@ -76,7 +76,7 @@ class TestListUsers:
     async def test_list_users_filter_role(self, client: AsyncClient, auth_headers):
         """Test filtering users by role."""
         response = await client.get(
-            "/api/v1/company/users/",
+            "/api/v1/company/users",
             headers=auth_headers,
             params={"role": "company_admin"}
         )
@@ -86,7 +86,7 @@ class TestListUsers:
     async def test_list_users_search(self, client: AsyncClient, auth_headers, test_user):
         """Test searching users."""
         response = await client.get(
-            "/api/v1/company/users/",
+            "/api/v1/company/users",
             headers=auth_headers,
             params={"search": test_user.first_name}
         )
@@ -218,7 +218,7 @@ class TestChangePassword:
             headers=auth_headers,
             json={
                 "old_password": "testpassword123",
-                "new_password": "newpassword123"
+                "new_password": "NewPassword123"
             }
         )
         assert response.status_code in [200, 204]
@@ -230,8 +230,8 @@ class TestChangePassword:
             "/api/v1/company/users/me/change-password",
             headers=auth_headers,
             json={
-                "old_password": "wrongpassword",
-                "new_password": "newpassword123"
+                "old_password": "WrongPassword1",
+                "new_password": "NewPassword123"
             }
         )
         assert response.status_code in [400, 403]

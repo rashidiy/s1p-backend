@@ -16,7 +16,7 @@ class TestCreateTask:
         """Test successful task creation."""
         due_date = (datetime.now() + timedelta(days=7)).isoformat()
         response = await client.post(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             json={
                 "title": "New Task",
@@ -34,7 +34,7 @@ class TestCreateTask:
     async def test_create_task_minimal(self, client: AsyncClient, auth_headers):
         """Test creating task with minimal fields."""
         response = await client.post(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             json={
                 "title": "Minimal Task"
@@ -51,7 +51,7 @@ class TestCreateTask:
     async def test_create_task_linked_to_contact(self, client: AsyncClient, auth_headers, test_contact):
         """Test creating task linked to contact."""
         response = await client.post(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             json={
                 "title": "Contact Task",
@@ -68,7 +68,7 @@ class TestCreateTask:
     async def test_create_task_linked_to_lead(self, client: AsyncClient, auth_headers, test_lead):
         """Test creating task linked to lead."""
         response = await client.post(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             json={
                 "title": "Lead Task",
@@ -82,7 +82,7 @@ class TestCreateTask:
     async def test_create_task_unauthorized(self, client: AsyncClient):
         """Test creating task without auth fails."""
         response = await client.post(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             json={"title": "Test"}
         )
         assert response.status_code in [401, 403, 422]
@@ -95,7 +95,7 @@ class TestListTasks:
     async def test_list_tasks(self, client: AsyncClient, auth_headers, test_task):
         """Test listing tasks."""
         response = await client.get(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers
         )
         assert response.status_code == 200
@@ -108,7 +108,7 @@ class TestListTasks:
     async def test_list_tasks_filter_status(self, client: AsyncClient, auth_headers, test_task):
         """Test filtering tasks by status."""
         response = await client.get(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             params={"status_filter": "pending"}
         )
@@ -118,7 +118,7 @@ class TestListTasks:
     async def test_list_tasks_filter_priority(self, client: AsyncClient, auth_headers, test_task):
         """Test filtering tasks by priority."""
         response = await client.get(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             params={"priority": "medium"}
         )
@@ -128,7 +128,7 @@ class TestListTasks:
     async def test_list_my_tasks(self, client: AsyncClient, auth_headers, test_task):
         """Test listing my assigned tasks."""
         response = await client.get(
-            "/api/v1/company/tasks/",
+            "/api/v1/company/tasks",
             headers=auth_headers,
             params={"my_tasks": True}
         )

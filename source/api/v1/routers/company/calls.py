@@ -3,9 +3,11 @@ Unified call management endpoints (provider-agnostic)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID
 
+from db import get_session
 from db.models.user import User
 from db.models.company import Company
 from db.models.call_event import CallEvent
@@ -22,7 +24,8 @@ router = APIRouter(prefix="/calls", tags=["Calls"])
 @require_permissions(Permissions.CALLS_MAKE)
 async def make_call(
     request: CallRequest,
-    user: User = User.current()
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Make a call (provider-agnostic)
@@ -31,7 +34,7 @@ async def make_call(
     based on the company's configuration.
     """
     # Get user's company
-    company = await Company.get_or_404(id=user.company_id)
+    company = await Company.get_or_404(id=user.company_id, session=session)
 
     if not company.is_active:
         raise HTTPException(
@@ -52,6 +55,7 @@ async def make_call(
         # Store call event if successful
         if result.success:
             await CallEvent.create(
+                session=session,
                 company_id=company.id,
                 provider_type=company.provider_type,
                 provider_call_id=result.call_id,
@@ -78,14 +82,16 @@ async def make_call(
 async def list_calls(
     skip: int = 0,
     limit: int = 100,
-    user: User = User.current()
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
 ):
     """List all calls for the company"""
     calls = await CallEvent.get_all(
+        session=session,
         company_id=user.company_id,
-        skip=skip,
+        offset=skip,
         limit=limit,
-        order_by=CallEvent.created_at.desc()
+        order_by=(CallEvent.created_at.desc(),)
     )
     return calls
 
@@ -94,10 +100,12 @@ async def list_calls(
 @require_permissions(Permissions.CALLS_READ)
 async def get_call(
     call_id: UUID,
-    user: User = User.current()
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
 ):
     """Get call details"""
     call = await CallEvent.get_or_404(
+        session=session,
         id=call_id,
         company_id=user.company_id
     )
@@ -108,7 +116,8 @@ async def get_call(
 @require_permissions(Permissions.CALLS_READ)
 async def get_call_recording(
     call_id: UUID,
-    user: User = User.current()
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Get proxied call recording URL
@@ -117,6 +126,7 @@ async def get_call_recording(
     The URL is signed and expires after the configured time period.
     """
     call = await CallEvent.get_or_404(
+        session=session,
         id=call_id,
         company_id=user.company_id
     )

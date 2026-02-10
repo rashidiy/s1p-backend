@@ -34,6 +34,7 @@ MAIN_DATABASE_URL = f"postgresql+asyncpg://{os.environ.get('POSTGRES_USER', 'pos
 
 from db.base import Base
 from db.models import Owner, Company, User, Contact, Lead, Deal, Task, Note, CallEvent
+from db.models.permission_group import PermissionGroup
 from db.models.enums import RoleEnum, ProviderEnum, LeadStatusEnum, DealStageEnum, TaskStatusEnum, TaskPriorityEnum
 from utils.managers import PasswordManager, JWTManager
 
@@ -303,3 +304,65 @@ def owner_auth_headers(owner_token: str) -> dict:
 def operator_auth_headers(operator_token: str) -> dict:
     """Get operator auth headers for requests."""
     return {"Authorization": f"Bearer {operator_token}"}
+
+
+@pytest.fixture
+def company_origin_headers(test_company: Company) -> dict:
+    """Get Origin header for company subdomain (required for auth endpoints)."""
+    return {"Origin": f"https://{test_company.subdomain}.siptools.com"}
+
+
+@pytest.fixture
+def auth_headers_with_origin(auth_headers: dict, company_origin_headers: dict) -> dict:
+    """Auth headers combined with Origin header."""
+    return {**auth_headers, **company_origin_headers}
+
+
+@pytest_asyncio.fixture
+async def test_note(db_session: AsyncSession, test_company: Company, test_contact: Contact, test_user: User) -> Note:
+    """Create a test note."""
+    note = Note(
+        id=uuid.uuid4(),
+        company_id=test_company.id,
+        content="Test note content",
+        entity_type="contact",
+        entity_id=test_contact.id,
+        created_by=test_user.id,
+    )
+    db_session.add(note)
+    await db_session.flush()
+    return note
+
+
+@pytest_asyncio.fixture
+async def test_call_event(db_session: AsyncSession, test_company: Company, test_user: User) -> CallEvent:
+    """Create a test call event."""
+    call = CallEvent(
+        id=uuid.uuid4(),
+        company_id=test_company.id,
+        provider_type=test_company.provider_type,
+        provider_call_id=f"call_{uuid.uuid4().hex[:8]}",
+        phone_1="+1234567890",
+        phone_2="+0987654321",
+        operator_id=test_user.id,
+        attempts=1,
+    )
+    db_session.add(call)
+    await db_session.flush()
+    return call
+
+
+@pytest_asyncio.fixture
+async def test_permission_group(db_session: AsyncSession, test_company: Company) -> PermissionGroup:
+    """Create a test custom permission group."""
+    group = PermissionGroup(
+        id=uuid.uuid4(),
+        company_id=test_company.id,
+        name=f"test_group_{uuid.uuid4().hex[:8]}",
+        description="Test permission group",
+        permissions=["leads.read", "contacts.read", "calls.read"],
+        is_system=False,
+    )
+    db_session.add(group)
+    await db_session.flush()
+    return group
