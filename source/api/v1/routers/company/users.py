@@ -2,7 +2,7 @@
 User management endpoints (Company Admin manages operators)
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from typing import List, Optional
@@ -22,8 +22,6 @@ from api.v1.schemas.user import (
     UserResponse,
     UserDetailResponse,
     UserListResponse,
-    PasswordChangeRequest,
-    PasswordResetRequest
 )
 from utils.managers import PasswordManager
 from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
@@ -371,68 +369,3 @@ async def deactivate_user(
     await user.update(session=session)
 
     return user
-
-
-@router.post("/me/change-password", status_code=status.HTTP_200_OK)
-async def change_password(
-    data: PasswordChangeRequest,
-    user: User = User.current(),
-    session: AsyncSession = Depends(get_session)
-):
-    """
-    Change own password (any authenticated user)
-
-    Requires old password for verification.
-    """
-    # Verify old password
-    if not PasswordManager.verify(data.old_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid old password"
-        )
-
-    # Update password
-    user.password_hash = PasswordManager.hash(data.new_password)
-    user.email_verified = True  # Mark as verified after password change
-    await user.update(session=session)
-
-    return {"message": "Password changed successfully"}
-
-
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(
-    data: PasswordResetRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_session)
-):
-    """
-    Reset password using temporary password
-
-    Used by operators on first login.
-    Company is identified by Origin header (subdomain).
-    """
-    from api.v1.routers.auth.auth import _extract_subdomain, _resolve_company
-
-    subdomain = _extract_subdomain(request)
-    company = await _resolve_company(subdomain, session)
-
-    user = await User.get(email=data.email, company_id=company.id, session=session)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    # Verify temporary password
-    if not PasswordManager.verify(data.temporary_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid temporary password"
-        )
-
-    # Update password
-    user.password_hash = PasswordManager.hash(data.new_password)
-    user.email_verified = True
-    await user.update(session=session)
-
-    return {"message": "Password reset successfully"}
