@@ -41,4 +41,5 @@ class AuthSchema:
         new_password: str = Field(..., min_length=8, max_length=100)
 
     class SetPasswordRequest(PasswordValidator, BaseModel):
+        token: str
         new_password: str = Field(..., min_length=8, max_length=100)
