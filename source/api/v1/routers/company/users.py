@@ -2,7 +2,7 @@
 User management endpoints (Company Admin manages operators)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from typing import List, Optional
@@ -25,7 +25,7 @@ from api.v1.schemas.user import (
     PasswordResetRequest
 )
 from utils.managers import PasswordManager
-from utils.permissions import require_permissions, Permissions
+from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
 from utils.contract_enforcement import check_user_limit
 from utils.services.email_service import EmailService
 from core.config import AppConfig
@@ -37,8 +37,9 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 @require_permissions(Permissions.USERS_CREATE)
 async def invite_operator(
     data: UserInviteRequest,
+    background_tasks: BackgroundTasks,
     admin: User = User.current(),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Invite a new operator (Company Admin only)
@@ -87,7 +88,7 @@ async def invite_operator(
         phone=data.phone,
         company_id=admin.company_id,
         role=role,
-        permissions=data.permissions or [],
+        permissions=data.permissions if data.permissions else ROLE_PERMISSIONS.get(role, []),
         password_hash=PasswordManager.hash(temporary_password),
         is_active=True,
         is_suspended=False,
@@ -95,15 +96,19 @@ async def invite_operator(
     )
 
     # Send invitation email
-    company = await session.get(User, admin.company_id)
+    from db.models.company import Company
+    company = await session.get(Company, admin.company_id)
     company_name = company.name if company else "Your Company"
 
-    await EmailService.send_operator_invitation(
+    role_display = role.value.replace("company_", "a ").title()
+    EmailService.send_operator_invitation(
+        background_tasks=background_tasks,
         to_email=user.email,
         company_name=company_name,
         temporary_password=temporary_password,
         invited_by=admin.full_name,
-        login_url=f"{AppConfig.BASE_URL}/login"
+        role_display=role_display,
+        login_url=f"{AppConfig.BASE_URL}/login",
     )
 
     return user

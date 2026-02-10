@@ -4,7 +4,7 @@ Owner's company management endpoints
 
 import re
 import secrets
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID, uuid4
@@ -12,13 +12,20 @@ from uuid import UUID, uuid4
 from db import get_session
 from db.models.owner import Owner
 from db.models.company import Company
-from db.models.enums import ProviderEnum
+from db.models.user import User
+from db.models.enums import ProviderEnum, RoleEnum
 from api.v1.schemas.owner import (
     CompanyCreateRequest,
     CompanyUpdateRequest,
     CompanyResponse,
-    CompanyDetailResponse
+    CompanyDetailResponse,
+    InviteAdminRequest,
 )
+from api.v1.schemas.user import UserResponse
+from utils.managers import PasswordManager
+from utils.services.email_service import EmailService
+from utils.contract_enforcement import check_user_limit
+from utils.permissions import ROLE_PERMISSIONS
 from core.config import AppConfig
 
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
@@ -78,6 +85,73 @@ async def create_company(
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
 
     return company
+
+
+@router.post("/{company_id}/invite-admin", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def invite_admin(
+    company_id: UUID,
+    data: InviteAdminRequest,
+    background_tasks: BackgroundTasks,
+    owner: Owner = Owner.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Invite the first Company Admin to a company (Owner only)
+
+    Creates a COMPANY_ADMIN user and sends an email invitation
+    with a temporary password.
+    """
+    company = await Company.get_or_404(
+        session=session,
+        id=company_id,
+        owner_id=owner.id,
+    )
+
+    # Check if user already exists in this company
+    existing_user = await User.get(
+        email=data.email,
+        company_id=company.id,
+        session=session,
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User with this email already exists in this company",
+        )
+
+    # Check contract user limit
+    await check_user_limit(company.id, RoleEnum.COMPANY_ADMIN, session)
+
+    # Generate temporary password
+    temporary_password = EmailService.generate_temporary_password()
+
+    # Create admin user
+    user = await User.create(
+        session=session,
+        email=data.email,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        phone=data.phone,
+        company_id=company.id,
+        role=RoleEnum.COMPANY_ADMIN,
+        permissions=data.permissions if data.permissions else ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
+        password_hash=PasswordManager.hash(temporary_password),
+        is_active=True,
+        is_suspended=False,
+        email_verified=False,
+    )
+
+    # Send invitation email
+    EmailService.send_admin_invitation(
+        background_tasks=background_tasks,
+        to_email=user.email,
+        company_name=company.name,
+        temporary_password=temporary_password,
+        invited_by=owner.full_name,
+        login_url=f"{AppConfig.BASE_URL}/login",
+    )
+
+    return user
 
 
 @router.get("", response_model=List[CompanyResponse])
