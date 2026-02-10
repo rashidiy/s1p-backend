@@ -2,7 +2,7 @@
 User management endpoints (Company Admin manages operators)
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from typing import List, Optional
@@ -402,15 +402,21 @@ async def change_password(
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password(
     data: PasswordResetRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session)
 ):
     """
     Reset password using temporary password
 
     Used by operators on first login.
-    Email is now in request body (PasswordResetRequest).
+    Company is identified by Origin header (subdomain).
     """
-    user = await User.get(email=data.email, session=session)
+    from api.v1.routers.auth.auth import _extract_subdomain, _resolve_company
+
+    subdomain = _extract_subdomain(request)
+    company = await _resolve_company(subdomain, session)
+
+    user = await User.get(email=data.email, company_id=company.id, session=session)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
