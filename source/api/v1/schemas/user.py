@@ -57,6 +57,14 @@ class PasswordResetRequest(PasswordValidator, BaseModel):
     new_password: str = Field(..., min_length=8, max_length=100)
 
 
+class ProfileUpdateRequest(BaseModel):
+    """Update own profile (non-admin fields only)"""
+    first_name: Optional[str] = Field(None, min_length=1, max_length=225)
+    last_name: Optional[str] = Field(None, max_length=225)
+    phone: Optional[str] = Field(None, max_length=50)
+    language: Optional[str] = Field(None, max_length=10)
+
+
 class UserResponse(UserBase):
     """User response"""
     id: UUID
