@@ -63,6 +63,12 @@ def require_permissions(*required_permissions: str):
             if not user:
                 raise PermissionDenied("Authentication required")
 
+            # Block users who haven't changed their temporary password
+            if hasattr(user, 'email_verified') and user.email_verified is False:
+                raise PermissionDenied(
+                    "Password change required. Please change your temporary password before accessing the system."
+                )
+
             # Owners have all permissions
             if user.role == RoleEnum.OWNER:
                 return await func(*args, **kwargs)

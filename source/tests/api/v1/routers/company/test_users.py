@@ -208,13 +208,13 @@ class TestActivateDeactivateUser:
 
 
 class TestChangePassword:
-    """Tests for POST /api/v1/company/users/me/change-password"""
+    """Tests for POST /api/v1/auth/reset-password"""
 
     @pytest.mark.asyncio
     async def test_change_password(self, client: AsyncClient, auth_headers):
         """Test changing own password."""
         response = await client.post(
-            "/api/v1/company/users/me/change-password",
+            "/api/v1/auth/reset-password",
             headers=auth_headers,
             json={
                 "old_password": "testpassword123",
@@ -227,7 +227,7 @@ class TestChangePassword:
     async def test_change_password_wrong_current(self, client: AsyncClient, auth_headers):
         """Test changing password with wrong current password fails."""
         response = await client.post(
-            "/api/v1/company/users/me/change-password",
+            "/api/v1/auth/reset-password",
             headers=auth_headers,
             json={
                 "old_password": "WrongPassword1",

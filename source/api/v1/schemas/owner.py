@@ -43,6 +43,7 @@ class OwnerResponse(OwnerBase):
 
 class OwnerWithCredentials(OwnerResponse):
     """Owner response with JWT credentials"""
+    must_change_password: bool = False
     credentials: dict  # {access: str, refresh: str}
 
     class Config:
