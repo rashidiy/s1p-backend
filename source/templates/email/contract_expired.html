@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Contract Expired{% endblock %}
+{% block header_subtitle %}Urgent Notice{% endblock %}
+
+{% block content %}
+<h2>Your contract has expired</h2>
+
+<p>
+  The contract <strong>{{ contract_name }}</strong> for
+  <strong>{{ company_name }}</strong> has expired.
+</p>
+
+{% if in_grace_period %}
+<div class="warning-box">
+  <p>
+    <strong>Grace period active:</strong> You have <strong>{{ grace_days_remaining }} day{{ 's' if grace_days_remaining != 1 else '' }}</strong>
+    remaining before access is blocked. All features remain available during this time.
+  </p>
+</div>
+{% else %}
+<div class="warning-box">
+  <p>
+    <strong>Access has been blocked.</strong> Company users can no longer log in or access the CRM.
+    Please renew the contract immediately to restore access.
+  </p>
+</div>
+{% endif %}
+
+<div class="info-box">
+  <p><span class="label">Contract:</span> {{ contract_name }}</p>
+  <p><span class="label">Expired on:</span> {{ end_date }}</p>
+</div>
+
+<div class="cta-wrapper">
+  <a href="{{ renew_url }}" class="cta-button">Renew Now</a>
+</div>
+{% endblock %}

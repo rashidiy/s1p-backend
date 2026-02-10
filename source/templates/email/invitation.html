@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}You've been invited to {{ company_name }}{% endblock %}
+{% block header_subtitle %}Team Invitation{% endblock %}
+
+{% block content %}
+<h2>You've been invited!</h2>
+
+<p>
+  <strong>{{ invited_by }}</strong> has invited you to join
+  <strong>{{ company_name }}</strong> as {{ role_display }}.
+</p>
+
+<div class="info-box">
+  <p><span class="label">Email:</span> <span class="value">{{ to_email }}</span></p>
+  <p><span class="label">Temporary Password:</span> <span class="value">{{ temporary_password }}</span></p>
+</div>
+
+<div class="warning-box">
+  <p>You must change your password after your first login. This temporary password expires in 7 days.</p>
+</div>
+
+<div class="cta-wrapper">
+  <a href="{{ login_url }}" class="cta-button">Log In Now</a>
+</div>
+
+<div class="divider"></div>
+
+<p style="font-size: 13px; color: #888888;">
+  If you did not expect this invitation, you can safely ignore this email.
+</p>
+{% endblock %}

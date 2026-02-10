@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Contract Expiring Soon{% endblock %}
+{% block header_subtitle %}Action Required{% endblock %}
+
+{% block content %}
+<h2>Your contract is expiring soon</h2>
+
+<p>
+  The contract <strong>{{ contract_name }}</strong> for
+  <strong>{{ company_name }}</strong> will expire in
+  <strong>{{ days_remaining }} day{{ 's' if days_remaining != 1 else '' }}</strong>.
+</p>
+
+<div class="info-box">
+  <p><span class="label">Contract:</span> {{ contract_name }}</p>
+  <p><span class="label">Expires on:</span> {{ end_date }}</p>
+  <p><span class="label">Grace period:</span> {{ grace_period_days }} days after expiry</p>
+</div>
+
+<div class="warning-box">
+  <p>
+    After expiry, a {{ grace_period_days }}-day grace period begins.
+    Once the grace period ends, company access will be blocked until the contract is renewed.
+  </p>
+</div>
+
+<div class="cta-wrapper">
+  <a href="{{ renew_url }}" class="cta-button">Renew Contract</a>
+</div>
+{% endblock %}
