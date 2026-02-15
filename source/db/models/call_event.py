@@ -30,7 +30,12 @@ class CallEvent(Base, ObjectManagerMixin):
             'company_id', 'provider_type', 'provider_call_id',
             name='uq_company_provider_call'
         ),
+        UniqueConstraint(
+            'company_id', 'call_number',
+            name='uq_company_call_number'
+        ),
         Index('idx_call_events_company_id', 'company_id'),
+        Index('idx_call_events_call_number', 'call_number'),
         Index('idx_call_events_operator_id', 'operator_id'),
         Index('idx_call_events_contact_id', 'contact_id'),
         Index('idx_call_events_lead_id', 'lead_id'),
@@ -52,6 +57,9 @@ class CallEvent(Base, ObjectManagerMixin):
         nullable=False,
         index=True
     )
+
+    # Company-scoped auto-incrementing call number
+    call_number = Column(Integer, nullable=False)
 
     # Provider info
     provider_type = Column(

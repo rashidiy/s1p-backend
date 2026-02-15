@@ -3,6 +3,7 @@ Provider-agnostic call endpoints and shared helpers
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
@@ -65,6 +66,15 @@ async def get_active_company(user: User, session: AsyncSession) -> Company:
             detail="Company is not active"
         )
     return company
+
+
+async def next_call_number(session: AsyncSession, company_id: UUID) -> int:
+    """Return the next company-scoped call number (max + 1)."""
+    result = await session.execute(
+        select(func.coalesce(func.max(CallEvent.call_number), 0) + 1)
+        .where(CallEvent.company_id == company_id)
+    )
+    return result.scalar_one()
 
 
 def require_provider(expected: ProviderEnum):
