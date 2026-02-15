@@ -10,10 +10,35 @@ from db.models.enums import CallStatusEnum, CallDirectionEnum, ProviderEnum
 
 
 class CallRequest(BaseModel):
-    """Request to initiate a call"""
-    phone_1: str = Field(..., description="First phone number (caller or external)")
-    phone_2: str = Field(..., description="Second phone number (receiver or internal)")
-    operator_id: Optional[UUID] = Field(None, description="Operator/user ID")
+    """Request to call from external number to external number"""
+    phone_1: str = Field(..., description="First phone number (caller)")
+    phone_2: str = Field(..., description="Second phone number (receiver)")
+    operator_id: Optional[str] = Field(None, description="Operator identifier: UUID, phone, email, or SIP number")
+    order_id: Optional[str] = Field(None, description="External order/ticket ID")
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+
+
+class CallNumberRequest(BaseModel):
+    """Request to call from internal SIP extension to external phone"""
+    phone: str = Field(..., description="External phone number to call")
+    operator_id: str = Field(..., description="Operator identifier: UUID, phone, email, or SIP number")
+    reverse: bool = Field(False, description="Call order: False = internal first, True = external first")
+    antiaon: bool = Field(False, description="Hide caller ID")
+    order_id: Optional[str] = Field(None, description="External order/ticket ID")
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+
+
+class CallTreeRequest(BaseModel):
+    """Request to call external number through a call tree/scheme"""
+    phone: str = Field(..., description="External phone number to call")
+    operator_id: str = Field(..., description="Operator identifier: UUID, phone, email, or SIP number")
+    tree: str = Field(..., description="Call tree/scheme identifier (e.g., '000-913898')")
+    reverse: bool = Field(False, description="Call order: False = external first, True = tree first")
+    call_attempt_time: int = Field(30, ge=30, description="Attempt duration in seconds (min 30)")
     order_id: Optional[str] = Field(None, description="External order/ticket ID")
     utm_source: Optional[str] = None
     utm_medium: Optional[str] = None
@@ -77,6 +102,8 @@ class CallRecordingURL(BaseModel):
 
 __all__ = [
     "CallRequest",
+    "CallNumberRequest",
+    "CallTreeRequest",
     "CallResponse",
     "CallEventCreate",
     "CallEventResponse",

@@ -8,7 +8,6 @@ Optimized for production:
 
 import hashlib
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 import aiohttp
 
@@ -53,11 +52,8 @@ class SipuniProvider(TelephonyProvider):
         """
         Generate MD5 hash for Sipuni API authentication
 
-        Args:
-            *params: Parameters to hash (joined with +)
-
-        Returns:
-            MD5 hash string
+        Params are joined with '+' and the security key is appended.
+        The resulting string is MD5-hashed.
         """
         hash_string = "+".join(str(p) for p in params) + "+" + self.security_key
         return hashlib.md5(hash_string.encode()).hexdigest()
@@ -68,38 +64,30 @@ class SipuniProvider(TelephonyProvider):
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Make authenticated API request to Sipuni
+        Make authenticated POST request to Sipuni API
 
-        Uses shared connection pool for optimal performance.
-
-        Args:
-            endpoint: API endpoint path
-            params: Query parameters
-
-        Returns:
-            API response as dict
-
-        Raises:
-            ProviderException: If API call fails
+        Sipuni requires POST with form-encoded data.
+        The 'user' param is set automatically from config.
         """
         params['user'] = self.cabinet_id
 
         try:
-            # Use shared connection pool
             client = await get_http_client()
-            async with await client.get(
+            async with await client.post(
                 f"{self.BASE_URL}{endpoint}",
-                params=params,
+                data=params,
                 timeout=50
             ) as response:
+                result = await response.json()
+
                 if response.status != 200:
                     raise ProviderException(
                         f"Sipuni API returned status {response.status}",
                         provider="sipuni",
-                        details={"endpoint": endpoint, "status": response.status}
+                        details={"endpoint": endpoint, "status": response.status, "response": result}
                     )
 
-                return await response.json()
+                return result
 
         except aiohttp.ClientError as e:
             raise ProviderException(
@@ -110,66 +98,147 @@ class SipuniProvider(TelephonyProvider):
 
     async def make_call(self, request: CallRequest) -> CallResponse:
         """
-        Initiate external call via Sipuni
+        Call from external number to another external number via Sipuni.
 
-        Uses /api/callback/call_external endpoint
+        Uses /api/callback/call_external endpoint.
+
+        Hash order: phoneFrom + phoneTo + sipnumber + sipnumber2 + user + secret
         """
-        try:
-            params = {
-                "user": self.cabinet_id,
-                "phoneFrom": request.phone_1,
-                "phoneTo": request.phone_2,
-                "sipnumber": request.phone_2,  # Internal SIP number
-                "sipnumber2": request.phone_2,
-            }
-
-            # Generate hash: phoneFrom + phoneTo + sipnumber + sipnumber2 + user + secret
-            params["hash"] = self._generate_hash(
-                request.phone_1,
-                request.phone_2,
-                request.phone_2,
-                request.phone_2,
-                self.cabinet_id
-            )
-
-            result = await self._make_request("/api/callback/call_external", params)
-
-            return CallResponse(
-                success=result.get("result") is True,
-                call_id=result.get("callID", ""),
-                message=result.get("message", "")
-            )
-
-        except Exception as e:
-            if isinstance(e, ProviderException):
-                raise
+        if not request.operator_id:
             raise ProviderException(
-                f"Failed to make call: {str(e)}",
-                provider="sipuni",
-                details={"request": request.dict()}
+                "operator_id (SIP number) is required for Sipuni calls",
+                provider="sipuni"
             )
+
+        sipnumber = request.operator_id
+
+        params = {
+            "phoneFrom": request.phone_1,
+            "phoneTo": request.phone_2,
+            "sipnumber": sipnumber,
+            "sipnumber2": sipnumber,
+            "hash": self._generate_hash(
+                request.phone_1, request.phone_2,
+                sipnumber, sipnumber,
+                self.cabinet_id
+            ),
+        }
+
+        result = await self._make_request("/api/callback/call_external", params)
+
+        return CallResponse(
+            success=result.get("result") is True,
+            call_id=result.get("callID", ""),
+            message=result.get("message", "")
+        )
+
+    async def call_number(
+        self,
+        phone: str,
+        sipnumber: str,
+        reverse: bool = False,
+        antiaon: bool = False,
+    ) -> CallResponse:
+        """
+        Call from internal SIP number to external phone number.
+
+        Uses /api/callback/call_number endpoint.
+
+        Hash order: antiaon + phone + reverse + sipnumber + user + secret
+        """
+        reverse_str = str(int(reverse))
+        antiaon_str = str(int(antiaon))
+
+        params = {
+            "phone": phone,
+            "sipnumber": sipnumber,
+            "reverse": reverse_str,
+            "antiaon": antiaon_str,
+            "hash": self._generate_hash(
+                antiaon_str, phone, reverse_str, sipnumber, self.cabinet_id
+            ),
+        }
+
+        result = await self._make_request("/api/callback/call_number", params)
+
+        return CallResponse(
+            success=result.get("result") is True,
+            call_id=result.get("callID", ""),
+            message=result.get("message", "")
+        )
+
+    async def call_tree(
+        self,
+        phone: str,
+        sipnumber: str,
+        tree: str,
+        reverse: bool = False,
+        call_attempt_time: int = 30,
+    ) -> CallResponse:
+        """
+        Call external number through a call tree/scheme (IVR).
+
+        Uses /api/callback/call_tree endpoint.
+
+        Hash order: callAttemptTime + phone + reverse + sipnumber + tree + user + secret
+        """
+        reverse_str = str(int(reverse))
+        attempt_str = str(call_attempt_time)
+
+        params = {
+            "phone": phone,
+            "sipnumber": sipnumber,
+            "tree": tree,
+            "reverse": reverse_str,
+            "callAttemptTime": attempt_str,
+            "hash": self._generate_hash(
+                attempt_str, phone, reverse_str, sipnumber, tree, self.cabinet_id
+            ),
+        }
+
+        result = await self._make_request("/api/callback/call_tree", params)
+
+        return CallResponse(
+            success=result.get("result") is True,
+            call_id=result.get("callID", ""),
+            message=result.get("message", "")
+        )
+
+    async def cancel_call(self, call_id: str) -> CallResponse:
+        """
+        Cancel an active callback call.
+
+        Uses /api/callback/cancel endpoint.
+
+        Hash order: callbackId + user + secret
+        """
+        params = {
+            "callbackId": call_id,
+            "hash": self._generate_hash(call_id, self.cabinet_id),
+        }
+
+        result = await self._make_request("/api/callback/cancel", params)
+
+        return CallResponse(
+            success=result.get("result") is True,
+            call_id=call_id,
+            message=result.get("message", "")
+        )
 
     async def get_call_status(self, call_id: str) -> Optional[CallStatus]:
         """
         Get call status by call_id
 
         Note: Sipuni primarily uses webhooks for status updates.
-        This method queries the database for stored webhook data.
         """
-        # In a real implementation, this would query the database
-        # for call_events table filtered by provider_call_id
-        # For now, return None as Sipuni uses webhooks
         return None
 
     async def get_call_record_url(self, call_id: str) -> Optional[str]:
         """
         Get call recording URL
 
-        Sipuni provides record URLs via webhooks (stream events)
-        Query database for stored record_url
+        Sipuni provides record URLs via webhooks (stream events).
         """
-        # In a real implementation, this would query the database
-        # For now, return None
         return None
 
     async def handle_webhook(
@@ -180,27 +249,8 @@ class SipuniProvider(TelephonyProvider):
         """
         Process Sipuni webhook (stream event)
 
-        Sipuni webhook structure:
-        {
-            "event": 2,  # Hangup event
-            "call_id": "abc123",
-            "src_num": "998901234567",
-            "pbxdstnum": "100",
-            "status": "ANSWER",
-            "call_start_timestamp": 1234567890,
-            "call_end_timestamp": 1234567900,
-            "record_link": "https://...",
-            "last_called": ["100", "101"],
-            "dst_type": "2",
-            "src_type": "1",
-            "transfer_from": null,
-            "tree_number": "",
-            "timestamp": 1234567900
-        }
-
-        Returns normalized call data or None if not a hangup event
+        Returns normalized call data or None if not a hangup event (event=2).
         """
-        # Only process hangup events (event=2)
         if payload.get('event') != 2:
             return None
 
@@ -213,7 +263,6 @@ class SipuniProvider(TelephonyProvider):
             "call_end_timestamp": payload.get('call_end_timestamp'),
             "record_url": payload.get('record_link'),
             "direction": self._determine_direction(payload),
-            # Additional Sipuni-specific fields
             "last_called": payload.get('last_called', []),
             "dst_type": payload.get('dst_type'),
             "src_type": payload.get('src_type'),
@@ -222,27 +271,16 @@ class SipuniProvider(TelephonyProvider):
         }
 
     def _determine_direction(self, payload: Dict[str, Any]) -> str:
-        """
-        Determine call direction from payload
-
-        Args:
-            payload: Webhook payload
-
-        Returns:
-            'inbound', 'outbound', or 'internal'
-        """
+        """Determine call direction from src_type/dst_type (1=external, 2=internal)"""
         src_type = payload.get('src_type', '1')
         dst_type = payload.get('dst_type', '2')
 
-        # src_type: 1=external, 2=internal
-        # dst_type: 1=external, 2=internal
-
         if src_type == '1' and dst_type == '2':
-            return 'inbound'  # External → Internal
+            return 'inbound'
         elif src_type == '2' and dst_type == '1':
-            return 'outbound'  # Internal → External
+            return 'outbound'
         else:
-            return 'internal'  # Internal → Internal
+            return 'internal'
 
     async def validate_webhook_auth(
         self,
@@ -252,112 +290,6 @@ class SipuniProvider(TelephonyProvider):
         """
         Validate Sipuni webhook authentication
 
-        Sipuni uses IP whitelisting and token validation
-        Token is passed in URL path (stream/{token}/)
-        This validation happens at the route level
+        Token validation happens at route level.
         """
-        # Token validation happens at route level
-        # IP whitelist validation should be done via middleware
         return True
-
-    async def call_number(
-        self,
-        phone: str,
-        sipnumber: str,
-        reverse: bool = False,
-        antiaon: bool = False
-    ) -> CallResponse:
-        """
-        Call number via Sipuni (call_number API)
-
-        Args:
-            phone: Phone number to call
-            sipnumber: Internal SIP number
-            reverse: Reverse call direction
-            antiaon: Hide caller ID
-
-        Returns:
-            CallResponse
-        """
-        try:
-            reverse_str = str(int(reverse))
-            antiaon_str = str(int(antiaon))
-
-            params = {
-                "user": self.cabinet_id,
-                "phone": phone,
-                "sipnumber": sipnumber,
-                "reverse": reverse_str,
-                "antiaon": antiaon_str,
-                "hash": self._generate_hash(
-                    antiaon_str, phone, reverse_str, sipnumber, self.cabinet_id
-                )
-            }
-
-            result = await self._make_request("/api/callback/call_number", params)
-
-            return CallResponse(
-                success=result.get("result") is True,
-                call_id=result.get("callID", ""),
-                message=result.get("message", "")
-            )
-
-        except Exception as e:
-            if isinstance(e, ProviderException):
-                raise
-            raise ProviderException(
-                f"Failed to call number: {str(e)}",
-                provider="sipuni"
-            )
-
-    async def call_tree(
-        self,
-        phone: str,
-        sipnumber: str,
-        tree: str,
-        reverse: bool = False,
-        attempt_duration: int = 30
-    ) -> CallResponse:
-        """
-        Call tree via Sipuni (IVR)
-
-        Args:
-            phone: Phone number to call
-            sipnumber: Internal SIP number
-            tree: IVR tree identifier
-            reverse: Reverse call direction
-            attempt_duration: Call attempt duration in seconds
-
-        Returns:
-            CallResponse
-        """
-        try:
-            reverse_str = str(int(reverse))
-
-            params = {
-                "user": self.cabinet_id,
-                "phone": phone,
-                "sipnumber": sipnumber,
-                "tree": tree,
-                "reverse": reverse_str,
-                "callAttemptTime": str(attempt_duration),
-                "hash": self._generate_hash(
-                    str(attempt_duration), phone, reverse_str, sipnumber, tree, self.cabinet_id
-                )
-            }
-
-            result = await self._make_request("/api/callback/call_tree", params)
-
-            return CallResponse(
-                success=result.get("result") is True,
-                call_id=result.get("callID", ""),
-                message=result.get("message", "")
-            )
-
-        except Exception as e:
-            if isinstance(e, ProviderException):
-                raise
-            raise ProviderException(
-                f"Failed to call tree: {str(e)}",
-                provider="sipuni"
-            )

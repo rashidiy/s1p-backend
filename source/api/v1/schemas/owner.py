@@ -114,6 +114,7 @@ class CompanyResponse(BaseModel):
     provider_type: str
     is_active: bool
     webhook_url: Optional[str] = None  # Computed field
+    users_count: int = 0
     created_at: datetime
     updated_at: datetime
 
