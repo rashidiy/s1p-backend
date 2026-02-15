@@ -1,0 +1,168 @@
+"""
+Provider-agnostic call endpoints and shared helpers
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+from uuid import UUID
+
+from db import get_session
+from db.models.user import User
+from db.models.company import Company
+from db.models.call_event import CallEvent
+from db.models.enums import ProviderEnum
+from api.v1.schemas.call import CallEventResponse, CallRecordingURL
+from utils.permissions import require_permissions, Permissions
+from utils.managers import RecordTokenManager
+from core.config import WebhookConfig, AppConfig
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers (used by sipuni.py / binotel.py)
+# ---------------------------------------------------------------------------
+
+async def resolve_operator_id(
+    operator_id: Optional[str],
+    company_id: UUID,
+    session: AsyncSession,
+) -> Optional[UUID]:
+    """Resolve operator_id string to a user UUID.
+
+    Accepts UUID, phone, or email. Returns None if not found.
+    """
+    if not operator_id:
+        return None
+
+    # Try UUID first
+    try:
+        uid = UUID(operator_id)
+        user = await User.get(id=uid, company_id=company_id, session=session)
+        if user:
+            return user.id
+    except ValueError:
+        pass
+
+    # Try phone
+    user = await User.get(phone=operator_id, company_id=company_id, session=session)
+    if user:
+        return user.id
+
+    # Try email
+    user = await User.get(email=operator_id, company_id=company_id, session=session)
+    if user:
+        return user.id
+
+    return None
+
+
+async def get_active_company(user: User, session: AsyncSession) -> Company:
+    """Get the user's company and verify it's active."""
+    company = await Company.get_or_404(id=user.company_id, session=session)
+    if not company.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company is not active"
+        )
+    return company
+
+
+def require_provider(expected: ProviderEnum):
+    """Return a dependency that validates the company uses the expected provider."""
+
+    async def _check(
+        user: User = User.current(),
+        session: AsyncSession = Depends(get_session),
+    ) -> Company:
+        company = await get_active_company(user, session)
+        if company.provider_type != expected:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This endpoint is only available for {expected.value} companies"
+            )
+        return company
+
+    return _check
+
+
+# ---------------------------------------------------------------------------
+# Provider-agnostic read endpoints
+# ---------------------------------------------------------------------------
+
+router = APIRouter(prefix="/calls", tags=["Calls"])
+
+
+@router.get("", response_model=List[CallEventResponse])
+@require_permissions(Permissions.CALLS_READ)
+async def list_calls(
+    skip: int = 0,
+    limit: int = 100,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """List all calls for the company"""
+    calls = await CallEvent.get_all(
+        session=session,
+        company_id=user.company_id,
+        offset=skip,
+        limit=limit,
+        order_by=(CallEvent.created_at.desc(),)
+    )
+    return calls
+
+
+@router.get("/{call_id}", response_model=CallEventResponse)
+@require_permissions(Permissions.CALLS_READ)
+async def get_call(
+    call_id: UUID,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get call details"""
+    call = await CallEvent.get_or_404(
+        session=session,
+        id=call_id,
+        company_id=user.company_id
+    )
+    return call
+
+
+@router.get("/{call_id}/recording", response_model=CallRecordingURL)
+@require_permissions(Permissions.CALLS_READ)
+async def get_call_recording(
+    call_id: UUID,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Get proxied call recording URL
+
+    Returns a secure, time-limited URL to access the call recording.
+    """
+    call = await CallEvent.get_or_404(
+        session=session,
+        id=call_id,
+        company_id=user.company_id
+    )
+
+    if not call.record_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No recording available for this call"
+        )
+
+    if WebhookConfig.RECORD_PROXY_SECRET:
+        proxied_url = RecordTokenManager.generate_proxied_url(
+            call_id=call.id,
+            company_id=user.company_id,
+            base_url=AppConfig.BASE_URL
+        )
+        return CallRecordingURL(
+            url=proxied_url,
+            expires_in=WebhookConfig.RECORD_PROXY_TOKEN_EXPIRY
+        )
+    else:
+        return CallRecordingURL(
+            url=call.record_url,
+            expires_in=86400
+        )
