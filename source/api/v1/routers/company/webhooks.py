@@ -54,7 +54,7 @@ def validate_webhook_ip(request: Request, provider_type: ProviderEnum) -> bool:
     return client_ip in allowed_ips
 
 
-@router.post("/{token}")
+@router.get("/{token}")
 async def handle_webhook(
     token: str,
     request: Request,
@@ -71,14 +71,8 @@ async def handle_webhook(
     - Validates source IP against provider whitelist
     - Validates provider-specific authentication
     """
-    # Get request body (support both JSON and form data)
-    content_type = request.headers.get('content-type', '')
-
-    if 'application/json' in content_type:
-        payload = await request.json()
-    else:
-        form_data = await request.form()
-        payload = dict(form_data)
+    # GET request: payload comes from query parameters
+    payload = dict(request.query_params)
 
     # Find company by webhook token
     company = await Company.get(session=session, webhook_token=token)
@@ -87,7 +81,7 @@ async def handle_webhook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid webhook token"
         )
-
+    print(company)
     # Validate source IP against provider whitelist
     if not validate_webhook_ip(request, company.provider_type):
         raise HTTPException(
