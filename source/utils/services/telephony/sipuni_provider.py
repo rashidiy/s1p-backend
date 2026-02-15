@@ -58,6 +58,20 @@ class SipuniProvider(TelephonyProvider):
         hash_string = "+".join(str(p) for p in params) + "+" + self.security_key
         return hashlib.md5(hash_string.encode()).hexdigest()
 
+    def _parse_result(self, data: Dict[str, Any]) -> CallResponse:
+        """Build a CallResponse from a Sipuni JSON body."""
+        success = bool(data.get("result"))
+        call_id = str(data.get("callbackId") or data.get("callID") or "")
+        message = data.get("message") or data.get("msg") or ""
+        error = None if success else (message or "Unknown error")
+
+        return CallResponse(
+            success=success,
+            call_id=call_id,
+            message=message,
+            error=error,
+        )
+
     async def _make_request(
         self,
         endpoint: str,
@@ -78,8 +92,9 @@ class SipuniProvider(TelephonyProvider):
                 data=params,
                 timeout=50
             ) as response:
-                result = await response.json()
-
+                # content_type=None: Sipuni may respond with text/html
+                result = await response.json(content_type=None)
+                print(response.status, result)
                 if response.status != 200:
                     raise ProviderException(
                         f"Sipuni API returned status {response.status}",
@@ -89,7 +104,9 @@ class SipuniProvider(TelephonyProvider):
 
                 return result
 
-        except aiohttp.ClientError as e:
+        except ProviderException:
+            raise
+        except Exception as e:
             raise ProviderException(
                 f"Sipuni API request failed: {str(e)}",
                 provider="sipuni",
@@ -125,12 +142,7 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_external", params)
-
-        return CallResponse(
-            success=result.get("result") is True,
-            call_id=result.get("callID", ""),
-            message=result.get("message", "")
-        )
+        return self._parse_result(result)
 
     async def call_number(
         self,
@@ -160,12 +172,7 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_number", params)
-
-        return CallResponse(
-            success=result.get("result") is True,
-            call_id=result.get("callID", ""),
-            message=result.get("message", "")
-        )
+        return self._parse_result(result)
 
     async def call_tree(
         self,
@@ -197,12 +204,7 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_tree", params)
-
-        return CallResponse(
-            success=result.get("result") is True,
-            call_id=result.get("callID", ""),
-            message=result.get("message", "")
-        )
+        return self._parse_result(result)
 
     async def cancel_call(self, call_id: str) -> CallResponse:
         """
@@ -218,12 +220,9 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/cancel", params)
-
-        return CallResponse(
-            success=result.get("result") is True,
-            call_id=call_id,
-            message=result.get("message", "")
-        )
+        resp = self._parse_result(result)
+        resp.call_id = resp.call_id or call_id
+        return resp
 
     async def get_call_status(self, call_id: str) -> Optional[CallStatus]:
         """
