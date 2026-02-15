@@ -13,6 +13,7 @@ from db.models.company import Company
 from db.models.call_event import CallEvent
 from db.models.enums import ProviderEnum
 from utils.services.telephony import ProviderFactory
+from api.v1.routers.company.calls.common import next_call_number
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,6 @@ async def handle_webhook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid webhook token"
         )
-    print(company)
     # Validate source IP against provider whitelist
     if not validate_webhook_ip(request, company.provider_type):
         raise HTTPException(
@@ -132,7 +132,8 @@ async def handle_webhook(
             )
             return {"status": "updated", "call_id": str(existing_call.id)}
         else:
-            # Create new call event
+            # Assign company-scoped call_number for new events
+            call_data['call_number'] = await next_call_number(session, company.id)
             call_event = await CallEvent.create(session=session, **call_data)
             return {"status": "created", "call_id": str(call_event.id)}
 

@@ -139,7 +139,6 @@ class TelephonyProvider(ABC):
                 ...
             }
         """
-        print(payload, headers)
         pass
 
     @abstractmethod
