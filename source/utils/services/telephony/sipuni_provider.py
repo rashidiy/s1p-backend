@@ -250,25 +250,27 @@ class SipuniProvider(TelephonyProvider):
         """
         Process Sipuni webhook (stream event)
 
-        Returns normalized call data or None if not a hangup event (event=2).
+        Returns normalized call data or None if not a call-end event (event=2).
+        Query params arrive as strings, so compare accordingly.
         """
-        if payload.get('event') != 2:
+        print(payload, headers)
+
+        if str(payload.get('event')) != '2':
             return None
 
+        # Query params are strings — cast timestamps to int for BigInteger columns
+        call_start = payload.get('call_start_timestamp')
+        call_end = payload.get('timestamp')
+
         return {
-            "provider_call_id": payload.get('call_id'),
+            "provider_call_id": f"sipuni_{payload.get('call_id', '')}",
             "phone_1": payload.get('src_num'),
             "phone_2": payload.get('pbxdstnum'),
             "state": payload.get('status'),
-            "call_start_timestamp": payload.get('call_start_timestamp'),
-            "call_end_timestamp": payload.get('call_end_timestamp'),
-            "record_url": payload.get('record_link'),
+            "call_start_timestamp": int(call_start) if call_start else None,
+            "call_end_timestamp": int(call_end) if call_end else None,
+            "record_url": payload.get('call_record_link'),
             "direction": self._determine_direction(payload),
-            "last_called": payload.get('last_called', []),
-            "dst_type": payload.get('dst_type'),
-            "src_type": payload.get('src_type'),
-            "transfer_from": payload.get('transfer_from'),
-            "tree_number": payload.get('tree_number'),
         }
 
     def _determine_direction(self, payload: Dict[str, Any]) -> str:
