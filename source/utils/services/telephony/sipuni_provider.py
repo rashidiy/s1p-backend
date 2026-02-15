@@ -59,9 +59,12 @@ class SipuniProvider(TelephonyProvider):
         return hashlib.md5(hash_string.encode()).hexdigest()
 
     def _parse_result(self, data: Dict[str, Any]) -> CallResponse:
-        """Build a CallResponse from a Sipuni JSON body."""
-        success = bool(data.get("result"))
-        call_id = str(data.get("callbackId") or data.get("callID") or "")
+        """Build a CallResponse from a Sipuni JSON body.
+
+        Sipuni returns: {"success": True, "id": "<hash>"}
+        """
+        success = bool(data.get("success"))
+        call_id = str(data.get("id") or "")
         message = data.get("message") or data.get("msg") or ""
         error = None if success else (message or "Unknown error")
 
@@ -94,7 +97,6 @@ class SipuniProvider(TelephonyProvider):
             ) as response:
                 # content_type=None: Sipuni may respond with text/html
                 result = await response.json(content_type=None)
-                print(response.status, result)
                 if response.status != 200:
                     raise ProviderException(
                         f"Sipuni API returned status {response.status}",

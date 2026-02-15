@@ -19,7 +19,7 @@ from utils.services.telephony import ProviderFactory
 from utils.services.telephony.base import ProviderException
 from utils.permissions import require_permissions, Permissions
 
-from .common import resolve_operator_id, require_provider
+from .common import resolve_operator_id, require_provider, next_call_number
 
 
 router = APIRouter(prefix="/calls/sipuni", tags=["Calls - Sipuni"])
@@ -55,11 +55,13 @@ async def call_external(
         result = await provider.make_call(request)
 
         if result.success:
+            call_num = await next_call_number(session, company.id)
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
+                call_number=call_num,
                 provider_type=company.provider_type,
-                provider_call_id=result.call_id,
+                provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.phone_1,
                 phone_2=request.phone_2,
                 operator_id=db_operator_id,
@@ -68,8 +70,9 @@ async def call_external(
                 utm_campaign=request.utm_campaign,
                 attempts=1
             )
+            return CallResponse(success=True, call_id=call_num)
 
-        return result
+        return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -108,11 +111,13 @@ async def call_number(
         )
 
         if result.success:
+            call_num = await next_call_number(session, company.id)
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
+                call_number=call_num,
                 provider_type=company.provider_type,
-                provider_call_id=result.call_id,
+                provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.operator_id,
                 phone_2=request.phone,
                 operator_id=db_operator_id,
@@ -121,8 +126,9 @@ async def call_number(
                 utm_campaign=request.utm_campaign,
                 attempts=1
             )
+            return CallResponse(success=True, call_id=call_num)
 
-        return result
+        return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -162,11 +168,13 @@ async def call_tree(
         )
 
         if result.success:
+            call_num = await next_call_number(session, company.id)
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
+                call_number=call_num,
                 provider_type=company.provider_type,
-                provider_call_id=result.call_id,
+                provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.operator_id,
                 phone_2=request.phone,
                 operator_id=db_operator_id,
@@ -175,8 +183,9 @@ async def call_tree(
                 utm_campaign=request.utm_campaign,
                 attempts=1
             )
+            return CallResponse(success=True, call_id=call_num)
 
-        return result
+        return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
@@ -185,7 +194,7 @@ async def call_tree(
 @router.post("/{call_id}/cancel", response_model=CallResponse)
 @require_permissions(Permissions.CALLS_MAKE)
 async def cancel_call(
-    call_id: str,
+    call_id: int,
     company: Company = Depends(_sipuni_company),
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
@@ -193,16 +202,35 @@ async def cancel_call(
     """
     Cancel an active callback call
 
-    Sipuni /api/callback/cancel — pass the callbackId returned from
-    a previous call initiation.
+    Accepts the company-scoped call number. Resolves the provider call ID
+    internally and calls Sipuni /api/callback/cancel.
     """
+    call_event = await CallEvent.get(
+        session=session,
+        company_id=company.id,
+        call_number=call_id,
+    )
+    if not call_event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Call #{call_id} not found"
+        )
+
+    raw_provider_id = call_event.provider_call_id.removeprefix("sipuni_")
+
     try:
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
             config=company.provider_config
         )
 
-        return await provider.cancel_call(call_id)
+        result = await provider.cancel_call(raw_provider_id)
+        return CallResponse(
+            success=result.success,
+            call_id=call_id,
+            message=result.message,
+            error=result.error,
+        )
 
     except ProviderException as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))

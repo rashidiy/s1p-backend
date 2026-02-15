@@ -48,7 +48,7 @@ class CallTreeRequest(BaseModel):
 class CallResponse(BaseModel):
     """Response from call initiation"""
     success: bool
-    call_id: str = Field(..., description="Provider's call ID")
+    call_id: Optional[int] = Field(None, description="Company-scoped call number")
     message: Optional[str] = None
     error: Optional[str] = None
 
@@ -77,8 +77,8 @@ class CallEventCreate(BaseModel):
 class CallEventResponse(BaseSchema, UUIDMixin, TimestampMixin):
     """Call event response"""
     company_id: UUID
+    call_number: int
     provider_type: ProviderEnum
-    provider_call_id: str
     phone_1: Optional[str] = None
     phone_2: Optional[str] = None
     operator_id: Optional[UUID] = None
