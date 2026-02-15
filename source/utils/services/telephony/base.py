@@ -159,6 +159,40 @@ class TelephonyProvider(ABC):
         """
         pass
 
+    async def call_number(
+        self,
+        phone: str,
+        sipnumber: str,
+        reverse: bool = False,
+        antiaon: bool = False,
+    ) -> CallResponse:
+        """Call from internal extension to external phone. Not all providers support this."""
+        raise ProviderException(
+            "call_number is not supported by this provider",
+            provider=self.__class__.__name__
+        )
+
+    async def call_tree(
+        self,
+        phone: str,
+        sipnumber: str,
+        tree: str,
+        reverse: bool = False,
+        call_attempt_time: int = 30,
+    ) -> CallResponse:
+        """Call external number through a call tree/scheme. Not all providers support this."""
+        raise ProviderException(
+            "call_tree is not supported by this provider",
+            provider=self.__class__.__name__
+        )
+
+    async def cancel_call(self, call_id: str) -> CallResponse:
+        """Cancel an active call. Not all providers support this."""
+        raise ProviderException(
+            "cancel_call is not supported by this provider",
+            provider=self.__class__.__name__
+        )
+
     async def get_call_history(
         self,
         request: CallHistoryRequest

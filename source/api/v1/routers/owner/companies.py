@@ -5,6 +5,7 @@ Owner's company management endpoints
 import re
 import secrets
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID, uuid4
@@ -29,6 +30,16 @@ from utils.permissions import ROLE_PERMISSIONS
 from core.config import AppConfig
 
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
+
+
+async def _get_users_count(session: AsyncSession, company_id: UUID) -> int:
+    result = await session.execute(
+        select(func.count(User.id)).where(
+            User.company_id == company_id,
+            User.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one()
 
 
 @router.post("", response_model=CompanyDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -81,8 +92,9 @@ async def create_company(
         is_active=True
     )
 
-    # Add webhook URL to response
+    # Add computed fields
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
+    company.users_count = 0
 
     return company
 
@@ -164,17 +176,27 @@ async def list_companies(
 
     Returns a list of all companies with basic information.
     """
+    user_count_subq = (
+        select(func.count(User.id))
+        .where(User.company_id == Company.id, User.deleted_at.is_(None))
+        .correlate(Company)
+        .scalar_subquery()
+    )
     companies = await Company.get_all(
         session=session,
         owner_id=owner.id,
-        order_by=(Company.created_at.desc(),)
+        order_by=(Company.created_at.desc(),),
+        annotate={"users_count": user_count_subq},
     )
 
-    # Add webhook URLs
-    for company in companies:
+    # Add computed fields
+    result = []
+    for company, users_count in companies:
         company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
+        company.users_count = users_count
+        result.append(company)
 
-    return companies
+    return result
 
 
 @router.get("/{company_id}", response_model=CompanyDetailResponse)
@@ -194,8 +216,9 @@ async def get_company(
         owner_id=owner.id
     )
 
-    # Add webhook URL
+    # Add computed fields
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
+    company.users_count = await _get_users_count(session, company.id)
 
     return company
 
@@ -229,8 +252,9 @@ async def update_company(
 
     await company.update(session=session)
 
-    # Add webhook URL
+    # Add computed fields
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
+    company.users_count = await _get_users_count(session, company.id)
 
     return company
 
@@ -278,6 +302,7 @@ async def activate_company(
     await company.update(session=session)
 
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
+    company.users_count = await _get_users_count(session, company.id)
 
     return company
 
@@ -301,5 +326,6 @@ async def deactivate_company(
     await company.update(session=session)
 
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
+    company.users_count = await _get_users_count(session, company.id)
 
     return company
