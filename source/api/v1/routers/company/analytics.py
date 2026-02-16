@@ -111,7 +111,7 @@ async def get_my_dashboard(
 
     recent_calls = [
         {
-            "id": str(call.id),
+            "id": call.id,
             "phone": call.phone_2 or call.phone_1,
             "direction": call.direction.value if call.direction else None,
             "duration": call.billing_sec,

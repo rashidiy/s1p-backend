@@ -130,12 +130,12 @@ async def handle_webhook(
                 values=call_data,
                 id=existing_call.id
             )
-            return {"status": "updated", "call_id": str(existing_call.id)}
+            return {"status": "updated", "call_id": existing_call.id}
         else:
-            # Assign company-scoped call_number for new events
-            call_data['call_number'] = await next_call_number(session, company.id)
+            # Assign company-scoped id for new events
+            call_data['id'] = await next_call_number(session, company.id)
             call_event = await CallEvent.create(session=session, **call_data)
-            return {"status": "created", "call_id": str(call_event.id)}
+            return {"status": "created", "call_id": call_event.id}
 
     except Exception as e:
         # Log the error but return 200 to prevent provider retries

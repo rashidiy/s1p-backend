@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID as PyUUID
 
 from db import get_session
 from db.models.user import User
@@ -23,9 +23,9 @@ from utils.permissions import require_permissions, Permissions
 
 async def resolve_operator_id(
     operator_id: Optional[str],
-    company_id: UUID,
+    company_id: PyUUID,
     session: AsyncSession,
-) -> Optional[UUID]:
+) -> Optional[PyUUID]:
     """Resolve operator_id string to a user UUID.
 
     Accepts UUID, phone, or email. Returns None if not found.
@@ -35,7 +35,7 @@ async def resolve_operator_id(
 
     # Try UUID first
     try:
-        uid = UUID(operator_id)
+        uid = PyUUID(operator_id)
         user = await User.get(id=uid, company_id=company_id, session=session)
         if user:
             return user.id
@@ -66,10 +66,10 @@ async def get_active_company(user: User, session: AsyncSession) -> Company:
     return company
 
 
-async def next_call_number(session: AsyncSession, company_id: UUID) -> int:
+async def next_call_number(session: AsyncSession, company_id: PyUUID) -> int:
     """Return the next company-scoped call number (max + 1)."""
     result = await session.execute(
-        select(func.coalesce(func.max(CallEvent.call_number), 0) + 1)
+        select(func.coalesce(func.max(CallEvent.id), 0) + 1)
         .where(CallEvent.company_id == company_id)
     )
     return result.scalar_one()
@@ -122,7 +122,7 @@ async def list_calls(
 @router.get("/{call_id}", response_model=CallEventResponse)
 @require_permissions(Permissions.CALLS_READ)
 async def get_call(
-    call_id: UUID,
+    call_id: int,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):

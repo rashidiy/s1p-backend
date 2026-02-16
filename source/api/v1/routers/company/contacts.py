@@ -445,7 +445,7 @@ async def get_contact_activity(
         ],
         "calls": [
             {
-                "id": str(call.id),
+                "id": call.id,
                 "direction": call.direction.value if call.direction else None,
                 "duration": call.billing_sec,
                 "started_at": call.created_at.isoformat() if call.created_at else None

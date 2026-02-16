@@ -5,7 +5,6 @@ Call recording streaming endpoint
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
 
 from db import get_session
 from db.models.user import User
@@ -19,7 +18,7 @@ router = APIRouter(prefix="/recordings", tags=["Recordings"])
 @router.get("/{call_id}")
 @require_permissions(Permissions.CALLS_READ)
 async def stream_recording(
-    call_id: UUID,
+    call_id: int,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
@@ -58,7 +57,7 @@ async def stream_recording(
             response.release()
 
     headers = {
-        "Content-Disposition": f'attachment; filename="recording_{call.call_number}.mp3"',
+        "Content-Disposition": f'attachment; filename="recording_{call.id}.mp3"',
     }
     content_length = response.headers.get("Content-Length")
     if content_length:
