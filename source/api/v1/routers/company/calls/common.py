@@ -13,10 +13,8 @@ from db.models.user import User
 from db.models.company import Company
 from db.models.call_event import CallEvent
 from db.models.enums import ProviderEnum
-from api.v1.schemas.call import CallEventResponse, CallRecordingURL
+from api.v1.schemas.call import CallEventResponse
 from utils.permissions import require_permissions, Permissions
-from utils.managers import RecordTokenManager
-from core.config import WebhookConfig, AppConfig
 
 
 # ---------------------------------------------------------------------------
@@ -137,42 +135,3 @@ async def get_call(
     return call
 
 
-@router.get("/{call_id}/recording", response_model=CallRecordingURL)
-@require_permissions(Permissions.CALLS_READ)
-async def get_call_recording(
-    call_id: UUID,
-    user: User = User.current(),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Get proxied call recording URL
-
-    Returns a secure, time-limited URL to access the call recording.
-    """
-    call = await CallEvent.get_or_404(
-        session=session,
-        id=call_id,
-        company_id=user.company_id
-    )
-
-    if not call.record_url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recording available for this call"
-        )
-
-    if WebhookConfig.RECORD_PROXY_SECRET:
-        proxied_url = RecordTokenManager.generate_proxied_url(
-            call_id=call.id,
-            company_id=user.company_id,
-            base_url=AppConfig.BASE_URL
-        )
-        return CallRecordingURL(
-            url=proxied_url,
-            expires_in=WebhookConfig.RECORD_PROXY_TOKEN_EXPIRY
-        )
-    else:
-        return CallRecordingURL(
-            url=call.record_url,
-            expires_in=86400
-        )

@@ -4,7 +4,7 @@ Call/Telephony schemas
 
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from api.v1.schemas.common.base import BaseSchema, TimestampMixin, UUIDMixin
 from db.models.enums import CallStatusEnum, CallDirectionEnum, ProviderEnum
 
@@ -87,17 +87,16 @@ class CallEventResponse(BaseSchema, UUIDMixin, TimestampMixin):
     attempts: int
     waiting_sec: Optional[int] = None
     billing_sec: Optional[int] = None
-    record_url: Optional[str] = None
     call_start_timestamp: Optional[int] = None
     call_end_timestamp: Optional[int] = None
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
+    record_url: Optional[str] = Field(None, exclude=True)
 
-
-class CallRecordingURL(BaseModel):
-    """Call recording URL response"""
-    url: str
-    expires_in: int
+    @computed_field
+    @property
+    def has_recording(self) -> bool:
+        return self.record_url is not None
 
 
 __all__ = [
@@ -107,5 +106,4 @@ __all__ = [
     "CallResponse",
     "CallEventCreate",
     "CallEventResponse",
-    "CallRecordingURL",
 ]

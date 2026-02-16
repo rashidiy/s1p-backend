@@ -1,104 +1,71 @@
 """
-Call recording proxy endpoints
-Provides secure access to call recordings via signed tokens
+Call recording streaming endpoint
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-import aiohttp
+from uuid import UUID
 
 from db import get_session
+from db.models.user import User
 from db.models.call_event import CallEvent
-from utils.managers import RecordTokenManager
+from utils.permissions import require_permissions, Permissions
+from utils.services.telephony.http_client import get_http_client
 
 router = APIRouter(prefix="/recordings", tags=["Recordings"])
 
 
-@router.get("/proxy/{token}")
-async def proxy_recording(
-    token: str,
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Proxy endpoint for call recordings
-
-    Validates the signed token and redirects to the actual recording URL.
-    This provides secure, time-limited access to call recordings without
-    exposing provider URLs directly.
-    """
-    # Validate token and extract call_id, company_id
-    token_data = RecordTokenManager.validate_token(token)
-    call_id = token_data["call_id"]
-    company_id = token_data["company_id"]
-
-    # Get call event and verify it belongs to the company
-    call = await CallEvent.get(session=session, id=call_id, company_id=company_id)
-    if not call:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Recording not found or access denied"
-        )
-
-    if not call.record_url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recording available for this call"
-        )
-
-    # Redirect to the actual recording URL
-    # In production, you might want to stream the file directly
-    # instead of redirecting to avoid exposing the provider URL
-    return RedirectResponse(url=call.record_url)
-
-
-@router.get("/stream/{token}")
+@router.get("/{call_id}")
+@require_permissions(Permissions.CALLS_READ)
 async def stream_recording(
-    token: str,
+    call_id: UUID,
+    user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Stream call recording directly (more secure than redirect)
+    Stream call recording by call ID.
 
-    Validates the token and streams the recording file directly
-    without exposing the provider URL.
+    Requires JWT authentication and CALLS_READ permission.
+    The provider URL is never exposed to the client.
     """
-    # Validate token
-    token_data = RecordTokenManager.validate_token(token)
-    call_id = token_data["call_id"]
-    company_id = token_data["company_id"]
-
-    # Get call event
-    call = await CallEvent.get(session=session, id=call_id, company_id=company_id)
+    call = await CallEvent.get(
+        session=session,
+        id=call_id,
+        company_id=user.company_id,
+    )
     if not call or not call.record_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Recording not found"
+            detail="Recording not found",
         )
 
-    # Stream the file from provider
-    try:
-        async with aiohttp.ClientSession() as http_session:
-            async with http_session.get(call.record_url) as response:
-                if response.status != 200:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="Recording file not accessible"
-                    )
+    http_client = await get_http_client()
+    response = await http_client.get(call.record_url, timeout=300)
 
-                content = await response.read()
-
-                # Return streaming response
-                from fastapi.responses import Response
-                return Response(
-                    content=content,
-                    media_type=response.headers.get('Content-Type', 'audio/mpeg'),
-                    headers={
-                        'Content-Disposition': f'attachment; filename="call_{call_id}.mp3"'
-                    }
-                )
-    except Exception as e:
+    if response.status != 200:
+        response.release()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to stream recording: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording file not accessible",
         )
+
+    async def stream_chunks():
+        try:
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                yield chunk
+        finally:
+            response.release()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="recording_{call.call_number}.mp3"',
+    }
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        headers["Content-Length"] = content_length
+
+    return StreamingResponse(
+        stream_chunks(),
+        media_type=response.headers.get("Content-Type", "audio/mpeg"),
+        headers=headers,
+    )
