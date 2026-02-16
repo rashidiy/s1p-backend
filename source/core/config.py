@@ -56,6 +56,3 @@ class WebhookConfig:
     # Fallback: allow all IPs if not configured (dev mode)
     WEBHOOK_IP_WHITELIST_ENABLED = os.getenv('WEBHOOK_IP_WHITELIST_ENABLED', 'false').lower() == 'true'
 
-    # Record proxy settings
-    RECORD_PROXY_SECRET = os.getenv('RECORD_PROXY_SECRET', '')
-    RECORD_PROXY_TOKEN_EXPIRY = int(os.getenv('RECORD_PROXY_TOKEN_EXPIRY', '86400'))  # 24 hours
