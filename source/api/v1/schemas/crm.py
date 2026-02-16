@@ -221,7 +221,7 @@ class NoteBase(BaseModel):
 
     # Link to entities (polymorphic)
     entity_type: str = Field(..., max_length=50)  # 'lead', 'contact', 'deal', 'call'
-    entity_id: UUID
+    entity_id: str
 
 
 class NoteCreateRequest(NoteBase):

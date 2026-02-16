@@ -39,7 +39,7 @@ class CallLinkRequest(BaseModel):
 
 class CallWithDetails(BaseModel):
     """Call event with CRM details"""
-    id: UUID
+    id: int
     phone_1: Optional[str]
     phone_2: Optional[str]
     direction: Optional[str]
@@ -71,7 +71,7 @@ class CallWithDetails(BaseModel):
 @router.put("/{call_id}/outcome")
 @require_permissions(Permissions.CALLS_WRITE)
 async def set_call_outcome(
-    call_id: UUID,
+    call_id: int,
     data: CallOutcomeUpdate,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
@@ -107,7 +107,7 @@ async def set_call_outcome(
 @router.post("/{call_id}/link")
 @require_permissions(Permissions.CALLS_WRITE)
 async def link_call_to_crm(
-    call_id: UUID,
+    call_id: int,
     data: CallLinkRequest,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)

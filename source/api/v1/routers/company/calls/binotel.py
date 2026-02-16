@@ -56,7 +56,7 @@ async def call_ext_to_ext(
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
-                call_number=call_num,
+                id=call_num,
                 provider_type=company.provider_type,
                 provider_call_id=f"binotel_{result.call_id}",
                 phone_1=request.phone_1,

@@ -56,7 +56,7 @@ async def list_notes(
     lead_id: Optional[UUID] = None,
     deal_id: Optional[UUID] = None,
     task_id: Optional[UUID] = None,
-    call_id: Optional[UUID] = None,
+    call_id: Optional[int] = None,
     created_by: Optional[UUID] = None
 ):
     """
@@ -81,7 +81,7 @@ async def list_notes(
     if task_id:
         query = query.where(Note.entity_type == "task", Note.entity_id == task_id)
     if call_id:
-        query = query.where(Note.entity_type == "call", Note.entity_id == call_id)
+        query = query.where(Note.entity_type == "call", Note.entity_id == str(call_id))
     if created_by:
         query = query.where(Note.created_by == created_by)
 
@@ -220,7 +220,7 @@ async def delete_note(
 @require_permissions(Permissions.NOTES_READ)
 async def get_entity_notes(
     entity_type: str,
-    entity_id: UUID,
+    entity_id: str,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):

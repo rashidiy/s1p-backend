@@ -59,7 +59,7 @@ async def call_external(
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
-                call_number=call_num,
+                id=call_num,
                 provider_type=company.provider_type,
                 provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.phone_1,
@@ -115,7 +115,7 @@ async def call_number(
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
-                call_number=call_num,
+                id=call_num,
                 provider_type=company.provider_type,
                 provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.operator_id,
@@ -172,7 +172,7 @@ async def call_tree(
             await CallEvent.create(
                 session=session,
                 company_id=company.id,
-                call_number=call_num,
+                id=call_num,
                 provider_type=company.provider_type,
                 provider_call_id=f"sipuni_{result.call_id}",
                 phone_1=request.operator_id,
@@ -208,7 +208,7 @@ async def cancel_call(
     call_event = await CallEvent.get(
         session=session,
         company_id=company.id,
-        call_number=call_id,
+        id=call_id,
     )
     if not call_event:
         raise HTTPException(

@@ -5,7 +5,7 @@ Call/Telephony schemas
 from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, computed_field
-from api.v1.schemas.common.base import BaseSchema, TimestampMixin, UUIDMixin
+from api.v1.schemas.common.base import BaseSchema, TimestampMixin
 from db.models.enums import CallStatusEnum, CallDirectionEnum, ProviderEnum
 
 
@@ -74,10 +74,10 @@ class CallEventCreate(BaseModel):
     utm_campaign: Optional[str] = None
 
 
-class CallEventResponse(BaseSchema, UUIDMixin, TimestampMixin):
+class CallEventResponse(BaseSchema, TimestampMixin):
     """Call event response"""
+    id: int
     company_id: UUID
-    call_number: int
     provider_type: ProviderEnum
     phone_1: Optional[str] = None
     phone_2: Optional[str] = None

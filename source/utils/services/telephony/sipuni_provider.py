@@ -253,8 +253,6 @@ class SipuniProvider(TelephonyProvider):
         Returns normalized call data or None if not a call-end event (event=2).
         Query params arrive as strings, so compare accordingly.
         """
-        print(payload, headers)
-
         if str(payload.get('event')) != '2':
             return None
 
@@ -262,8 +260,13 @@ class SipuniProvider(TelephonyProvider):
         call_start = payload.get('call_start_timestamp')
         call_end = payload.get('timestamp')
 
+        # Use callbackId to match the id returned by Sipuni's callback API,
+        # which is what we store as provider_call_id when initiating calls.
+        # Fall back to call_id for inbound calls that have no callbackId.
+        provider_id = payload.get('callbackId') or payload.get('call_id', '')
+
         return {
-            "provider_call_id": f"sipuni_{payload.get('call_id', '')}",
+            "provider_call_id": f"sipuni_{provider_id}",
             "phone_1": payload.get('src_num'),
             "phone_2": payload.get('pbxdstnum'),
             "state": payload.get('status'),

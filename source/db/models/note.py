@@ -47,7 +47,7 @@ class Note(Base, ObjectManagerMixin):
 
     # Linked entity (polymorphic)
     entity_type = Column(String(50), nullable=False)  # 'lead', 'contact', 'deal', 'call'
-    entity_id = Column(UUID(as_uuid=True), nullable=False)
+    entity_id = Column(String(255), nullable=False)
 
     # Created by
     created_by = Column(
