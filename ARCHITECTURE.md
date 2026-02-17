@@ -1,9 +1,9 @@
 # Multi-Tenant Call Center CRM Platform - Architecture Design
 
-**Version:** 1.0
-**Date:** 2026-01-21
-**Status:** MVP Implementation
-**Timeline:** 1 Week
+**Version:** 1.1
+**Date:** 2026-02-17
+**Status:** Post-MVP (Analytics, Contracts, Enhanced Calls implemented)
+**Timeline:** Ongoing
 
 ---
 
@@ -120,7 +120,7 @@ Platform (SaaS)
 ┌──────────────────┐  ┌──────────────────┐
 │      users       │  │    call_events   │
 │──────────────────│  │──────────────────│
-│ id (PK)          │  │ id (PK)          │
+│ id (PK)          │  │ id (PK) INTEGER  │
 │ company_id (FK)  │  │ company_id (FK)  │
 │ email            │  │ provider_type    │
 │ password_hash    │  │ provider_call_id │
@@ -285,12 +285,13 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE TYPE call_state_enum AS ENUM ('ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL');
 
 CREATE TABLE call_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id INTEGER PRIMARY KEY,  -- Company-scoped sequential (via next_call_number())
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
 
     -- Provider info
     provider_type provider_enum NOT NULL,
-    provider_call_id VARCHAR(255) NOT NULL,  -- Sipuni: call_id, Binotel: generalCallID
+    call_number INTEGER,  -- Company-scoped sequential number
+    provider_call_id VARCHAR(255) NOT NULL,  -- Prefixed: sipuni_<id>, binotel_<id>
 
     -- Call participants
     phone_1 VARCHAR(50),  -- Caller
@@ -952,14 +953,27 @@ async def make_call(
 │
 ├── /company                     # Current company operations (from JWT)
 │   │
-│   ├── /calls                   # Call operations
+│   ├── /calls                   # Call operations (sub-package)
 │   │   ├── POST /               # Make call (provider-agnostic)
 │   │   ├── GET /                # List calls
 │   │   ├── GET /{id}            # Get call details
-│   │   └── GET /{id}/recording  # Get proxied recording URL
+│   │   ├── PUT /{id}/outcome    # Set call outcome
+│   │   ├── POST /{id}/link      # Link call to CRM entity
+│   │   ├── GET /history         # Call history
+│   │   ├── GET /outcomes/summary # Outcome stats
+│   │   ├── GET /auto-link-suggestions/{phone}
+│   │   ├── /sipuni/             # Sipuni-specific
+│   │   │   ├── POST /external   # External call
+│   │   │   ├── POST /number     # Call by number
+│   │   │   ├── POST /tree       # Call tree
+│   │   │   └── POST /{id}/cancel # Cancel call
+│   │   └── /binotel/            # Binotel-specific
+│   │
+│   ├── /recordings              # Call recordings
+│   │   └── GET /{call_id}       # Authenticated streaming
 │   │
 │   ├── /webhooks                # Webhook receivers
-│   │   └── POST /{token}        # Unified webhook endpoint
+│   │   └── GET /{token}         # Unified webhook (GET, IP whitelisted)
 │   │
 │   ├── /users                   # User management
 │   │   ├── POST /               # Create user
@@ -1020,11 +1034,17 @@ async def make_call(
 │   │   ├── GET /{id}           # Download file
 │   │   └── DELETE /{id}
 │   │
-│   └── /stats                  # Statistics
-│       ├── GET /calls          # Call statistics
-│       ├── GET /operators      # Per-operator stats
-│       ├── GET /revenue        # Revenue analytics
-│       └── GET /dashboard      # Dashboard summary
+│   ├── /analytics              # Analytics
+│   │   ├── GET /me             # My stats
+│   │   ├── GET /me/dashboard   # My dashboard
+│   │   ├── GET /team           # Team stats
+│   │   ├── GET /team/dashboard # Team dashboard
+│   │   ├── GET /operator/{id}  # Operator stats
+│   │   └── DELETE /cache       # Clear analytics cache
+│   │
+│   ├── /contract               # Contract view
+│   │
+│   └── /permission-groups      # Permission groups
 │
 └── /admin                      # Platform admin (future)
     └── /stats                  # Cross-company analytics
@@ -1039,17 +1059,18 @@ GET /api/v1/sipuni/stream/{sipuni_id}/
 
 **After (Provider-agnostic):**
 ```
-POST /api/v1/company/webhooks/{token}
+GET /api/v1/company/webhooks/{token}
 ```
 
 **Implementation:**
 ```python
-@router.post("/company/webhooks/{token}")
+@router.get("/company/webhooks/{token}")
 async def handle_webhook(
     token: str,
-    payload: Dict[str, Any],
     request: Request
 ):
+    # Payload comes from query params (GET)
+    payload = dict(request.query_params)
     # 1. Find company by webhook token
     company = await Company.get_one(webhook_token=token)
     if not company:
@@ -1622,7 +1643,7 @@ async def get_dashboard(user: User = User.current()):
 
 ---
 
-## 10. CALL RECORDS PROXY (NGINX)
+## 10. CALL RECORDING ACCESS (AUTHENTICATED STREAMING)
 
 ### 10.1 Problem Statement
 
@@ -1632,239 +1653,60 @@ async def get_dashboard(user: User = User.current()):
 - URLs may contain sensitive tokens
 
 **Solution:**
-Reverse proxy through our domain with signed tokens.
+Authenticated streaming endpoint that fetches from provider and streams directly to the authenticated client. No external URLs are ever exposed.
 
 ### 10.2 Architecture
 
 ```
-User Request:
-https://records.sipcrm.uz/{signed_token}/{call_id}
+User Request (with JWT):
+GET /api/v1/company/recordings/{call_id}
               ↓
-         Nginx validates token
+         Validate JWT + CALLS_READ permission
               ↓
-         Proxy to original URL (S3/provider CDN)
+         Look up CallEvent.record_url from DB
               ↓
-         Return audio file
+         Fetch from provider URL via HTTPClientPool (aiohttp)
+              ↓
+         StreamingResponse (64KB chunks) to client
 ```
 
-### 10.3 Token Generation
+### 10.3 Implementation
 
 ```python
-# source/utils/managers/record_token_manager.py
+# source/api/v1/routers/company/recordings.py
 
-import hmac
-import hashlib
-import time
-from typing import Dict
-
-class RecordTokenManager:
-    """Generate signed tokens for call recording access"""
-
-    SECRET = settings.RECORD_PROXY_SECRET  # From environment
-
-    @classmethod
-    def generate(
-        cls,
-        call_id: str,
-        user_id: str,
-        expiry_hours: int = 24
-    ) -> str:
-        """
-        Generate signed token for call recording access
-
-        Token format: {call_id}:{user_id}:{expiry_timestamp}:{signature}
-        """
-        expiry = int(time.time()) + (expiry_hours * 3600)
-
-        payload = f"{call_id}:{user_id}:{expiry}"
-        signature = hmac.new(
-            cls.SECRET.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
-
-        return f"{payload}:{signature}"
-
-    @classmethod
-    def validate(cls, token: str) -> Dict[str, Any]:
-        """
-        Validate token and return payload
-
-        Returns:
-            {
-                "valid": bool,
-                "call_id": str,
-                "user_id": str,
-                "expired": bool
-            }
-        """
-        try:
-            parts = token.split(':')
-            if len(parts) != 4:
-                return {"valid": False}
-
-            call_id, user_id, expiry, signature = parts
-
-            # Verify signature
-            payload = f"{call_id}:{user_id}:{expiry}"
-            expected_sig = hmac.new(
-                cls.SECRET.encode(),
-                payload.encode(),
-                hashlib.sha256
-            ).hexdigest()
-
-            if not hmac.compare_digest(signature, expected_sig):
-                return {"valid": False}
-
-            # Check expiry
-            expired = int(time.time()) > int(expiry)
-
-            return {
-                "valid": True,
-                "call_id": call_id,
-                "user_id": user_id,
-                "expired": expired
-            }
-        except Exception:
-            return {"valid": False}
-```
-
-### 10.4 Nginx Configuration
-
-```nginx
-# /etc/nginx/sites-available/records.sipcrm.uz
-
-server {
-    listen 443 ssl http2;
-    server_name records.sipcrm.uz;
-
-    ssl_certificate /etc/letsencrypt/live/records.sipcrm.uz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/records.sipcrm.uz/privkey.pem;
-
-    # Proxy call recordings
-    location ~ ^/(?<token>[^/]+)/(?<call_id>[^/]+)$ {
-        # Validate token via internal API
-        auth_request /auth;
-        auth_request_set $original_url $upstream_http_x_original_url;
-
-        # Proxy to original URL
-        proxy_pass $original_url;
-        proxy_set_header Host $proxy_host;
-        proxy_ssl_server_name on;
-
-        # Prevent caching credentials
-        proxy_pass_request_headers off;
-
-        # Cache the audio file
-        proxy_cache recordings_cache;
-        proxy_cache_valid 200 24h;
-        proxy_cache_key "$call_id";
-    }
-
-    # Internal auth endpoint
-    location = /auth {
-        internal;
-        proxy_pass http://localhost:8000/api/v1/internal/validate-record-token;
-        proxy_pass_request_body off;
-        proxy_set_header Content-Length "";
-        proxy_set_header X-Original-URI $request_uri;
-    }
-}
-
-# Cache configuration
-proxy_cache_path /var/cache/nginx/recordings
-    levels=1:2
-    keys_zone=recordings_cache:10m
-    max_size=1g
-    inactive=24h;
-```
-
-### 10.5 Backend Validation Endpoint
-
-```python
-# source/api/v1/routers/internal/record_validation.py
-
-@router.get("/internal/validate-record-token")
-async def validate_record_token(
-    request: Request
+@router.get("/recordings/{call_id}")
+@require_permissions(Permissions.CALLS_READ)
+async def stream_recording(
+    call_id: int,
+    session: AsyncSession,
+    user: User = User.current()
 ):
-    """
-    Internal endpoint for Nginx auth_request
+    """Stream call recording directly (authenticated)"""
+    call = await CallEvent.get(session, id=call_id, company_id=user.company_id)
+    if not call or not call.record_url:
+        raise HTTPException(404, "Recording not found")
 
-    Validates token and returns original URL in header
-    """
-    # Extract token from URI
-    uri = request.headers.get('X-Original-URI', '')
-    # URI format: /{token}/{call_id}
+    # Fetch from provider via connection pool
+    response = await HTTPClientPool.get(call.record_url, timeout=300)
 
-    parts = uri.strip('/').split('/')
-    if len(parts) != 2:
-        raise HTTPException(403, "Invalid URI format")
-
-    token, call_id = parts
-
-    # Validate token
-    validation = RecordTokenManager.validate(token)
-
-    if not validation['valid']:
-        raise HTTPException(403, "Invalid token")
-
-    if validation['expired']:
-        raise HTTPException(403, "Token expired")
-
-    # Get call event
-    call = await CallEvent.get_one(id=call_id)
-    if not call:
-        raise HTTPException(404, "Call not found")
-
-    # Verify user has access to this call
-    user = await User.get_one(id=validation['user_id'])
-    if user.company_id != call.company_id:
-        raise HTTPException(403, "Access denied")
-
-    # Return original URL in header for Nginx
-    return Response(
-        status_code=200,
+    return StreamingResponse(
+        response.content.iter_chunked(65536),  # 64KB chunks
+        media_type="audio/mpeg",
         headers={
-            "X-Original-URL": call.record_url
+            "Content-Disposition": f'attachment; filename="recording_{call_id}.mp3"',
+            "Content-Length": response.headers.get("Content-Length", ""),
         }
     )
 ```
 
-### 10.6 Usage in API
+### 10.4 HTTPClientPool
 
-```python
-# GET /api/v1/company/calls/{id}/recording
-@router.get("/calls/{id}/recording")
-@require_permissions("calls.read")
-async def get_call_recording(
-    id: UUID,
-    user: User = User.current()
-):
-    """Get proxied call recording URL"""
-    call = await CallEvent.get_or_404(
-        id=id,
-        company_id=user.company_id
-    )
-
-    if not call.record_url:
-        raise HTTPException(404, "No recording available")
-
-    # Generate signed token
-    token = RecordTokenManager.generate(
-        call_id=str(call.id),
-        user_id=str(user.id),
-        expiry_hours=24
-    )
-
-    # Return proxied URL
-    proxied_url = f"https://records.sipcrm.uz/{token}/{call.id}"
-
-    return {
-        "url": proxied_url,
-        "expires_in": 86400  # 24 hours
-    }
-```
+Singleton aiohttp-based HTTP client in `source/utils/services/telephony/http_client.py`:
+- Connection pooling: 100 total connections, 20 per host
+- DNS caching: 300s TTL
+- Exponential backoff retry
+- Replaces the earlier token-based Nginx proxy approach
 
 ---
 
@@ -2352,9 +2194,10 @@ def downgrade():
 
 **Application:**
 - FastAPI (async Python web framework)
-- PostgreSQL 15+ (with JSONB support)
-- Redis 7+ (caching + Celery broker)
-- Nginx (reverse proxy + static files + call records proxy)
+- PostgreSQL 16+ (with JSONB support)
+- Redis 7+ (caching via CacheService + future Celery broker)
+- aiohttp (async HTTP client with connection pooling via HTTPClientPool)
+- Nginx (reverse proxy, future production deployment)
 
 **Background Jobs:**
 - Celery (task queue)
