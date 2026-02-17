@@ -10,7 +10,7 @@ Target scale: 1,000+ companies, ~20 users/company, ~150 calls/day/company.
 
 ## Database Schema
 
-All primary keys are UUIDs (`gen_random_uuid()`). All CRM entities use soft delete (`deleted_at`). All tenant-scoped tables have `company_id` FK.
+All primary keys are UUIDs (`gen_random_uuid()`) except `call_events.id` which is Integer (company-scoped sequential). All CRM entities use soft delete (`deleted_at`). All tenant-scoped tables have `company_id` FK.
 
 ### Enums
 
@@ -26,6 +26,9 @@ All primary keys are UUIDs (`gen_random_uuid()`). All CRM entities use soft dele
 | `DealStageEnum` | `prospecting`, `qualification`, `proposal`, `negotiation`, `closed_won`, `closed_lost` |
 | `TaskStatusEnum` | `pending`, `in_progress`, `completed`, `cancelled` |
 | `TaskPriorityEnum` | `low`, `medium`, `high`, `urgent` |
+| `ContractStatusEnum` | Contract lifecycle states |
+| `BillingPeriodEnum` | Billing period options |
+| `PaymentStatusEnum` | Payment status tracking |
 
 ### Models
 
@@ -35,7 +38,11 @@ All primary keys are UUIDs (`gen_random_uuid()`). All CRM entities use soft dele
 
 **users** — Company users. Fields: `id`, `company_id` (FK), `first_name`, `last_name`, `email`, `phone`, `password_hash`, `role` (RoleEnum), `permissions` (JSONB array), `language`, `is_active`, `is_suspended`, `email_verified`, `deleted_at`, timestamps. UniqueConstraint: (`company_id`, `email`).
 
-**call_events** — Unified call tracking. Fields: `id`, `company_id` (FK), `provider_type`, `provider_call_id`, `phone_1` (caller), `phone_2` (receiver), `operator_id` (FK to users), `direction`, `state`, `outcome`, `disposition_notes`, `attempts`, `waiting_sec`, `billing_sec`, `record_url`, `call_start_timestamp`, `call_end_timestamp`, `contact_id` (FK), `lead_id` (FK), `deal_id` (FK), `utm_source`, `utm_medium`, `utm_campaign`, `company_number`, `order_id`, timestamps. UniqueConstraint: (`company_id`, `provider_type`, `provider_call_id`).
+**call_events** — Unified call tracking. Fields: `id` (**Integer**, company-scoped sequential via `next_call_number()`), `company_id` (FK), `call_number` (company-scoped), `provider_type`, `provider_call_id` (prefixed with provider name, e.g. `sipuni_<id>`), `phone_1` (caller), `phone_2` (receiver), `operator_id` (FK to users), `direction`, `state`, `outcome`, `disposition_notes`, `attempts`, `waiting_sec`, `billing_sec`, `record_url`, `call_start_timestamp`, `call_end_timestamp`, `contact_id` (FK), `lead_id` (FK), `deal_id` (FK), `utm_source`, `utm_medium`, `utm_campaign`, `company_number`, `order_id`, timestamps. UniqueConstraint: (`company_id`, `provider_type`, `provider_call_id`).
+
+**contracts** — Contract management. Fields: `id`, `company_id` (FK), contract details, status (`ContractStatusEnum`), billing period, payment status, timestamps.
+
+**permission_groups** — Permission group definitions. Fields: `id`, `company_id` (FK), `name`, permissions list, timestamps.
 
 **contacts** — Fields: `id`, `company_id`, `first_name`, `last_name`, `company_name`, `phone` (indexed), `email` (indexed), `position`, `source`, `tags` (JSONB), `custom_fields` (JSONB), `created_by` (FK), `assigned_to` (FK), `deleted_at`, timestamps.
 
@@ -78,13 +85,16 @@ Owner creation is CLI-only via `python manage.py createsuperuser`. No registrati
 
 All require user JWT with `company_id`.
 
-**Calls** (`/calls`): `POST /` make call, `GET /` list, `GET /{id}` detail, `GET /{id}/recording` proxied recording URL
+**Calls** (`/calls`): Provider-namespaced sub-package.
+- `common.py`: `POST /` make call (provider-agnostic), `GET /` list, `GET /{id}` detail. Shared helpers: `next_call_number()`, `resolve_operator_id()`, `require_provider()`
+- `sipuni.py`: `POST /sipuni/external`, `POST /sipuni/number`, `POST /sipuni/tree`, `POST /sipuni/{id}/cancel`
+- `binotel.py`: Binotel-specific endpoints
 
-**Enhanced Calls** (`/calls_enhanced`): Call outcomes and CRM linking
+**Enhanced Calls** (`/calls_enhanced`): `PUT /{id}/outcome`, `POST /{id}/link`, `GET /history`, `GET /outcomes/summary`, `GET /auto-link-suggestions/{phone}`
 
-**Webhooks** (`/webhooks`): `POST /{token}` — Unified receiver for all providers. Returns 200 even on errors to prevent retries.
+**Webhooks** (`/webhooks`): `GET /{token}` — Unified receiver for all providers (GET, not POST). IP whitelisting supported. Returns 200 even on errors to prevent retries.
 
-**Recordings**: `/proxy/{token}` redirect, `/stream/{token}` direct stream
+**Recordings** (`/recordings`): `GET /{call_id}` — Authenticated streaming. Fetches from provider URL via `HTTPClientPool` and streams to client in 64KB chunks. Provider URLs never exposed. Requires JWT + `CALLS_READ` permission.
 
 **Users**: Full CRUD with role/permission management
 
@@ -95,19 +105,25 @@ All require user JWT with `company_id`.
 - Notes: `GET /timeline/{type}/{id}`
 - Contacts: `GET /{id}/activity`
 
-**Analytics**: Company-level statistics
+**Analytics** (`/analytics`): `GET /me`, `GET /me/dashboard`, `GET /team`, `GET /team/dashboard`, `GET /operator/{id}`, `DELETE /cache`
+
+**Contracts** (`/contract`): Company-facing contract view
+
+**Permission Groups** (`/permission-groups`): Permission group management
 
 ### Auth Endpoints (`/api/v1/auth/`)
 
-Company-level user authentication: login, token refresh, verification.
+Company-level user authentication: login, token refresh, password reset (`POST /forgot-password`, `POST /set-password`), `GET /users/me`, `PUT /users/me`. Restricted JWT for users with temporary passwords (force first-login password change).
 
 ## Telephony Provider Integration
 
 ### Abstract Interface (`source/utils/services/telephony/base.py`)
 
-5 abstract methods: `make_call()`, `get_call_status()`, `get_call_record_url()`, `handle_webhook()`, `validate_webhook_auth()`. Optional: `get_call_history()`.
+5 abstract methods: `make_call()`, `get_call_status()`, `get_call_record_url()`, `handle_webhook()`, `validate_webhook_auth()`. Optional (non-abstract, raise `ProviderException` by default): `call_number()`, `call_tree()`, `cancel_call()`, `get_call_history()`.
 
 Factory pattern: `ProviderFactory.create(provider_type, config)`.
+
+HTTP client: `HTTPClientPool` singleton in `http_client.py` — aiohttp-based with connection pooling (100 total, 20 per host), DNS caching (300s TTL), exponential backoff retry.
 
 ### Sipuni
 
@@ -115,9 +131,9 @@ Config: `{"cabinet_id": "...", "security_key": "...", "token": "..."}`
 
 API base: `https://sipuni.com`. Auth: MD5 hash of params joined with `+` plus security_key (parameter order matters per endpoint).
 
-Call endpoints: `/api/callback/call_external`, `/api/callback/call_number`, `/api/callback/call_tree`.
+Call endpoints: `/api/callback/call_external`, `/api/callback/call_number`, `/api/callback/call_tree`. Provider-specific router endpoints: `calls/sipuni/external`, `calls/sipuni/number`, `calls/sipuni/tree`, `calls/sipuni/{id}/cancel`.
 
-Webhook: Only processes hangup events (`event == 2`). Direction: `src_type=1` (external) → inbound if to internal, `src_type=2` (internal) → outbound.
+Webhook: GET method (not POST). Only processes hangup events (`event == 2`). Uses `callbackId` or `call_id` to build `provider_call_id` with `sipuni_` prefix. Direction: `src_type=1` (external) → inbound if to internal, `src_type=2` (internal) → outbound.
 
 ### Binotel
 
@@ -162,9 +178,9 @@ Dual auth: `Owner.current()` for owner endpoints, `User.current()` for company e
 
 IP whitelisting via `WEBHOOK_IP_WHITELIST_ENABLED`, `SIPUNI_ALLOWED_IPS`, `BINOTEL_ALLOWED_IPS`. Disabled by default in dev.
 
-### Recording Proxy
+### Recording Access
 
-HMAC-SHA256 signed tokens: `Base64(call_id:company_id:exp_timestamp:signature)`. Validates company ownership. Configurable via `RECORD_PROXY_SECRET` and `RECORD_PROXY_TOKEN_EXPIRY`.
+Authenticated streaming via `GET /recordings/{call_id}`. Requires JWT + `CALLS_READ` permission. The backend fetches from the provider's `record_url` via `HTTPClientPool` (aiohttp) and streams to the client. Provider URLs are never exposed. Replaces the earlier token-based proxy approach.
 
 ## Important Gotchas
 
@@ -178,16 +194,24 @@ HMAC-SHA256 signed tokens: `Base64(call_id:company_id:exp_timestamp:signature)`.
 8. **`sys.path.append('source')`** in `main.py` — all imports use paths relative to `source/` (e.g., `from db.models.company import Company`).
 9. **Soft delete** is enforced at ORM level in `ObjectManagerMixin`. Use `include_deleted=True` to query deleted records, `hard=True` to permanently delete.
 
+## Implemented Since Initial Design
+
+- **Analytics service** (`source/utils/services/analytics_service.py`) — SQL-aggregated stats, trends, pipeline health, conversion funnel
+- **Cache service** (`source/utils/services/cache_service.py`) — Redis/in-memory auto-detection, `@cached` decorator
+- **Email service** (`source/utils/services/email_service.py`) — Background email tasks (invitation, password reset, welcome, contract expiry)
+- **Contract system** — `Contract` model, owner-level management, `contract_enforcement.py` for access control and user limits
+- **Permission groups** — `PermissionGroup` model and management endpoints
+- **Phone validation** — Uzbek phone number validator (998xx format with carrier prefix checks)
+- **Integration tests** — `source/tests/integration/test_sipuni_integration.py` (requires env vars)
+- **CORS middleware** — Configured in `main.py`
+- **Password management** — Forgot/reset/force-change password flow with restricted JWT for temporary passwords
+
 ## Not Yet Implemented
 
-- Background jobs (Celery/Redis for stats aggregation, task reminders, email notifications)
-- Email sending (SMTP/templates)
+- Background job scheduling (Celery/Redis for stats aggregation, task reminders)
 - File upload handling
 - WebSocket real-time notifications
-- Redis query caching (Redis available but not integrated for caching)
 - Rate limiting
-- Test suite (fixtures exist in `source/tests/conftest.py`, no test cases written)
 - PostgreSQL Row-Level Security (RLS)
-- Nginx config for recording proxy
 - CSV import/export for contacts
 - Localization system
