@@ -82,10 +82,8 @@ async def login(
     company = await _resolve_company(subdomain, session)
 
     user = await User.get(email=data.email, company_id=company.id, session=session)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
-    if not PasswordManager.verify(data.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email or password incorrect.")
+    if not user or not PasswordManager.verify(data.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
 
     # If user hasn't changed temporary password, return restricted token
     if not user.email_verified:
@@ -104,7 +102,7 @@ async def login(
         company_id=user.company_id,
         role=user.role.value if user.role else None,
         permissions=user.permissions or [],
-        access_duration=timedelta(days=15)
+        access_duration=timedelta(minutes=30)
     )
     user.must_change_password = False
     return user
@@ -116,9 +114,17 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post('/refresh')
-async def refresh_token(data: RefreshTokenRequest):
+async def refresh_token(
+    data: RefreshTokenRequest,
+    session: AsyncSession = Depends(get_session),
+):
     """Refresh access token using refresh token"""
     payload = JWTManager.verify(data.refresh_token, TokenType.REFRESH)
+
+    user = await User.get(id=payload.sub, session=session)
+    if not user or user.deleted_at or user.is_suspended or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired or invalid.")
+
     return {
         "access": JWTManager.create(
             sub=payload.sub,
@@ -170,7 +176,7 @@ async def set_password(
         company_id=user.company_id,
         role=user.role.value if user.role else None,
         permissions=user.permissions or [],
-        access_duration=timedelta(days=15),
+        access_duration=timedelta(minutes=30),
     )
     user.must_change_password = False
     return user

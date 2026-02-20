@@ -296,6 +296,8 @@ class SipuniProvider(TelephonyProvider):
         """
         Validate Sipuni webhook authentication
 
-        Token validation happens at route level.
+        The webhook token is validated at the route level (company lookup by token).
+        Here we verify the payload has the minimum fields a legitimate Sipuni webhook
+        must contain, rejecting structurally invalid requests.
         """
-        return True
+        return bool(payload.get("event") and payload.get("call_id"))

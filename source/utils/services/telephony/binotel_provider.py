@@ -295,14 +295,13 @@ class BinotelProvider(TelephonyProvider):
         """
         Validate Binotel webhook authentication
 
-        Binotel uses IP whitelisting similar to Sipuni.
-        Configure BINOTEL_ALLOWED_IPS in environment.
-        For MVP, we'll trust the webhook if it has the correct structure.
+        The webhook token is validated at the route level (company lookup by token).
+        Here we verify the payload has the minimum fields a legitimate Binotel webhook
+        must contain, rejecting structurally invalid requests.
+        IP whitelisting is the recommended additional layer (BINOTEL_ALLOWED_IPS).
         """
-        # For MVP, basic validation
-        # In production, implement IP whitelisting
         request_type = payload.get("requestType")
-        return request_type is not None
+        return bool(request_type)
 
     async def get_call_history(
         self,
