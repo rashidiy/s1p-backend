@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from db import get_session
 from db.models.user import User
@@ -172,6 +172,50 @@ async def list_deals(
     )
 
 
+@router.get("/pipeline/summary")
+@require_permissions(Permissions.DEALS_READ)
+async def get_pipeline_summary(
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get pipeline summary
+
+    Returns deal counts and values by stage.
+    """
+    # Get all active deals
+    query = select(Deal).where(
+        Deal.company_id == user.company_id,
+        Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
+    )
+    result = await session.execute(query)
+    deals = result.scalars().all()
+
+    # Group by stage
+    summary = {}
+    for stage in DealStageEnum:
+        stage_deals = [d for d in deals if d.stage == stage]
+        summary[stage.value] = {
+            "count": len(stage_deals),
+            "total_value": sum(float(d.amount or 0) for d in stage_deals),
+            "weighted_value": sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in stage_deals)
+        }
+
+    # Overall stats
+    total_deals = len(deals)
+    total_value = sum(float(d.amount or 0) for d in deals)
+    weighted_value = sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in deals)
+
+    return {
+        "by_stage": summary,
+        "overall": {
+            "total_deals": total_deals,
+            "total_value": total_value,
+            "weighted_value": round(weighted_value, 2)
+        }
+    }
+
+
 @router.get("/{deal_id}", response_model=DealResponse)
 @require_permissions(Permissions.DEALS_READ)
 async def get_deal(
@@ -297,7 +341,7 @@ async def mark_deal_won(
     )
 
     deal.stage = DealStageEnum.CLOSED_WON
-    deal.closed_date = datetime.now().date()
+    deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 100
 
     await deal.update(session=session)
@@ -325,53 +369,9 @@ async def mark_deal_lost(
     )
 
     deal.stage = DealStageEnum.CLOSED_LOST
-    deal.closed_date = datetime.now().date()
+    deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 0
 
     await deal.update(session=session)
 
     return deal
-
-
-@router.get("/pipeline/summary")
-@require_permissions(Permissions.DEALS_READ)
-async def get_pipeline_summary(
-    user: User = User.current(),
-    session: AsyncSession = Depends(get_session)
-):
-    """
-    Get pipeline summary
-
-    Returns deal counts and values by stage.
-    """
-    # Get all active deals
-    query = select(Deal).where(
-        Deal.company_id == user.company_id,
-        Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
-    )
-    result = await session.execute(query)
-    deals = result.scalars().all()
-
-    # Group by stage
-    summary = {}
-    for stage in DealStageEnum:
-        stage_deals = [d for d in deals if d.stage == stage]
-        summary[stage.value] = {
-            "count": len(stage_deals),
-            "total_value": sum(float(d.amount or 0) for d in stage_deals),
-            "weighted_value": sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in stage_deals)
-        }
-
-    # Overall stats
-    total_deals = len(deals)
-    total_value = sum(float(d.amount or 0) for d in deals)
-    weighted_value = sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in deals)
-
-    return {
-        "by_stage": summary,
-        "overall": {
-            "total_deals": total_deals,
-            "total_value": total_value,
-            "weighted_value": round(weighted_value, 2)
-        }
-    }

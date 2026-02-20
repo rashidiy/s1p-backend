@@ -80,7 +80,7 @@ class ObjectManagerMixin:
                 elif operator == 'gte':
                     conditions.append(column >= value)
                 elif operator == 'lt':
-                    conditions.append(column <= value)
+                    conditions.append(column < value)
                 elif operator == 'lte':
                     conditions.append(column <= value)
                 elif operator == 'ne':

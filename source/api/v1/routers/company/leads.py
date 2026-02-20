@@ -114,9 +114,9 @@ async def list_leads(
     if source:
         query = query.where(Lead.source == source)
     if min_value is not None:
-        query = query.where(Lead.value >= min_value)
+        query = query.where(Lead.estimated_value >= min_value)
     if max_value is not None:
-        query = query.where(Lead.value <= max_value)
+        query = query.where(Lead.estimated_value <= max_value)
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())

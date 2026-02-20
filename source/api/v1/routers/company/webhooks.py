@@ -140,4 +140,4 @@ async def handle_webhook(
     except Exception as e:
         # Log the error but return 200 to prevent provider retries
         logger.error(f"Webhook processing error for company {company.id}: {str(e)}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": "Internal processing error"}
