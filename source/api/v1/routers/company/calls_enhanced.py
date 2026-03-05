@@ -15,7 +15,7 @@ from db.models.call_event import CallEvent
 from db.models.contact import Contact
 from db.models.lead import Lead
 from db.models.deal import Deal
-from db.models.enums import CallOutcomeEnum, CallDirectionEnum
+from db.models.enums import CallOutcomeEnum, CallDirectionEnum, RoleEnum
 from api.v1.schemas.crm import PaginatedResponse
 from utils.permissions import require_permissions, Permissions
 from pydantic import BaseModel, Field
@@ -184,12 +184,14 @@ async def get_call_history(
     """
     Enhanced call history with comprehensive filters
 
-    Supports filtering by direction, outcome, operator, CRM entities, and date range.
+    Operators only see their own calls. Admins and Managers see all company calls.
     """
     query = select(CallEvent).where(CallEvent.company_id == user.company_id)
 
-    # Show only my calls if requested
-    if my_calls:
+    # Operator scoping: operators only see their own calls
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(CallEvent.operator_id == user.id)
+    elif my_calls:
         query = query.where(CallEvent.operator_id == user.id)
 
     # Search by phone number

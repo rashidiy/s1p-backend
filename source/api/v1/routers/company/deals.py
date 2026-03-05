@@ -21,6 +21,7 @@ from api.v1.schemas.crm import (
     DealResponse,
     PaginatedResponse
 )
+from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 
 router = APIRouter(prefix="/deals", tags=["Deals"])
@@ -89,12 +90,14 @@ async def list_deals(
     """
     List all deals with filters
 
-    Pipeline view: filter by stage to see deals in different stages.
+    Operators only see their assigned deals. Admins and Managers see all company deals.
     """
     query = select(Deal).where(Deal.company_id == user.company_id)
 
-    # Show only my deals if requested
-    if my_deals:
+    # Operator scoping: operators only see their assigned deals
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Deal.assigned_to == user.id)
+    elif my_deals:
         query = query.where(Deal.assigned_to == user.id)
 
     # Search

@@ -13,7 +13,7 @@ from db import get_session
 from db.models.user import User
 from db.models.task import Task
 from db.models.contact import Contact
-from db.models.enums import TaskStatusEnum, TaskPriorityEnum
+from db.models.enums import TaskStatusEnum, TaskPriorityEnum, RoleEnum
 from api.v1.schemas.crm import (
     TaskCreateRequest,
     TaskUpdateRequest,
@@ -73,12 +73,14 @@ async def list_tasks(
     """
     List all tasks with filters
 
-    Operators see all tasks by default, but typically filter to show only their tasks.
+    Operators only see their assigned tasks. Admins and Managers see all company tasks.
     """
     query = select(Task).where(Task.company_id == user.company_id)
 
-    # Show only my tasks if requested
-    if my_tasks:
+    # Operator scoping: operators only see their assigned tasks
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Task.assigned_to == user.id)
+    elif my_tasks:
         query = query.where(Task.assigned_to == user.id)
 
     # Search
@@ -157,6 +159,7 @@ async def list_tasks(
 
 
 @router.get("/my-today", response_model=list)
+@require_permissions(Permissions.TASKS_READ)
 async def get_my_tasks_today(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
@@ -244,7 +247,6 @@ async def update_task(
     )
 
     # Check permissions: operators can only update their own tasks
-    from db.models.enums import RoleEnum
     if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -307,7 +309,6 @@ async def complete_task(
     )
 
     # Check if user is assigned to this task or is admin
-    from db.models.enums import RoleEnum
     if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
