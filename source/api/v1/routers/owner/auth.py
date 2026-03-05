@@ -4,8 +4,10 @@ Owner authentication endpoints
 
 from datetime import timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.schemas.auth import AuthSchema
@@ -16,6 +18,9 @@ from db.models.enums import RoleEnum
 from api.v1.schemas.owner import OwnerWithCredentials, OwnerResponse
 from utils.managers import PasswordManager, JWTManager, TokenType
 from utils.services.email_service import EmailService
+from utils.services.lockout import is_locked, record_failed_login, clear_failed_logins
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/auth", tags=["Owner Auth"])
 
@@ -27,8 +32,10 @@ class OwnerLoginRequest(BaseModel):
 
 
 @router.post('/login')
+@limiter.limit("5/minute")
 async def login_owner(
     data: OwnerLoginRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -38,14 +45,23 @@ async def login_owner(
     If the owner has a temporary password, returns a restricted token
     that only works with set-password.
     """
+    # Check account lockout before attempting authentication
+    if await is_locked(data.email):
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account temporarily locked due to too many failed login attempts. Try again in 15 minutes.",
+        )
+
     owner = await Owner.get(email=data.email, session=session)
     if not owner:
+        await record_failed_login(data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
     if not PasswordManager.verify(data.password, owner.password_hash):
+        await record_failed_login(data.email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid email or password"
@@ -56,6 +72,9 @@ async def login_owner(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Owner account is inactive"
         )
+
+    # Clear failed login counter on successful authentication
+    await clear_failed_logins(data.email)
 
     # If owner hasn't changed temporary password, return restricted token
     if not owner.email_verified:
@@ -80,7 +99,8 @@ async def login_owner(
 
 
 @router.get('/me', response_model=OwnerResponse)
-async def get_current_owner(owner: Owner = Owner.current()):
+@limiter.limit("5/minute")
+async def get_current_owner(request: Request, owner: Owner = Owner.current()):
     """
     Get current owner profile
 
@@ -90,7 +110,9 @@ async def get_current_owner(owner: Owner = Owner.current()):
 
 
 @router.post('/reset-password')
+@limiter.limit("5/minute")
 async def reset_password(
+    request: Request,
     data: AuthSchema.ResetPasswordRequest,
     owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session),
@@ -114,7 +136,9 @@ async def reset_password(
 
 
 @router.post('/forgot-password')
+@limiter.limit("5/minute")
 async def forgot_password(
+    request: Request,
     data: AuthSchema.ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
@@ -145,7 +169,9 @@ async def forgot_password(
 
 
 @router.post('/set-password', response_model=OwnerWithCredentials)
+@limiter.limit("5/minute")
 async def set_password(
+    request: Request,
     data: AuthSchema.SetPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ):
