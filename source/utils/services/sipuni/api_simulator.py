@@ -1,5 +1,8 @@
+from cachetools import TTLCache
 from httpx import AsyncClient
 from sqlalchemy.util import md5_hex
+
+cache = TTLCache(maxsize=100, ttl=300)
 
 
 class SipuniApiSimulator:
@@ -50,3 +53,29 @@ class SipuniApiSimulator:
                 "hash": md5_hex("+".join([str(attempt_duration), phone, reverse, sipnumber, tree, user, secret]))
             }
             return await client.get(cls.host + "/api/callback/call_tree", params=payload, timeout=attempt_duration + 30)
+
+    @classmethod
+    async def get_operators(cls, *, user, secret):
+        cache_key = f"{user}:{str(secret)}"
+
+        if cache_key in cache:
+            return cache[cache_key]
+
+        async with AsyncClient() as client:
+            payload = {
+                "user": user,
+                "hash": md5_hex("+".join([user, str(secret)]))
+
+            }
+            response = await client.get(cls.host + "/api/statistic/operators", params=payload, timeout=30)
+            cache[cache_key] = response
+            return response
+
+    @classmethod
+    async def get_operators_json(cls, *, user, secret) -> dict[str, dict[str, str]]:
+        response = await cls.get_operators(user=user, secret=secret)
+        if response.status_code != 200:
+            response.raise_for_status()
+        csv = map(lambda x: x.split(';'), response.content.decode('utf-8').split('\n')[1:])
+        operators = {i[0]: {'name': i[1], 'status': i[2], 'call_state': i[3]} for i in csv if len(i) >= 4}
+        return operators
