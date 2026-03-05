@@ -41,14 +41,14 @@ Platform (SaaS)
 │  │                                                        │  │
 │  │  ┌─────────────────────────────────────────────────┐ │  │
 │  │  │ Company A (Sipuni)                              │ │  │
-│  │  │  - company.sipcrm.uz                            │ │  │
+│  │  │  - company.s1p.uz                            │ │  │
 │  │  │  - Users: 15 (3 admins, 5 managers, 7 ops)      │ │  │
 │  │  │  - Calls: ~150/day                              │ │  │
 │  │  └─────────────────────────────────────────────────┘ │  │
 │  │                                                        │  │
 │  │  ┌─────────────────────────────────────────────────┐ │  │
 │  │  │ Company B (Binotel)                             │ │  │
-│  │  │  - companyb.sipcrm.uz                           │ │  │
+│  │  │  - companyb.s1p.uz                           │ │  │
 │  │  │  - Users: 8 (1 admin, 2 managers, 5 ops)        │ │  │
 │  │  │  - Calls: ~80/day                               │ │  │
 │  │  └─────────────────────────────────────────────────┘ │  │
@@ -1735,7 +1735,7 @@ from celery import Celery
 from source.core.config import settings
 
 celery = Celery(
-    'sipcrm',
+    's1p',
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL
 )
@@ -2120,7 +2120,7 @@ def upgrade():
         INSERT INTO owners (id, email, password_hash, first_name, last_name, is_active)
         SELECT
             gen_random_uuid(),
-            'default@sipcrm.uz',
+            'default@s1p.uz',
             '',
             'Default',
             'Owner',
@@ -2219,8 +2219,8 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: sipcrm
-      POSTGRES_USER: sipcrm
+      POSTGRES_DB: s1p
+      POSTGRES_USER: s1p
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -2236,7 +2236,7 @@ services:
     build: .
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
     environment:
-      DATABASE_URL: postgresql+asyncpg://sipcrm:${DB_PASSWORD}@postgres/sipcrm
+      DATABASE_URL: postgresql+asyncpg://s1p:${DB_PASSWORD}@postgres/s1p
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
     ports:
@@ -2250,7 +2250,7 @@ services:
     build: .
     command: celery -A source.celery_app worker --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://sipcrm:${DB_PASSWORD}@postgres/sipcrm
+      DATABASE_URL: postgresql+asyncpg://s1p:${DB_PASSWORD}@postgres/s1p
       REDIS_URL: redis://redis:6379
     depends_on:
       - postgres
@@ -2261,7 +2261,7 @@ services:
     build: .
     command: celery -A source.celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://sipcrm:${DB_PASSWORD}@postgres/sipcrm
+      DATABASE_URL: postgresql+asyncpg://s1p:${DB_PASSWORD}@postgres/s1p
       REDIS_URL: redis://redis:6379
     depends_on:
       - postgres
@@ -2291,7 +2291,7 @@ volumes:
 # .env
 
 # Database
-DATABASE_URL=postgresql+asyncpg://sipcrm:password@localhost/sipcrm
+DATABASE_URL=postgresql+asyncpg://s1p:password@localhost/s1p
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -2305,9 +2305,9 @@ REFRESH_TOKEN_EXPIRE_DAYS=30
 # SMTP (for emails)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=noreply@sipcrm.uz
+SMTP_USER=noreply@s1p.uz
 SMTP_PASSWORD=your-smtp-password
-SMTP_FROM=noreply@sipcrm.uz
+SMTP_FROM=noreply@s1p.uz
 
 # Sipuni
 SIPUNI_ALLOWED_IPS=185.41.162.0/24,185.41.163.0/24
@@ -2320,7 +2320,7 @@ RECORD_PROXY_SECRET=another-super-secret-key
 
 # Application
 DEBUG=false
-ALLOWED_ORIGINS=https://sipcrm.uz,https://*.sipcrm.uz
+ALLOWED_ORIGINS=https://s1p.uz,https://*.s1p.uz
 ```
 
 ---
@@ -2331,8 +2331,8 @@ ALLOWED_ORIGINS=https://sipcrm.uz,https://*.sipcrm.uz
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourorg/siptools.git
-cd siptools
+git clone https://github.com/yourorg/s1p-backend.git
+cd s1p-backend
 
 # 2. Install dependencies
 python -m venv venv

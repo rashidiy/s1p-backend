@@ -140,7 +140,7 @@
   - `source/templates/email/contract_expired.html` — contract expired notification
 - [ ] Template design guidelines:
   - Clean, professional look
-  - SIPtools branding
+  - S1P branding
   - CTA buttons (e.g., "Set Your Password", "Login Now")
   - Footer with company info + unsubscribe placeholder
   - Works in Gmail, Outlook, Apple Mail (table-based layout for compatibility)

@@ -138,7 +138,7 @@ async def forgot_password(
             to_email=owner.email,
             reset_token=token,
             reset_url=reset_url,
-            company_name="SIPtools CRM",
+            company_name="S1P CRM",
         )
 
     return {"message": "If the email exists, a reset link has been sent"}

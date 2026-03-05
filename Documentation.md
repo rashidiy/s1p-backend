@@ -1,4 +1,4 @@
-# SIPtools — Project Documentation for AI Agents
+# S1P — Project Documentation for AI Agents
 
 This document consolidates project knowledge for AI agents working in any branch.
 

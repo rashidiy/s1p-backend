@@ -75,7 +75,7 @@ class EmailService:
         to_email: str,
         reset_token: str,
         reset_url: str = "https://yourcompany.crm.com/reset-password",
-        company_name: str = "SIPtools CRM",
+        company_name: str = "S1P CRM",
     ) -> None:
         """Schedule password reset email as a background task."""
         background_tasks.add_task(

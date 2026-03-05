@@ -1,5 +1,5 @@
 """
-Database enums for the SIPtools CRM platform
+Database enums for the S1P CRM platform
 """
 
 import enum

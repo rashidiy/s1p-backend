@@ -1,5 +1,5 @@
 """
-Database models for SIPtools CRM platform
+Database models for S1P CRM platform
 """
 
 # Core multi-tenant models

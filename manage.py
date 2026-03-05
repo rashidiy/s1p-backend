@@ -28,7 +28,7 @@ def run_async(coro):
 
 @click.group()
 def cli():
-    """SIPtools management commands."""
+    """S1P management commands."""
     pass
 
 

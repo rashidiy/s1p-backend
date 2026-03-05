@@ -96,7 +96,7 @@ async def send_password_reset_email(
     to_email: str,
     reset_token: str,
     reset_url: str,
-    company_name: str = "SIPtools CRM",
+    company_name: str = "S1P CRM",
 ) -> bool:
     """Send password reset email."""
     html = render_template(

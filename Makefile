@@ -4,7 +4,7 @@
 # Help
 # ===========================================
 help:
-	@echo "SIPtools - Available Commands"
+	@echo "S1P - Available Commands"
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make mig          - Create and run database migrations"
@@ -181,4 +181,4 @@ ps:
 	docker compose ps
 
 stats:
-	docker stats siptools-api siptools-db siptools-redis
+	docker stats s1p-api s1p-db s1p-redis

@@ -1,3 +1,3 @@
 """
-SIPtools Test Suite
+S1P Test Suite
 """
