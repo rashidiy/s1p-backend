@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}SIPtools CRM{% endblock %}</title>
+  <title>{% block title %}S1P CRM{% endblock %}</title>
   <style>
     /* Reset */
     body, table, td, p, a { margin: 0; padding: 0; }
@@ -181,7 +181,7 @@
           <div class="container">
             <!-- Header -->
             <div class="header">
-              <h1>{{ company_name | default('SIPtools CRM') }}</h1>
+              <h1>{{ company_name | default('S1P CRM') }}</h1>
               <div class="subtitle">{% block header_subtitle %}{% endblock %}</div>
             </div>
 
@@ -192,7 +192,7 @@
 
             <!-- Footer -->
             <div class="footer">
-              <p>&copy; {{ year | default('2026') }} {{ company_name | default('SIPtools CRM') }}. All rights reserved.</p>
+              <p>&copy; {{ year | default('2026') }} {{ company_name | default('S1P CRM') }}. All rights reserved.</p>
               <p>This is an automated message. Please do not reply directly to this email.</p>
               {% block footer_extra %}{% endblock %}
             </div>

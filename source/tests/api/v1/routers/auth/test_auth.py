@@ -17,7 +17,7 @@ class TestUserLogin:
         """Test successful user login with Origin header."""
         response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": f"https://{test_company.subdomain}.siptools.com"},
+            headers={"Origin": f"https://{test_company.subdomain}.s1p.com"},
             json={
                 "email": test_user.email,
                 "password": "testpassword123"
@@ -48,7 +48,7 @@ class TestUserLogin:
         """Test login with non-existent company subdomain fails."""
         response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": "https://nonexistent.siptools.com"},
+            headers={"Origin": "https://nonexistent.s1p.com"},
             json={
                 "email": test_user.email,
                 "password": "testpassword123"
@@ -61,7 +61,7 @@ class TestUserLogin:
         """Test login with non-existent email fails."""
         response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": f"https://{test_company.subdomain}.siptools.com"},
+            headers={"Origin": f"https://{test_company.subdomain}.s1p.com"},
             json={
                 "email": "nonexistent@test.com",
                 "password": "testpassword123"
@@ -74,7 +74,7 @@ class TestUserLogin:
         """Test login with wrong password fails."""
         response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": f"https://{test_company.subdomain}.siptools.com"},
+            headers={"Origin": f"https://{test_company.subdomain}.s1p.com"},
             json={
                 "email": test_user.email,
                 "password": "wrongpassword123"
@@ -87,7 +87,7 @@ class TestUserLogin:
         """Test login with invalid email format fails."""
         response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": f"https://{test_company.subdomain}.siptools.com"},
+            headers={"Origin": f"https://{test_company.subdomain}.s1p.com"},
             json={
                 "email": "invalid-email",
                 "password": "testpassword123"
@@ -105,7 +105,7 @@ class TestTokenRefresh:
         # First login to get tokens
         login_response = await client.post(
             "/api/v1/auth/login",
-            headers={"Origin": f"https://{test_company.subdomain}.siptools.com"},
+            headers={"Origin": f"https://{test_company.subdomain}.s1p.com"},
             json={
                 "email": test_user.email,
                 "password": "testpassword123"

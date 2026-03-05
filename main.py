@@ -19,7 +19,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://[\w-]+\.(siptools\.com|localhost)(:\d+)?",
+    allow_origin_regex=r"https?://[\w-]+\.(s1p\.com|localhost)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,7 +38,7 @@ def _filtered_openapi(type_filter: str) -> dict:
     path_filter = PATH_FILTERS.get(type_filter)
     if path_filter:
         schema["paths"] = {p: ops for p, ops in schema["paths"].items() if path_filter(p)}
-        schema["info"]["title"] = f"SIPtools - {type_filter.title()} API"
+        schema["info"]["title"] = f"S1P - {type_filter.title()} API"
     return schema
 
 
@@ -51,7 +51,7 @@ async def openapi_filtered(type: str = Query("owner")):
 async def swagger_ui(type: str = Query("owner")):
     return get_swagger_ui_html(
         openapi_url=f"/openapi.json?type={type}",
-        title=f"SIPtools - {type.title()} API",
+        title=f"S1P - {type.title()} API",
         swagger_ui_parameters={"persistAuthorization": True},
     )
 

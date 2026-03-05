@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-    container_name: siptools-api
+    container_name: s1p-api
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8000}:8000"
@@ -46,7 +46,7 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - siptools-network
+      - s1p-network
     volumes:
       - .:/app
       - app-logs:/app/logs
@@ -56,7 +56,7 @@ services:
   # ===========================================
   db:
     image: postgres:16-alpine
-    container_name: siptools-db
+    container_name: s1p-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-sip_tools}
@@ -76,14 +76,14 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - siptools-network
+      - s1p-network
 
   # ===========================================
   # Redis Cache
   # ===========================================
   redis:
     image: redis:7-alpine
-    container_name: siptools-redis
+    container_name: s1p-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
@@ -97,17 +97,17 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - siptools-network
+      - s1p-network
 
   # ===========================================
   # PgAdmin (Development Only)
   # ===========================================
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: siptools-pgadmin
+    container_name: s1p-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@siptools.dev}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@s1p.dev}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
@@ -118,7 +118,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - siptools-network
+      - s1p-network
     profiles:
       - dev
 
@@ -127,7 +127,7 @@ services:
   # ===========================================
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: siptools-redis-commander
+    container_name: s1p-redis-commander
     restart: unless-stopped
     environment:
       REDIS_HOSTS: local:redis:6379
@@ -137,7 +137,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - siptools-network
+      - s1p-network
     profiles:
       - dev
 
@@ -145,19 +145,19 @@ services:
 # Networks
 # ===========================================
 networks:
-  siptools-network:
+  s1p-network:
     driver: bridge
-    name: siptools-network
+    name: s1p-network
 
 # ===========================================
 # Volumes
 # ===========================================
 volumes:
   postgres-data:
-    name: siptools-postgres-data
+    name: s1p-postgres-data
   redis-data:
-    name: siptools-redis-data
+    name: s1p-redis-data
   pgadmin-data:
-    name: siptools-pgadmin-data
+    name: s1p-pgadmin-data
   app-logs:
-    name: siptools-app-logs
+    name: s1p-app-logs

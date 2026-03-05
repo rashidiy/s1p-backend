@@ -41,7 +41,7 @@ class SMTPConfig:
     PORT = int(os.getenv('SMTP_PORT', '587'))
     USER = os.getenv('SMTP_USER', '')
     PASSWORD = os.getenv('SMTP_PASSWORD', '')
-    FROM_NAME = os.getenv('SMTP_FROM_NAME', 'SIPtools CRM')
+    FROM_NAME = os.getenv('SMTP_FROM_NAME', 'S1P CRM')
     FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', '')
     USE_TLS = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
     ENABLED = os.getenv('SMTP_ENABLED', 'false').lower() == 'true'

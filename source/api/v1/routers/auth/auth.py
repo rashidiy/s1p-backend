@@ -22,7 +22,7 @@ def _extract_subdomain(request: Request) -> str:
     """
     Extract company subdomain from Origin header.
 
-    Expected Origin: https://mycompany.siptools.com or http://mycompany.localhost:3000
+    Expected Origin: https://mycompany.s1p.com or http://mycompany.localhost:3000
     Returns the first part of the hostname as the subdomain.
     """
     origin = request.headers.get("origin")

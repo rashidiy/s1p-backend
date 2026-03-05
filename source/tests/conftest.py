@@ -1,5 +1,5 @@
 """
-Test configuration and fixtures for SIPtools
+Test configuration and fixtures for S1P
 """
 
 import asyncio
@@ -309,7 +309,7 @@ def operator_auth_headers(operator_token: str) -> dict:
 @pytest.fixture
 def company_origin_headers(test_company: Company) -> dict:
     """Get Origin header for company subdomain (required for auth endpoints)."""
-    return {"Origin": f"https://{test_company.subdomain}.siptools.com"}
+    return {"Origin": f"https://{test_company.subdomain}.s1p.com"}
 
 
 @pytest.fixture
