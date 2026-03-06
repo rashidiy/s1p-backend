@@ -68,7 +68,7 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     )  # ["leads.read", "calls.write"]
 
     # Localization
-    language: Mapped[str] = mapped_column(String(10), default="en")
+    language: Mapped[str] = mapped_column(String(10), default="ru")
 
     # Status flags
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
