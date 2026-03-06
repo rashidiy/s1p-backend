@@ -54,5 +54,5 @@ class WebhookConfig:
     BINOTEL_ALLOWED_IPS = os.getenv('BINOTEL_ALLOWED_IPS', '').split(',') if os.getenv('BINOTEL_ALLOWED_IPS') else []
 
     # Fallback: allow all IPs if not configured (dev mode)
-    WEBHOOK_IP_WHITELIST_ENABLED = os.getenv('WEBHOOK_IP_WHITELIST_ENABLED', 'false').lower() == 'true'
+    WEBHOOK_IP_WHITELIST_ENABLED = os.getenv('WEBHOOK_IP_WHITELIST_ENABLED', 'true').lower() == 'true'
 

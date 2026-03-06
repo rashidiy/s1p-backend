@@ -1,7 +1,11 @@
+import os
 import sys
 import copy
 
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 sys.path.append('source')
 
@@ -11,18 +15,37 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from api.v1.routers import router as v1
 
+
+# Read allowed CORS origins from env (comma-separated), default to localhost:3000
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+CORS_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every response"""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        return response
+
+
 app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
 )
 
+app.add_middleware(SecurityHeadersMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://[\w-]+\.(s1p\.com|localhost)(:\d+)?",
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(v1)

@@ -95,11 +95,12 @@ class HTTPClientPool:
         url: str,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        allow_redirects: bool = True,
     ) -> aiohttp.ClientResponse:
         """Make a GET request using the connection pool"""
         session = await self.get_session()
-        kwargs = {}
+        kwargs = {"allow_redirects": allow_redirects}
         if params:
             kwargs['params'] = params
         if headers:
