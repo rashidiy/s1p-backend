@@ -28,6 +28,9 @@ from .permission_group import PermissionGroup
 # Custom fields
 from .custom_field import CustomFieldDefinition
 
+# Integrations
+from .telegram_config import TelegramConfig
+
 # System models
 from .audit_log import AuditLog
 
@@ -55,6 +58,8 @@ __all__ = [
     "PermissionGroup",
     # Custom fields
     "CustomFieldDefinition",
+    # Integrations
+    "TelegramConfig",
     # System
     "AuditLog",
     # Enums module
