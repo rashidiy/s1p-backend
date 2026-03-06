@@ -25,6 +25,9 @@ from .contract import Contract
 # Permission groups
 from .permission_group import PermissionGroup
 
+# Custom fields
+from .custom_field import CustomFieldDefinition
+
 # System models
 from .audit_log import AuditLog
 
@@ -50,6 +53,8 @@ __all__ = [
     "Contract",
     # Permission groups
     "PermissionGroup",
+    # Custom fields
+    "CustomFieldDefinition",
     # System
     "AuditLog",
     # Enums module
