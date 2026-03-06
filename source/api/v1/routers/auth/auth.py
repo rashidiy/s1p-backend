@@ -4,6 +4,8 @@ from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
@@ -13,7 +15,10 @@ from db import get_session
 from db.models import User, Company
 from utils.managers import PasswordManager, JWTManager, TokenType
 from utils.services.email_service import EmailService
+from utils.services.lockout import is_locked, record_failed_login, clear_failed_logins
 from . import router
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,7 @@ async def _resolve_company(subdomain: str, session: AsyncSession) -> Company:
 
 
 @router.post('/login')
+@limiter.limit("5/minute")
 async def login(
     data: AuthSchema.LoginRequest,
     request: Request,
@@ -78,12 +84,23 @@ async def login(
     If the user has a temporary password (email_verified=False),
     returns a restricted token that only works with set-password.
     """
+    # Check account lockout before attempting authentication
+    if await is_locked(data.email):
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account temporarily locked due to too many failed login attempts. Try again in 15 minutes.",
+        )
+
     subdomain = _extract_subdomain(request)
     company = await _resolve_company(subdomain, session)
 
     user = await User.get(email=data.email, company_id=company.id, session=session)
     if not user or not PasswordManager.verify(data.password, user.password_hash):
+        await record_failed_login(data.email)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+
+    # Clear failed login counter on successful authentication
+    await clear_failed_logins(data.email)
 
     # If user hasn't changed temporary password, return restricted token
     if not user.email_verified:
@@ -114,7 +131,9 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post('/refresh')
+@limiter.limit("10/minute")
 async def refresh_token(
+    request: Request,
     data: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session),
 ):
@@ -138,7 +157,9 @@ async def refresh_token(
 
 
 @router.post('/set-password', response_model=AuthSchema.AuthorizedResponse)
+@limiter.limit("5/minute")
 async def set_password(
+    request: Request,
     data: AuthSchema.SetPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ):
@@ -207,6 +228,7 @@ async def reset_password(
 
 
 @router.post('/forgot-password')
+@limiter.limit("3/hour")
 async def forgot_password(
     data: AuthSchema.ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
