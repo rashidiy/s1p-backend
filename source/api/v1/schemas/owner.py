@@ -95,8 +95,15 @@ class InviteAdminRequest(BaseModel):
     """Owner invites a superadmin to a company (gets full admin permissions)"""
     email: EmailStr
     first_name: str = Field(..., min_length=1, max_length=225)
-    last_name: Optional[str] = Field(None, max_length=225)
+    last_name: str | None = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
+
+
+class InviteAdminResponse(BaseModel):
+    """Response after admin invitation is sent"""
+    user_id: UUID
+    email: str
+    message: str
 
 
 class CompanyUpdateRequest(BaseModel):

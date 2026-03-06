@@ -92,6 +92,26 @@ async def send_invitation_email(
     )
 
 
+async def send_admin_invitation_email(
+    to_email: str,
+    first_name: str,
+    company_name: str,
+    set_password_url: str,
+) -> bool:
+    """Send admin invitation email with set-password link."""
+    html = render_template(
+        "admin_invitation.html",
+        first_name=first_name,
+        company_name=company_name,
+        set_password_url=set_password_url,
+    )
+    return await send_email(
+        to_email=to_email,
+        subject=f"You've been invited to S1P - {company_name}",
+        html_body=html,
+    )
+
+
 async def send_password_reset_email(
     to_email: str,
     reset_token: str,
