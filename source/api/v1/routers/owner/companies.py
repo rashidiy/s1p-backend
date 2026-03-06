@@ -4,6 +4,7 @@ Owner's company management endpoints
 
 import re
 import secrets
+from datetime import timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,10 @@ from api.v1.schemas.owner import (
     CompanyResponse,
     CompanyDetailResponse,
     InviteAdminRequest,
+    InviteAdminResponse,
 )
 from api.v1.schemas.user import UserResponse
-from utils.managers import PasswordManager
+from utils.managers import PasswordManager, JWTManager, TokenType
 from utils.services.email_service import EmailService
 from utils.contract_enforcement import check_user_limit
 from utils.permissions import ROLE_PERMISSIONS
@@ -99,7 +101,7 @@ async def create_company(
     return company
 
 
-@router.post("/{company_id}/invite-admin", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{company_id}/invite-admin", response_model=InviteAdminResponse, status_code=status.HTTP_201_CREATED)
 async def invite_admin(
     company_id: UUID,
     data: InviteAdminRequest,
@@ -108,10 +110,10 @@ async def invite_admin(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Invite a superadmin to a company (Owner only)
+    Invite a company admin (Owner only)
 
-    Creates a COMPANY_ADMIN user with full admin permissions
-    and sends an email invitation with a temporary password.
+    Creates a COMPANY_ADMIN user with a random temporary password
+    and sends an invitation email with a set-password link.
     """
     company = await Company.get_or_404(
         session=session,
@@ -134,8 +136,8 @@ async def invite_admin(
     # Check contract user limit
     await check_user_limit(company.id, RoleEnum.COMPANY_ADMIN, session)
 
-    # Generate temporary password
-    temporary_password = EmailService.generate_temporary_password()
+    # Generate temporary password and hash it
+    temporary_password = secrets.token_urlsafe(16)
 
     # Create admin user
     user = await User.create(
@@ -153,17 +155,31 @@ async def invite_admin(
         email_verified=False,
     )
 
-    # Send invitation email
+    # Create a temporary JWT token for set-password flow
+    set_password_token = JWTManager.create(
+        sub=user.id,
+        token_type=TokenType.TEMPORARY,
+        company_id=company.id,
+        role=RoleEnum.COMPANY_ADMIN.value,
+        data={"purpose": "set_password", "email": user.email},
+        duration=timedelta(hours=48),
+    )
+    set_password_url = f"{AppConfig.BASE_URL}/set-password?token={set_password_token}"
+
+    # Send invitation email as background task
     EmailService.send_admin_invitation(
         background_tasks=background_tasks,
-        to_email=user.email,
+        email=user.email,
+        first_name=user.first_name,
         company_name=company.name,
-        temporary_password=temporary_password,
-        invited_by=owner.full_name,
-        login_url=f"{AppConfig.BASE_URL}/login",
+        set_password_url=set_password_url,
     )
 
-    return user
+    return InviteAdminResponse(
+        user_id=user.id,
+        email=user.email,
+        message="Invitation sent",
+    )
 
 
 @router.get("", response_model=List[CompanyResponse])
