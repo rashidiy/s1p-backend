@@ -71,13 +71,22 @@ async def get_permission_group(
 ):
     """
     Get a single permission group
-    """
-    group = await PermissionGroup.get(id=group_id, session=session)
-    if not group:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
-    # Must be system group or belong to user's company
-    if group.company_id is not None and group.company_id != user.company_id:
+    Returns the group only if it's a system group or belongs to the user's company.
+    Returns 404 for groups belonging to other companies (no existence leak).
+    """
+    query = select(PermissionGroup).where(
+        PermissionGroup.id == group_id,
+        PermissionGroup.deleted_at.is_(None),
+        or_(
+            PermissionGroup.company_id.is_(None),
+            PermissionGroup.company_id == user.company_id,
+        ),
+    )
+    result = await session.execute(query)
+    group = result.scalar_one_or_none()
+
+    if not group:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
     return group
@@ -128,17 +137,25 @@ async def update_permission_group(
     """
     Update a custom permission group
 
-    System groups cannot be modified.
+    Only company-owned groups can be modified. System groups cannot be modified.
     """
-    group = await PermissionGroup.get(id=group_id, session=session)
+    query = select(PermissionGroup).where(
+        PermissionGroup.id == group_id,
+        PermissionGroup.deleted_at.is_(None),
+    )
+    result = await session.execute(query)
+    group = result.scalar_one_or_none()
+
     if not group:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
-    if group.company_id is not None and group.company_id != user.company_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
-
+    # System groups cannot be modified
     if group.is_system:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "System groups cannot be modified")
+
+    # Only allow updating groups owned by the user's company
+    if group.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
     if data.name is not None:
         # Check name uniqueness
@@ -176,15 +193,23 @@ async def delete_permission_group(
     System groups cannot be deleted.
     Nullifies permission_group_id on affected users before deleting.
     """
-    group = await PermissionGroup.get(id=group_id, session=session)
+    query = select(PermissionGroup).where(
+        PermissionGroup.id == group_id,
+        PermissionGroup.deleted_at.is_(None),
+    )
+    result = await session.execute(query)
+    group = result.scalar_one_or_none()
+
     if not group:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
-    if group.company_id is not None and group.company_id != user.company_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
-
+    # System groups cannot be deleted
     if group.is_system:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "System groups cannot be deleted")
+
+    # Only allow deleting groups owned by the user's company
+    if group.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Permission group not found")
 
     # Nullify permission_group_id on affected users
     await User.update_by(
