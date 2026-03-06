@@ -6,7 +6,7 @@ import logging
 from uuid import UUID
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, HTTPException, status
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +18,9 @@ from db.models.call_event import CallEvent
 from db.models.user import User
 from db.models.contact import Contact
 from db.models.lead import Lead
-from db.models.enums import ProviderEnum
+from db.models.enums import ProviderEnum, CallStatusEnum
 from utils.services.telephony import ProviderFactory
+from utils.services.telegram_service import TelegramService
 from api.v1.routers.company.calls.common import next_call_number
 
 logger = logging.getLogger(__name__)
@@ -147,10 +148,36 @@ async def _validate_entity_ownership(
             )
 
 
+async def _send_telegram_call_notification(company_id, call_event, call_state):
+    """Fire-and-forget Telegram notification for a call event using a fresh DB session."""
+    from db.base import AsyncDatabaseSession
+    session_factory = AsyncDatabaseSession()
+    async for session in session_factory():
+        try:
+            if call_state in (
+                CallStatusEnum.NOANSWER,
+                CallStatusEnum.BUSY,
+                CallStatusEnum.CANCEL,
+            ):
+                await TelegramService.send_missed_call_notification(
+                    company_id, call_event, session
+                )
+            elif call_state == CallStatusEnum.ANSWER:
+                await TelegramService.send_call_notification(
+                    company_id, call_event, session
+                )
+        except Exception:
+            logger.exception(
+                "Telegram notification background task failed for company %s",
+                company_id,
+            )
+
+
 @router.get("/{token}")
 async def handle_webhook(
     token: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -248,11 +275,24 @@ async def handle_webhook(
                 values=call_data,
                 id=existing_call.id
             )
+            # Send Telegram notification for updated call
+            call_state = call_data.get('state')
+            if call_state:
+                background_tasks.add_task(
+                    _send_telegram_call_notification,
+                    company.id, existing_call, call_state,
+                )
             return {"status": "updated", "call_id": existing_call.id}
         else:
             # Assign company-scoped id for new events
             call_data['id'] = await next_call_number(session, company.id)
             call_event = await CallEvent.create(session=session, **call_data)
+            # Send Telegram notification for new call
+            if call_event.state:
+                background_tasks.add_task(
+                    _send_telegram_call_notification,
+                    company.id, call_event, call_event.state,
+                )
             return {"status": "created", "call_id": call_event.id}
 
     except HTTPException:
