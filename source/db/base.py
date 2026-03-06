@@ -9,7 +9,15 @@ from core.config import DatabaseConfig
 
 
 class AsyncDatabaseSession:
-    _engine = create_async_engine(DatabaseConfig.url(), future=True, echo=False)
+    _engine = create_async_engine(
+        DatabaseConfig.url(),
+        future=True,
+        echo=False,
+        pool_size=20,
+        max_overflow=40,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
     _session_factory = sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
 
     async def __call__(self) -> AsyncGenerator[AsyncSession, None]:
