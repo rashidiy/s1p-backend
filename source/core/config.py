@@ -47,6 +47,12 @@ class SMTPConfig:
     ENABLED = os.getenv('SMTP_ENABLED', 'false').lower() == 'true'
 
 
+class TelegramConfig:
+    """Telegram bot configuration"""
+    BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    ENABLED = bool(os.getenv('TELEGRAM_BOT_TOKEN', ''))
+
+
 class WebhookConfig:
     """Webhook security configuration"""
     # IP whitelisting for webhook endpoints

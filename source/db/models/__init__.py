@@ -25,6 +25,9 @@ from .contract import Contract
 # Permission groups
 from .permission_group import PermissionGroup
 
+# Integrations
+from .telegram_config import TelegramConfig
+
 # System models
 from .audit_log import AuditLog
 
@@ -50,6 +53,8 @@ __all__ = [
     "Contract",
     # Permission groups
     "PermissionGroup",
+    # Integrations
+    "TelegramConfig",
     # System
     "AuditLog",
     # Enums module

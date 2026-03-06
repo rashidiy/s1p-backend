@@ -3,7 +3,7 @@ Unified webhook handler for all telephony providers
 """
 
 import logging
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -13,6 +13,8 @@ from db.models.company import Company
 from db.models.call_event import CallEvent
 from db.models.enums import ProviderEnum
 from utils.services.telephony import ProviderFactory
+from utils.services.telegram_service import TelegramService
+from db.models.enums import CallStatusEnum
 from api.v1.routers.company.calls.common import next_call_number
 
 logger = logging.getLogger(__name__)
