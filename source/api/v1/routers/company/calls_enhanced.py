@@ -18,6 +18,7 @@ from db.models.deal import Deal
 from db.models.enums import CallOutcomeEnum, CallDirectionEnum
 from api.v1.schemas.crm import PaginatedResponse
 from utils.permissions import require_permissions, Permissions
+from db.models.enums import RoleEnum
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/calls", tags=["Calls - Enhanced"])
@@ -188,8 +189,10 @@ async def get_call_history(
     """
     query = select(CallEvent).where(CallEvent.company_id == user.company_id)
 
-    # Show only my calls if requested
-    if my_calls:
+    # Operators only see their own calls
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(CallEvent.operator_id == user.id)
+    elif my_calls:
         query = query.where(CallEvent.operator_id == user.id)
 
     # Search by phone number
@@ -327,9 +330,12 @@ async def get_call_outcomes_summary(
     """
     query = select(CallEvent).where(CallEvent.company_id == user.company_id)
 
-    # Filters
-    if operator_id:
+    # Operators only see their own call stats
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(CallEvent.operator_id == user.id)
+    elif operator_id:
         query = query.where(CallEvent.operator_id == operator_id)
+
     if date_from:
         query = query.where(func.date(CallEvent.created_at) >= date_from)
     if date_to:

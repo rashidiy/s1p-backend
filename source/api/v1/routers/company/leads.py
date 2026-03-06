@@ -2,7 +2,7 @@
 Leads management endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from typing import Optional
@@ -21,6 +21,8 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
+from utils.services.webhook import fire_webhook_event
+from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
@@ -29,6 +31,7 @@ router = APIRouter(prefix="/leads", tags=["Leads"])
 @require_permissions(Permissions.LEADS_WRITE)
 async def create_lead(
     data: LeadCreateRequest,
+    background_tasks: BackgroundTasks,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
@@ -60,6 +63,34 @@ async def create_lead(
         **data.model_dump(exclude={'tags'})
     )
 
+    # Telegram notification for new lead
+    contact_name = None
+    if data.contact_id:
+        c = await Contact.get(session=session, id=data.contact_id)
+        if c:
+            contact_name = f"{c.first_name} {c.last_name or ''}".strip()
+
+    background_tasks.add_task(
+        _notify_new_lead,
+        user.company_id, lead.id, lead.title,
+        data.source, contact_name, data.estimated_value
+    )
+
+    # Fire outbound webhook
+    await fire_webhook_event(
+        company_id=user.company_id,
+        event_type="lead.created",
+        data={
+            "id": str(lead.id),
+            "title": lead.title,
+            "status": lead.status.value if lead.status else None,
+            "source": lead.source,
+            "contact_id": str(lead.contact_id) if lead.contact_id else None,
+            "estimated_value": float(lead.estimated_value) if lead.estimated_value else None,
+        },
+        session=session,
+    )
+
     return lead
 
 
@@ -85,8 +116,10 @@ async def list_leads(
     """
     query = select(Lead).where(Lead.company_id == user.company_id)
 
-    # Show only my leads if requested
-    if my_leads:
+    # Operators only see their own leads
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Lead.assigned_to == user.id)
+    elif my_leads:
         query = query.where(Lead.assigned_to == user.id)
 
     # Search
@@ -175,6 +208,10 @@ async def get_lead(
         id=lead_id,
         company_id=user.company_id
     )
+
+    # Operators can only see their own leads
+    if user.role == RoleEnum.COMPANY_OPERATOR and lead.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
     # Get contact name
     contact_name = None
@@ -339,3 +376,24 @@ async def assign_lead(
     await lead.update(session=session)
 
     return lead
+
+
+async def _notify_new_lead(company_id, lead_id, lead_title, source, contact_name, estimated_value):
+    """Background task: send Telegram notification for new lead."""
+    import logging
+    from db.base import AsyncDatabaseSession
+    from utils.services.telegram import TelegramService
+
+    try:
+        async for session in AsyncDatabaseSession()():
+            await TelegramService.notify_new_lead(
+                session=session,
+                company_id=company_id,
+                lead_id=lead_id,
+                lead_title=lead_title,
+                source=source,
+                contact_name=contact_name,
+                estimated_value=float(estimated_value) if estimated_value else None,
+            )
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Telegram new_lead notification failed: {e}", exc_info=True)
