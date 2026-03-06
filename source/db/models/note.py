@@ -5,7 +5,7 @@ Note model - Notes and comments
 from sqlalchemy import (
     Column, DateTime, String, Text, ForeignKey, Index, text
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -48,6 +48,9 @@ class Note(Base, ObjectManagerMixin):
     # Linked entity (polymorphic)
     entity_type = Column(String(50), nullable=False)  # 'lead', 'contact', 'deal', 'call'
     entity_id = Column(String(255), nullable=False)
+
+    # Custom fields
+    custom_fields = Column(JSONB, server_default=text("'{}'::jsonb"))
 
     # Created by
     created_by = Column(

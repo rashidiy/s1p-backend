@@ -2,7 +2,7 @@
 Deals management endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from typing import Optional
@@ -22,6 +22,8 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
+from utils.services.webhook import fire_webhook_event
+from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/deals", tags=["Deals"])
 
@@ -93,8 +95,10 @@ async def list_deals(
     """
     query = select(Deal).where(Deal.company_id == user.company_id)
 
-    # Show only my deals if requested
-    if my_deals:
+    # Operators only see their own deals
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Deal.assigned_to == user.id)
+    elif my_deals:
         query = query.where(Deal.assigned_to == user.id)
 
     # Search
@@ -188,6 +192,10 @@ async def get_pipeline_summary(
         Deal.company_id == user.company_id,
         Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
     )
+
+    # Operators only see their own deals in pipeline
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Deal.assigned_to == user.id)
     result = await session.execute(query)
     deals = result.scalars().all()
 
@@ -230,6 +238,10 @@ async def get_deal(
         company_id=user.company_id
     )
 
+    # Operators can only see their own deals
+    if user.role == RoleEnum.COMPANY_OPERATOR and deal.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deal not found")
+
     # Get contact name
     contact_name = None
     if deal.contact_id:
@@ -262,6 +274,7 @@ async def get_deal(
 async def update_deal(
     deal_id: UUID,
     data: DealUpdateRequest,
+    background_tasks: BackgroundTasks,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
@@ -275,6 +288,8 @@ async def update_deal(
         id=deal_id,
         company_id=user.company_id
     )
+
+    old_stage = deal.stage
 
     # Validate contact if changing
     if data.contact_id:
@@ -298,6 +313,34 @@ async def update_deal(
         setattr(deal, field, value)
 
     await deal.update(session=session)
+
+    # Telegram notification if stage changed
+    if data.stage and deal.stage != old_stage:
+        assigned_name = None
+        if deal.assigned_to:
+            a = await User.get(session=session, id=deal.assigned_to)
+            if a:
+                assigned_name = a.full_name
+        background_tasks.add_task(
+            _notify_deal_stage_change,
+            user.company_id, deal.id, deal.title,
+            old_stage.value if old_stage else "", deal.stage.value,
+            float(deal.amount) if deal.amount else None, assigned_name
+        )
+
+        # Fire outbound webhook for stage change
+        await fire_webhook_event(
+            company_id=user.company_id,
+            event_type="deal.stage_changed",
+            data={
+                "id": str(deal.id),
+                "title": deal.title,
+                "old_stage": old_stage.value if old_stage else None,
+                "new_stage": deal.stage.value,
+                "amount": float(deal.amount) if deal.amount else None,
+            },
+            session=session,
+        )
 
     return deal
 
@@ -325,6 +368,7 @@ async def delete_deal(
 @require_permissions(Permissions.DEALS_WRITE)
 async def mark_deal_won(
     deal_id: UUID,
+    background_tasks: BackgroundTasks,
     win_reason: Optional[str] = Query(None),
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
@@ -340,11 +384,37 @@ async def mark_deal_won(
         company_id=user.company_id
     )
 
+    old_stage = deal.stage
     deal.stage = DealStageEnum.CLOSED_WON
     deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 100
 
     await deal.update(session=session)
+
+    assigned_name = None
+    if deal.assigned_to:
+        a = await User.get(session=session, id=deal.assigned_to)
+        if a:
+            assigned_name = a.full_name
+    background_tasks.add_task(
+        _notify_deal_stage_change,
+        user.company_id, deal.id, deal.title,
+        old_stage.value if old_stage else "", "closed_won",
+        float(deal.amount) if deal.amount else None, assigned_name
+    )
+
+    await fire_webhook_event(
+        company_id=user.company_id,
+        event_type="deal.stage_changed",
+        data={
+            "id": str(deal.id),
+            "title": deal.title,
+            "old_stage": old_stage.value if old_stage else None,
+            "new_stage": "closed_won",
+            "amount": float(deal.amount) if deal.amount else None,
+        },
+        session=session,
+    )
 
     return deal
 
@@ -353,6 +423,7 @@ async def mark_deal_won(
 @require_permissions(Permissions.DEALS_WRITE)
 async def mark_deal_lost(
     deal_id: UUID,
+    background_tasks: BackgroundTasks,
     loss_reason: Optional[str] = Query(None),
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
@@ -368,10 +439,58 @@ async def mark_deal_lost(
         company_id=user.company_id
     )
 
+    old_stage = deal.stage
     deal.stage = DealStageEnum.CLOSED_LOST
     deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 0
 
     await deal.update(session=session)
 
+    assigned_name = None
+    if deal.assigned_to:
+        a = await User.get(session=session, id=deal.assigned_to)
+        if a:
+            assigned_name = a.full_name
+    background_tasks.add_task(
+        _notify_deal_stage_change,
+        user.company_id, deal.id, deal.title,
+        old_stage.value if old_stage else "", "closed_lost",
+        float(deal.amount) if deal.amount else None, assigned_name
+    )
+
+    await fire_webhook_event(
+        company_id=user.company_id,
+        event_type="deal.stage_changed",
+        data={
+            "id": str(deal.id),
+            "title": deal.title,
+            "old_stage": old_stage.value if old_stage else None,
+            "new_stage": "closed_lost",
+            "amount": float(deal.amount) if deal.amount else None,
+        },
+        session=session,
+    )
+
     return deal
+
+
+async def _notify_deal_stage_change(company_id, deal_id, deal_title, old_stage, new_stage, amount, assigned_name):
+    """Background task: send Telegram notification for deal stage change."""
+    import logging
+    from db.base import AsyncDatabaseSession
+    from utils.services.telegram import TelegramService
+
+    try:
+        async for session in AsyncDatabaseSession()():
+            await TelegramService.notify_deal_stage_change(
+                session=session,
+                company_id=company_id,
+                deal_id=deal_id,
+                deal_title=deal_title,
+                old_stage=old_stage,
+                new_stage=new_stage,
+                amount=amount,
+                assigned_to_name=assigned_name,
+            )
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Telegram deal_stage notification failed: {e}", exc_info=True)

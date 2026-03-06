@@ -21,6 +21,7 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
+from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -77,8 +78,10 @@ async def list_tasks(
     """
     query = select(Task).where(Task.company_id == user.company_id)
 
-    # Show only my tasks if requested
-    if my_tasks:
+    # Operators only see their own tasks
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Task.assigned_to == user.id)
+    elif my_tasks:
         query = query.where(Task.assigned_to == user.id)
 
     # Search
@@ -157,6 +160,7 @@ async def list_tasks(
 
 
 @router.get("/my-today", response_model=list)
+@require_permissions(Permissions.TASKS_READ)
 async def get_my_tasks_today(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
@@ -209,6 +213,10 @@ async def get_task(
         company_id=user.company_id
     )
 
+    # Operators can only see their own tasks
+    if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
     # Get assigned to name
     assigned_to_name = None
     if task.assigned_to:
@@ -244,7 +252,6 @@ async def update_task(
     )
 
     # Check permissions: operators can only update their own tasks
-    from db.models.enums import RoleEnum
     if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -259,6 +266,7 @@ async def update_task(
             company_id=user.company_id
         )
 
+    # Validate custom fields against definitions
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -307,7 +315,6 @@ async def complete_task(
     )
 
     # Check if user is assigned to this task or is admin
-    from db.models.enums import RoleEnum
     if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

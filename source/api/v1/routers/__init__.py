@@ -17,9 +17,10 @@ router = APIRouter(prefix="/api/v1")
 from .auth import router as auth_router
 from .owner import router as owner_router
 from .company import router as company_router
+from .company.telegram_webhook import router as telegram_webhook_router
 
 # Include routers in logical order
-for r in [auth_router, owner_router, company_router]:
+for r in [auth_router, owner_router, company_router, telegram_webhook_router]:
     router.include_router(r)
 
 __all__ = ["router"]
