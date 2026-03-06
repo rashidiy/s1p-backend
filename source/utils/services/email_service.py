@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks
 
 from utils.tasks.email_tasks import (
     send_invitation_email,
+    send_admin_invitation_email,
     send_password_reset_email,
     send_welcome_email,
     send_contract_expiry_warning_email,
@@ -52,21 +53,18 @@ class EmailService:
     @staticmethod
     def send_admin_invitation(
         background_tasks: BackgroundTasks,
-        to_email: str,
+        email: str,
+        first_name: str,
         company_name: str,
-        temporary_password: str,
-        invited_by: str,
-        login_url: str = "https://yourcompany.crm.com",
+        set_password_url: str,
     ) -> None:
-        """Schedule admin invitation email as a background task."""
+        """Schedule admin invitation email with set-password link as a background task."""
         background_tasks.add_task(
-            send_invitation_email,
-            to_email=to_email,
+            send_admin_invitation_email,
+            to_email=email,
+            first_name=first_name,
             company_name=company_name,
-            temporary_password=temporary_password,
-            invited_by=invited_by,
-            role_display="a Company Administrator",
-            login_url=login_url,
+            set_password_url=set_password_url,
         )
 
     @staticmethod
