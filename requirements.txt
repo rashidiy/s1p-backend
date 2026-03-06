@@ -27,6 +27,9 @@ h11==0.16.0
 email_validator==2.2.0
 dnspython==2.7.0
 
+# Rate Limiting
+slowapi==0.1.9
+
 # Caching
 redis>=5.0.0
 
