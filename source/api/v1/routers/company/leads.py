@@ -20,6 +20,7 @@ from api.v1.schemas.crm import (
     LeadResponse,
     PaginatedResponse
 )
+from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
@@ -81,12 +82,14 @@ async def list_leads(
     """
     List all leads with filters
 
-    Operators see all leads by default, but can filter to show only their assigned leads.
+    Operators only see their assigned leads. Admins and Managers see all company leads.
     """
     query = select(Lead).where(Lead.company_id == user.company_id)
 
-    # Show only my leads if requested
-    if my_leads:
+    # Operator scoping: operators only see their assigned leads
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        query = query.where(Lead.assigned_to == user.id)
+    elif my_leads:
         query = query.where(Lead.assigned_to == user.id)
 
     # Search

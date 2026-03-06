@@ -12,7 +12,7 @@ from db import get_session
 from db.models.user import User
 from db.models.company import Company
 from db.models.call_event import CallEvent
-from db.models.enums import ProviderEnum
+from db.models.enums import ProviderEnum, RoleEnum
 from api.v1.schemas.call import CallEventResponse
 from utils.permissions import require_permissions, Permissions
 
@@ -108,13 +108,17 @@ async def list_calls(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """List all calls for the company"""
+    """List all calls for the company. Operators only see their own calls."""
+    filters = {"company_id": user.company_id}
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        filters["operator_id"] = user.id
+
     calls = await CallEvent.get_all(
         session=session,
-        company_id=user.company_id,
         offset=skip,
         limit=limit,
-        order_by=(CallEvent.created_at.desc(),)
+        order_by=(CallEvent.created_at.desc(),),
+        **filters
     )
     return calls
 
