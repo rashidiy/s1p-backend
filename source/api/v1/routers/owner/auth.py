@@ -63,7 +63,7 @@ async def login_owner(
     if not PasswordManager.verify(data.password, owner.password_hash):
         await record_failed_login(data.email)
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 

@@ -60,7 +60,7 @@ class Company(Base, ObjectManagerMixin):
 
     # Localization
     timezone = Column(String(50), default="Asia/Tashkent")
-    locale = Column(String(10), default="en")
+    locale = Column(String(10), default="ru")
 
     # Business info
     phone = Column(String(50))
