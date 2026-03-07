@@ -128,34 +128,39 @@ async def list_leads(
     count_query = select(func.count()).select_from(query.subquery())
     total = await session.scalar(count_query) or 0
 
-    # Paginate
+    # Subqueries for related names (avoids N+1 queries)
+    contact_name_subquery = (
+        select(func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, ''))))
+        .where(Contact.id == Lead.contact_id)
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+    assignee_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == Lead.assigned_to)
+        .correlate(Lead)
+        .scalar_subquery()
+    )
+
+    # Paginate with name subqueries
+    query = query.add_columns(
+        contact_name_subquery.label('contact_name'),
+        assignee_name_subquery.label('assigned_to_name')
+    )
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(Lead.created_at.desc())
 
     result = await session.execute(query)
-    leads = result.scalars().all()
+    rows = result.all()
 
-    # Enhance with related info
+    # Build response
     enhanced_leads = []
-    for lead in leads:
-        # Get contact name
-        contact_name = None
-        if lead.contact_id:
-            contact = await Contact.get(session=session, id=lead.contact_id)
-            if contact:
-                contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-
-        # Get assigned to name
-        assigned_to_name = None
-        if lead.assigned_to:
-            assignee = await User.get(session=session, id=lead.assigned_to)
-            if assignee:
-                assigned_to_name = assignee.full_name
-
+    for row in rows:
+        lead = row[0]
         lead_dict = {
             **{k: v for k, v in lead.__dict__.items() if not k.startswith('_')},
-            "contact_name": contact_name,
-            "assigned_to_name": assigned_to_name
+            "contact_name": row.contact_name,
+            "assigned_to_name": row.assigned_to_name
         }
         enhanced_leads.append(LeadResponse(**lead_dict))
 

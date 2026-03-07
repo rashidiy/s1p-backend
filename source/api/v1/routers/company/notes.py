@@ -92,25 +92,29 @@ async def list_notes(
     count_query = select(func.count()).select_from(query.subquery())
     total = await session.scalar(count_query) or 0
 
-    # Paginate
+    # Subquery for creator name (avoids N+1 queries)
+    creator_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == Note.created_by)
+        .correlate(Note)
+        .scalar_subquery()
+    )
+
+    # Paginate with name subquery
+    query = query.add_columns(creator_name_subquery.label('created_by_name'))
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(Note.created_at.desc())
 
     result = await session.execute(query)
-    notes = result.scalars().all()
+    rows = result.all()
 
-    # Enhance with creator name
+    # Build response
     enhanced_notes = []
-    for note in notes:
-        creator_name = None
-        if note.created_by:
-            creator = await User.get(session=session, id=note.created_by)
-            if creator:
-                creator_name = creator.full_name
-
+    for row in rows:
+        note = row[0]
         note_dict = {
             **{k: v for k, v in note.__dict__.items() if not k.startswith('_')},
-            "created_by_name": creator_name
+            "created_by_name": row.created_by_name
         }
         enhanced_notes.append(NoteResponse(**note_dict))
 
@@ -247,25 +251,29 @@ async def get_entity_notes(
 
     query = query.where(Note.entity_type == entity_type, Note.entity_id == entity_id)
 
+    # Subquery for creator name (avoids N+1 queries)
+    creator_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == Note.created_by)
+        .correlate(Note)
+        .scalar_subquery()
+    )
+
+    query = query.add_columns(creator_name_subquery.label('created_by_name'))
     query = query.order_by(Note.created_at.desc())
 
     result = await session.execute(query)
-    notes = result.scalars().all()
+    rows = result.all()
 
-    # Enhance with creator names
+    # Build response
     enhanced_notes = []
-    for note in notes:
-        creator_name = None
-        if note.created_by:
-            creator = await User.get(session=session, id=note.created_by)
-            if creator:
-                creator_name = creator.full_name
-
+    for row in rows:
+        note = row[0]
         enhanced_notes.append({
             "id": str(note.id),
             "content": note.content,
             "created_by": str(note.created_by) if note.created_by else None,
-            "created_by_name": creator_name,
+            "created_by_name": row.created_by_name,
             "created_at": note.created_at.isoformat()
         })
 
