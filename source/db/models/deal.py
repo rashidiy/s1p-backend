@@ -86,6 +86,13 @@ class Deal(Base, ObjectManagerMixin):
         nullable=True
     )
 
+    # Creator tracking
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Metadata
     tags = Column(JSONB, server_default=text("'[]'::jsonb"))
     custom_fields = Column(JSONB, server_default=text("'{}'::jsonb"))
