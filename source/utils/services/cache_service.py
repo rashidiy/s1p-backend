@@ -11,7 +11,7 @@ Supports:
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, Union
 from uuid import UUID
@@ -44,7 +44,7 @@ class InMemoryCache:
                 return None
 
             # Check expiry
-            if key in self._expiry and datetime.now() > self._expiry[key]:
+            if key in self._expiry and datetime.now(timezone.utc) > self._expiry[key]:
                 del self._cache[key]
                 del self._expiry[key]
                 return None
@@ -55,7 +55,7 @@ class InMemoryCache:
         """Set value in cache with TTL (seconds)"""
         async with self._lock:
             self._cache[key] = value
-            self._expiry[key] = datetime.now() + timedelta(seconds=ttl)
+            self._expiry[key] = datetime.now(timezone.utc) + timedelta(seconds=ttl)
 
     async def delete(self, key: str) -> None:
         """Delete key from cache"""
@@ -85,7 +85,7 @@ class InMemoryCache:
     async def cleanup_expired(self) -> int:
         """Remove expired entries (for periodic cleanup)"""
         async with self._lock:
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             expired_keys = [
                 k for k, exp in self._expiry.items()
                 if now > exp
