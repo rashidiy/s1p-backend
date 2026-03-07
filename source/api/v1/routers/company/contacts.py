@@ -411,6 +411,7 @@ async def get_contact_activity(
     calls_query = (
         select(CallEvent)
         .where(
+            CallEvent.company_id == user.company_id,
             or_(
                 CallEvent.phone_1 == contact.phone,
                 CallEvent.phone_2 == contact.phone
