@@ -7,7 +7,7 @@ Optimized for high-load production:
 - Batch operations for multi-entity stats
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +50,7 @@ class AnalyticsService:
         Returns:
             Tuple of (start_date, end_date)
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         today = now.date()
 
         if period == "today":
@@ -235,7 +235,7 @@ class AnalyticsService:
         if date_to:
             conditions.append(func.date(Task.created_at) <= date_to)
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         query = select(
             func.count().label('total_tasks'),
@@ -347,7 +347,7 @@ class AnalyticsService:
 
         Uses GROUP BY date instead of N separate queries.
         """
-        start_date = datetime.now().date() - timedelta(days=days - 1)
+        start_date = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
 
         query = select(
             func.date(CallEvent.created_at).label('date'),
@@ -389,7 +389,7 @@ class AnalyticsService:
 
         Uses GROUP BY date instead of N separate queries.
         """
-        start_date = datetime.now().date() - timedelta(days=days - 1)
+        start_date = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
 
         query = select(
             func.date(Deal.created_at).label('date'),
@@ -696,7 +696,7 @@ class AnalyticsService:
         company_id: UUID
     ) -> PipelineHealth:
         """Calculate pipeline health metrics using SQL aggregations"""
-        seven_days_ago = datetime.now() - timedelta(days=7)
+        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
         # Get pipeline stats in a single query
         query = select(
@@ -772,7 +772,7 @@ class AnalyticsService:
 
         Useful for identifying peak call hours.
         """
-        start_date = datetime.now() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(
             func.extract('hour', CallEvent.created_at).label('hour'),

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from typing import Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from db import get_session
 from db.models.owner import Owner
@@ -262,7 +262,7 @@ async def get_owner_dashboard(
     # Growth trend - placeholder with actual values
     growth_trend = []
     for i in range(30):
-        day = datetime.now().date() - timedelta(days=29 - i)
+        day = datetime.now(timezone.utc).date() - timedelta(days=29 - i)
         growth_trend.append({
             "date": day.isoformat(),
             "companies": total_companies,

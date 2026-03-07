@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from typing import Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from db import get_session
 from db.models.user import User
@@ -95,7 +95,7 @@ async def get_my_dashboard(
             and_(
                 Task.assigned_to == user.id,
                 Task.status == TaskStatusEnum.PENDING,
-                Task.due_date >= datetime.now(),
+                Task.due_date >= datetime.now(timezone.utc),
                 Task.deleted_at.is_(None)
             )
         )
@@ -343,7 +343,7 @@ async def get_admin_dashboard(
         session, admin.company_id, days=7
     )
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     dashboard = AdminDashboard(
         today=TeamAnalytics(
             period="today",

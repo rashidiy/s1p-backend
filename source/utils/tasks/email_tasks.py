@@ -25,8 +25,8 @@ _template_env = Environment(
 
 def render_template(template_name: str, **context) -> str:
     """Render a Jinja2 email template to HTML string."""
-    from datetime import datetime
-    context.setdefault("year", datetime.now().year)
+    from datetime import datetime, timezone
+    context.setdefault("year", datetime.now(timezone.utc).year)
     template = _template_env.get_template(template_name)
     return template.render(**context)
 
