@@ -129,26 +129,29 @@ async def list_tasks(
     count_query = select(func.count()).select_from(query.subquery())
     total = await session.scalar(count_query) or 0
 
-    # Paginate
+    # Subquery for assignee name (avoids N+1 queries)
+    assignee_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == Task.assigned_to)
+        .correlate(Task)
+        .scalar_subquery()
+    )
+
+    # Paginate with name subquery
+    query = query.add_columns(assignee_name_subquery.label('assigned_to_name'))
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(Task.due_date.asc().nullslast(), Task.priority.desc())
 
     result = await session.execute(query)
-    tasks = result.scalars().all()
+    rows = result.all()
 
-    # Enhance with related info
+    # Build response
     enhanced_tasks = []
-    for task in tasks:
-        # Get assigned to name
-        assigned_to_name = None
-        if task.assigned_to:
-            assignee = await User.get(session=session, id=task.assigned_to)
-            if assignee:
-                assigned_to_name = assignee.full_name
-
+    for row in rows:
+        task = row[0]
         task_dict = {
             **{k: v for k, v in task.__dict__.items() if not k.startswith('_')},
-            "assigned_to_name": assigned_to_name
+            "assigned_to_name": row.assigned_to_name
         }
         enhanced_tasks.append(TaskResponse(**task_dict))
 
