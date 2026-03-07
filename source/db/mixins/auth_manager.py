@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.params import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,7 @@ from starlette import status
 from db import get_session
 from utils.managers import JWTManager, TokenType
 
-http_bearer = HTTPBearer()
+http_bearer = HTTPBearer(auto_error=False)
 
 
 class AuthenticationManagerMixin:
@@ -16,10 +16,20 @@ class AuthenticationManagerMixin:
             cls, check_for_active: bool = True, check_for_suspended: bool = True
     ):
         async def authenticate(
+                request: Request,
                 session: AsyncSession = Depends(get_session),
                 credentials: HTTPAuthorizationCredentials = Depends(http_bearer)
         ):
-            token = credentials.credentials
+            # Try Authorization header first, fall back to cookie
+            token = None
+            if credentials:
+                token = credentials.credentials
+            else:
+                token = request.cookies.get("access_token")
+
+            if not token:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+
             payload = JWTManager.verify(token, TokenType.ACCESS)
 
             # Eagerly load permission_group for User model
