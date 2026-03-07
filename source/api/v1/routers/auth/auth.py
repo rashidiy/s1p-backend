@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Depends, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -21,6 +21,34 @@ from . import router
 limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
+
+
+def _set_auth_cookies(response: Response, credentials: dict):
+    """Set httpOnly cookies for access and refresh tokens."""
+    if "access" in credentials:
+        response.set_cookie(
+            key="access_token",
+            value=credentials["access"],
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+    if "refresh" in credentials:
+        response.set_cookie(
+            key="refresh_token",
+            value=credentials["refresh"],
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+
+
+def _clear_auth_cookies(response: Response):
+    """Clear auth cookies."""
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
 
 
 def _extract_subdomain(request: Request) -> str:
@@ -75,6 +103,7 @@ async def _resolve_company(subdomain: str, session: AsyncSession) -> Company:
 async def login(
     data: AuthSchema.LoginRequest,
     request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_session),
 ):
     """
@@ -122,6 +151,9 @@ async def login(
         access_duration=timedelta(minutes=30)
     )
     user.must_change_password = False
+
+    _set_auth_cookies(response, user.credentials)
+
     return user
 
 
@@ -134,6 +166,7 @@ class RefreshTokenRequest(BaseModel):
 @limiter.limit("10/minute")
 async def refresh_token(
     request: Request,
+    response: Response,
     data: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session),
 ):
@@ -144,22 +177,32 @@ async def refresh_token(
     if not user or user.deleted_at or user.is_suspended or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired or invalid.")
 
-    return {
-        "access": JWTManager.create(
-            sub=payload.sub,
-            token_type=TokenType.ACCESS,
-            company_id=payload.company_id,
-            role=payload.role,
-            permissions=payload.permissions,
-            data=payload.data
-        )
-    }
+    new_access = JWTManager.create(
+        sub=payload.sub,
+        token_type=TokenType.ACCESS,
+        company_id=payload.company_id,
+        role=payload.role,
+        permissions=payload.permissions,
+        data=payload.data
+    )
+
+    _set_auth_cookies(response, {"access": new_access})
+
+    return {"access": new_access}
+
+
+@router.post('/logout')
+async def logout(response: Response):
+    """Logout by clearing auth cookies"""
+    _clear_auth_cookies(response)
+    return {"message": "Logged out successfully"}
 
 
 @router.post('/set-password', response_model=AuthSchema.AuthorizedResponse)
 @limiter.limit("5/minute")
 async def set_password(
     request: Request,
+    response: Response,
     data: AuthSchema.SetPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ):
@@ -200,6 +243,9 @@ async def set_password(
         access_duration=timedelta(minutes=30),
     )
     user.must_change_password = False
+
+    _set_auth_cookies(response, user.credentials)
+
     return user
 
 

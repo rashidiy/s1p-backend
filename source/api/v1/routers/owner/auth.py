@@ -4,7 +4,7 @@ Owner authentication endpoints
 
 from datetime import timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -25,6 +25,34 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["Owner Auth"])
 
 
+def _set_auth_cookies(response: Response, credentials: dict):
+    """Set httpOnly cookies for access and refresh tokens."""
+    if "access" in credentials:
+        response.set_cookie(
+            key="access_token",
+            value=credentials["access"],
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+    if "refresh" in credentials:
+        response.set_cookie(
+            key="refresh_token",
+            value=credentials["refresh"],
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+
+
+def _clear_auth_cookies(response: Response):
+    """Clear auth cookies."""
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+
+
 class OwnerLoginRequest(BaseModel):
     """Owner login request schema"""
     email: EmailStr
@@ -36,6 +64,7 @@ class OwnerLoginRequest(BaseModel):
 async def login_owner(
     data: OwnerLoginRequest,
     request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -95,7 +124,16 @@ async def login_owner(
     )
     owner.must_change_password = False
 
+    _set_auth_cookies(response, owner.credentials)
+
     return owner
+
+
+@router.post('/logout')
+async def logout_owner(response: Response):
+    """Logout by clearing auth cookies"""
+    _clear_auth_cookies(response)
+    return {"message": "Logged out successfully"}
 
 
 @router.get('/me', response_model=OwnerResponse)
@@ -172,6 +210,7 @@ async def forgot_password(
 @limiter.limit("5/minute")
 async def set_password(
     request: Request,
+    response: Response,
     data: AuthSchema.SetPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ):
@@ -211,4 +250,7 @@ async def set_password(
         permissions=["*"],
     )
     owner.must_change_password = False
+
+    _set_auth_cookies(response, owner.credentials)
+
     return owner
