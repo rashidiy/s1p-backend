@@ -71,6 +71,10 @@ class Deal(Base, ObjectManagerMixin):
     )
     probability = Column(Integer, default=0)  # 0-100 percentage
 
+    # Win/Loss tracking
+    win_reason = Column(String, nullable=True)
+    loss_reason = Column(String, nullable=True)
+
     # Dates
     expected_close_date = Column(Date)
     closed_date = Column(Date)
