@@ -64,7 +64,10 @@ async def list_notes(
 
     Can filter by entity (contact, lead, deal, task, call) or creator.
     """
-    query = select(Note).where(Note.company_id == user.company_id)
+    query = select(Note).where(
+        Note.company_id == user.company_id,
+        Note.deleted_at.is_(None)
+    )
 
     # Search
     if search:
@@ -230,7 +233,10 @@ async def get_entity_notes(
     entity_type: contact, lead, deal, task, call
     Returns notes in chronological order.
     """
-    query = select(Note).where(Note.company_id == user.company_id)
+    query = select(Note).where(
+        Note.company_id == user.company_id,
+        Note.deleted_at.is_(None)
+    )
 
     valid_entity_types = {"contact", "lead", "deal", "task", "call"}
     if entity_type not in valid_entity_types:

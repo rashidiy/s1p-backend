@@ -92,7 +92,10 @@ async def list_deals(
 
     Operators only see their assigned deals. Admins and Managers see all company deals.
     """
-    query = select(Deal).where(Deal.company_id == user.company_id)
+    query = select(Deal).where(
+        Deal.company_id == user.company_id,
+        Deal.deleted_at.is_(None)
+    )
 
     # Operator scoping: operators only see their assigned deals
     if user.role == RoleEnum.COMPANY_OPERATOR:
