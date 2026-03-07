@@ -353,6 +353,7 @@ async def mark_deal_won(
     deal.stage = DealStageEnum.CLOSED_WON
     deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 100
+    deal.win_reason = win_reason
 
     await deal.update(session=session)
 
@@ -381,6 +382,7 @@ async def mark_deal_lost(
     deal.stage = DealStageEnum.CLOSED_LOST
     deal.closed_date = datetime.now(timezone.utc).date()
     deal.probability = 0
+    deal.loss_reason = loss_reason
 
     await deal.update(session=session)
 
