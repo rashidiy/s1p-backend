@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from db import get_session
 from db.models.user import User
@@ -120,7 +120,7 @@ async def list_tasks(
     if overdue:
         query = query.where(
             and_(
-                Task.due_date < datetime.now(),
+                Task.due_date < datetime.now(timezone.utc),
                 Task.status != TaskStatusEnum.COMPLETED
             )
         )
@@ -175,7 +175,7 @@ async def get_my_tasks_today(
 
     Returns pending tasks due today or overdue.
     """
-    today_end = datetime.now().replace(hour=23, minute=59, second=59)
+    today_end = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59)
 
     query = select(Task).where(
         and_(
@@ -198,7 +198,7 @@ async def get_my_tasks_today(
             "title": task.title,
             "priority": task.priority.value if task.priority else None,
             "due_date": task.due_date.isoformat() if task.due_date else None,
-            "is_overdue": task.due_date < datetime.now() if task.due_date else False
+            "is_overdue": task.due_date < datetime.now(timezone.utc) if task.due_date else False
         }
         for task in tasks
     ]
@@ -322,7 +322,7 @@ async def complete_task(
         )
 
     task.status = TaskStatusEnum.COMPLETED
-    task.completed_at = datetime.now()
+    task.completed_at = datetime.now(timezone.utc)
 
     await task.update(session=session)
 
