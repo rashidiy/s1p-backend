@@ -181,7 +181,10 @@ async def list_users(
         filters["is_active"] = is_active
 
     # Build query
-    query = select(User).where(User.company_id == admin.company_id)
+    query = select(User).where(
+        User.company_id == admin.company_id,
+        User.deleted_at.is_(None)
+    )
 
     # Search by name or email
     if search:

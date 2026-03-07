@@ -75,7 +75,10 @@ async def list_tasks(
 
     Operators only see their assigned tasks. Admins and Managers see all company tasks.
     """
-    query = select(Task).where(Task.company_id == user.company_id)
+    query = select(Task).where(
+        Task.company_id == user.company_id,
+        Task.deleted_at.is_(None)
+    )
 
     # Operator scoping: operators only see their assigned tasks
     if user.role == RoleEnum.COMPANY_OPERATOR:

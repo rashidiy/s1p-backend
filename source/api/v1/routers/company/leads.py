@@ -84,7 +84,10 @@ async def list_leads(
 
     Operators only see their assigned leads. Admins and Managers see all company leads.
     """
-    query = select(Lead).where(Lead.company_id == user.company_id)
+    query = select(Lead).where(
+        Lead.company_id == user.company_id,
+        Lead.deleted_at.is_(None)
+    )
 
     # Operator scoping: operators only see their assigned leads
     if user.role == RoleEnum.COMPANY_OPERATOR:
