@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Request, Response
@@ -159,7 +160,7 @@ async def login(
 
 class RefreshTokenRequest(BaseModel):
     """Request body for token refresh"""
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 
 @router.post('/refresh')
@@ -171,7 +172,10 @@ async def refresh_token(
     session: AsyncSession = Depends(get_session),
 ):
     """Refresh access token using refresh token"""
-    payload = JWTManager.verify(data.refresh_token, TokenType.REFRESH)
+    token = data.refresh_token or request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required.")
+    payload = JWTManager.verify(token, TokenType.REFRESH)
 
     user = await User.get(id=payload.sub, session=session)
     if not user or user.deleted_at or user.is_suspended or not user.is_active:

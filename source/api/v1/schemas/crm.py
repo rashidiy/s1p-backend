@@ -157,6 +157,9 @@ class DealResponse(DealBase):
     created_at: datetime
     updated_at: datetime
 
+    win_reason: Optional[str] = None
+    loss_reason: Optional[str] = None
+
     # Related info
     contact_name: Optional[str] = None
     assigned_to_name: Optional[str] = None
