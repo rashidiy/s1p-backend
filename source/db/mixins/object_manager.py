@@ -228,7 +228,7 @@ class ObjectManagerMixin:
             query = query.where(and_(*conditions))
 
         result = await session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none() is not None
 
     async def update(obj: Any, *, session: AsyncSession, commit: bool = True):  # noqa
         if commit is True:
