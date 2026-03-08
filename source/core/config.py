@@ -59,6 +59,6 @@ class WebhookConfig:
     SIPUNI_ALLOWED_IPS = os.getenv('SIPUNI_ALLOWED_IPS', '').split(',') if os.getenv('SIPUNI_ALLOWED_IPS') else []
     BINOTEL_ALLOWED_IPS = os.getenv('BINOTEL_ALLOWED_IPS', '').split(',') if os.getenv('BINOTEL_ALLOWED_IPS') else []
 
-    # Fallback: allow all IPs if not configured (dev mode)
+    # IP whitelisting enabled by default (fail-closed); set to 'false' to disable
     WEBHOOK_IP_WHITELIST_ENABLED = os.getenv('WEBHOOK_IP_WHITELIST_ENABLED', 'true').lower() == 'true'
 
