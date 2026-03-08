@@ -26,7 +26,7 @@ services:
       # Application
       BASE_URL: ${BASE_URL:-http://localhost:8000}
       # Webhook Security
-      WEBHOOK_IP_WHITELIST_ENABLED: ${WEBHOOK_IP_WHITELIST_ENABLED:-false}
+      WEBHOOK_IP_WHITELIST_ENABLED: ${WEBHOOK_IP_WHITELIST_ENABLED:-true}
       SIPUNI_ALLOWED_IPS: ${SIPUNI_ALLOWED_IPS:-}
       BINOTEL_ALLOWED_IPS: ${BINOTEL_ALLOWED_IPS:-}
       # Record Proxy
@@ -40,7 +40,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/swagger?type=owner"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
