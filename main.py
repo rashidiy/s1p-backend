@@ -15,8 +15,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy import text
 
 from api.v1.routers import router as v1
+from db import get_session
 
 # Read allowed CORS origins from env (comma-separated), default to localhost:3000
 _cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
@@ -90,6 +92,36 @@ async def swagger_ui(type: str = Query("owner")):
         openapi_url=f"/openapi.json?type={type}",
         title=f"S1P - {type.title()} API",
         swagger_ui_parameters={"persistAuthorization": True},
+    )
+
+
+@app.get("/health", include_in_schema=False)
+async def health_check():
+    """Health check endpoint — verifies DB and Redis connectivity"""
+    db_status = "ok"
+    redis_status = "ok"
+
+    # Check database
+    try:
+        async for session in get_session():
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        db_status = "error"
+
+    # Check Redis
+    try:
+        import redis.asyncio as aioredis
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        r = aioredis.from_url(redis_url)
+        await r.ping()
+        await r.aclose()
+    except Exception:
+        redis_status = "error"
+
+    healthy = db_status == "ok" and redis_status == "ok"
+    return JSONResponse(
+        status_code=200 if healthy else 503,
+        content={"status": "healthy" if healthy else "unhealthy", "db": db_status, "redis": redis_status},
     )
 
 
