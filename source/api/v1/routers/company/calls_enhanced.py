@@ -254,12 +254,15 @@ async def get_call_history(
     # Enhance with CRM details
     enhanced_calls = []
     for call in calls:
-        # Get contact name
+        # Get contact name (handle soft-deleted contacts)
         contact_name = None
         if call.contact_id:
-            contact = await Contact.get(session=session, id=call.contact_id)
+            contact = await Contact.get(session=session, id=call.contact_id, include_deleted=True)
             if contact:
-                contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
+                if contact.deleted_at is not None:
+                    contact_name = "(deleted)"
+                else:
+                    contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
 
         # Get lead title
         lead_title = None
