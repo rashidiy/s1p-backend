@@ -4,7 +4,7 @@ Deals management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, case, literal
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timezone
@@ -136,7 +136,12 @@ async def list_deals(
 
     # Subqueries for related names (avoids N+1 queries)
     contact_name_subquery = (
-        select(func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, ''))))
+        select(
+            case(
+                (Contact.deleted_at.isnot(None), literal("(deleted)")),
+                else_=func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, '')))
+            )
+        )
         .where(Contact.id == Deal.contact_id)
         .correlate(Deal)
         .scalar_subquery()
@@ -240,12 +245,18 @@ async def get_deal(
         company_id=user.company_id
     )
 
-    # Get contact name
+    # Get contact name (handle soft-deleted contacts)
     contact_name = None
     if deal.contact_id:
-        contact = await Contact.get(session=session, id=deal.contact_id)
+        result = await session.execute(
+            select(Contact).where(Contact.id == deal.contact_id)
+        )
+        contact = result.scalar_one_or_none()
         if contact:
-            contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
+            if contact.deleted_at is not None:
+                contact_name = "(deleted)"
+            else:
+                contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
 
     # Get assigned to name
     assigned_to_name = None
