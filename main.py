@@ -24,6 +24,8 @@ from db import get_session
 # Read allowed CORS origins from env (comma-separated), default to localhost:3000
 _cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 CORS_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+# Allow all *.localhost:3000 subdomains in development
+CORS_ORIGIN_REGEX = r"^https?://[\w-]+\.localhost(:\d+)?$"
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -59,9 +61,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Subdomain", "X-Forwarded-Host"],
 )
 
 app.include_router(v1)
