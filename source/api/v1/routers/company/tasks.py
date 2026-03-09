@@ -21,6 +21,7 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
+from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -218,6 +219,10 @@ async def get_task(
         company_id=user.company_id
     )
 
+    # Operators can only see their own tasks
+    if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
     # Get assigned to name
     assigned_to_name = None
     if task.assigned_to:
@@ -267,6 +272,7 @@ async def update_task(
             company_id=user.company_id
         )
 
+    # Validate custom fields against definitions
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():

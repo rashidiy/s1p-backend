@@ -129,3 +129,12 @@ class PaymentStatusEnum(str, enum.Enum):
     PENDING = "pending"
     OVERDUE = "overdue"
     FAILED = "failed"
+
+
+class CustomFieldTypeEnum(str, enum.Enum):
+    """Custom field type enumeration"""
+    TEXT = "text"
+    NUMBER = "number"
+    DROPDOWN = "dropdown"
+    DATE = "date"
+    BOOLEAN = "boolean"

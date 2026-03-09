@@ -1,126 +1,66 @@
 """
-Custom field definition schemas
+Schemas for custom field definitions and values
 """
 
-import re
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 
-VALID_ENTITY_TYPES = {"contact", "lead", "deal", "task"}
+VALID_ENTITY_TYPES = {"contact", "lead", "deal", "task", "note"}
 VALID_FIELD_TYPES = {"text", "number", "dropdown", "date", "boolean"}
-FIELD_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
 
 
-class CustomFieldCreate(BaseModel):
+class CustomFieldDefinitionCreate(BaseModel):
     """Create a custom field definition"""
-
-    entity_type: str = Field(
-        ...,
-        description="Entity type: contact, lead, deal, or task",
-    )
-    field_name: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="Field name (alphanumeric + underscore only)",
-    )
-    field_type: str = Field(
-        ...,
-        description="Field type: text, number, dropdown, date, or boolean",
-    )
-    options: Optional[List[str]] = Field(
-        None,
-        description="Dropdown choices (required if field_type is dropdown)",
-    )
-    required: bool = Field(False, description="Whether this field is required")
-    sort_order: int = Field(0, description="Display order")
+    entity_type: str = Field(..., max_length=50)
+    field_name: str = Field(..., min_length=1, max_length=100)
+    field_type: str = Field(...)
+    options: Optional[List[str]] = None
+    sort_order: int = Field(0, ge=0)
+    is_required: bool = False
 
     @field_validator("entity_type")
     @classmethod
     def validate_entity_type(cls, v: str) -> str:
-        v = v.lower().strip()
         if v not in VALID_ENTITY_TYPES:
-            raise ValueError(
-                f"Invalid entity_type '{v}'. Must be one of: {sorted(VALID_ENTITY_TYPES)}"
-            )
-        return v
-
-    @field_validator("field_name")
-    @classmethod
-    def validate_field_name(cls, v: str) -> str:
-        v = v.strip()
-        if not FIELD_NAME_PATTERN.match(v):
-            raise ValueError(
-                "field_name must contain only alphanumeric characters and underscores"
-            )
+            raise ValueError(f"entity_type must be one of: {', '.join(sorted(VALID_ENTITY_TYPES))}")
         return v
 
     @field_validator("field_type")
     @classmethod
     def validate_field_type(cls, v: str) -> str:
-        v = v.lower().strip()
         if v not in VALID_FIELD_TYPES:
-            raise ValueError(
-                f"Invalid field_type '{v}'. Must be one of: {sorted(VALID_FIELD_TYPES)}"
-            )
+            raise ValueError(f"field_type must be one of: {', '.join(sorted(VALID_FIELD_TYPES))}")
         return v
 
-    @model_validator(mode="after")
-    def validate_dropdown_options(self):
-        if self.field_type == "dropdown":
-            if not self.options or len(self.options) == 0:
-                raise ValueError(
-                    "options must be a non-empty list of strings when field_type is 'dropdown'"
-                )
-            # Ensure all options are non-empty strings
-            for opt in self.options:
-                if not isinstance(opt, str) or not opt.strip():
-                    raise ValueError("Each dropdown option must be a non-empty string")
-        return self
-
-
-class CustomFieldUpdate(BaseModel):
-    """Update a custom field definition (cannot change field_type)"""
-
-    field_name: Optional[str] = Field(
-        None,
-        min_length=1,
-        max_length=100,
-        description="Field name (alphanumeric + underscore only)",
-    )
-    options: Optional[List[str]] = Field(
-        None,
-        description="Dropdown choices (only for dropdown fields)",
-    )
-    required: Optional[bool] = None
-    sort_order: Optional[int] = None
-
-    @field_validator("field_name")
+    @field_validator("options")
     @classmethod
-    def validate_field_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            v = v.strip()
-            if not FIELD_NAME_PATTERN.match(v):
-                raise ValueError(
-                    "field_name must contain only alphanumeric characters and underscores"
-                )
+    def validate_options(cls, v, info):
+        if v is not None and len(v) == 0:
+            raise ValueError("options list cannot be empty when provided")
         return v
 
 
-class CustomFieldResponse(BaseModel):
-    """Custom field definition response"""
+class CustomFieldDefinitionUpdate(BaseModel):
+    """Update a custom field definition"""
+    field_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    options: Optional[List[str]] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_required: Optional[bool] = None
 
+
+class CustomFieldDefinitionResponse(BaseModel):
+    """Custom field definition response"""
     id: UUID
     company_id: UUID
     entity_type: str
     field_name: str
     field_type: str
     options: Optional[List[str]] = None
-    required: bool
     sort_order: int
+    is_required: bool
     created_at: datetime
     updated_at: datetime
 
@@ -128,8 +68,6 @@ class CustomFieldResponse(BaseModel):
         from_attributes = True
 
 
-class CustomFieldListResponse(BaseModel):
-    """Custom field definition list response"""
-
-    fields: List[CustomFieldResponse]
-    total: int
+class CustomFieldReorderRequest(BaseModel):
+    """Reorder custom field definitions"""
+    field_ids: List[UUID] = Field(..., min_length=1)

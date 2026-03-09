@@ -25,11 +25,17 @@ from .contract import Contract
 # Permission groups
 from .permission_group import PermissionGroup
 
+# Telegram
+from .telegram_config import TelegramBotConfig
+
 # Custom fields
 from .custom_field import CustomFieldDefinition
 
-# Integrations
-from .telegram_config import TelegramConfig
+# Public API
+from .api_key import ApiKey
+
+# Outbound webhooks
+from .webhook import WebhookEndpoint, WebhookDelivery
 
 # System models
 from .audit_log import AuditLog
@@ -56,10 +62,15 @@ __all__ = [
     "Contract",
     # Permission groups
     "PermissionGroup",
+    # Telegram
+    "TelegramBotConfig",
     # Custom fields
     "CustomFieldDefinition",
-    # Integrations
-    "TelegramConfig",
+    # Public API
+    "ApiKey",
+    # Outbound webhooks
+    "WebhookEndpoint",
+    "WebhookDelivery",
     # System
     "AuditLog",
     # Enums module

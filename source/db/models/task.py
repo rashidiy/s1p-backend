@@ -6,7 +6,7 @@ from sqlalchemy import (
     Column, DateTime, String, Text, ForeignKey, Index, text
 )
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -80,6 +80,9 @@ class Task(Base, ObjectManagerMixin):
     # Linked entity (polymorphic)
     entity_type = Column(String(50))  # 'lead', 'contact', 'deal'
     entity_id = Column(UUID(as_uuid=True))
+
+    # Custom fields
+    custom_fields = Column(JSONB, server_default=text("'{}'::jsonb"))
 
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True)

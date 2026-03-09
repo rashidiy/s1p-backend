@@ -176,6 +176,7 @@ class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     due_date: Optional[datetime] = None
+    custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
     # Link to entities (polymorphic)
     entity_type: Optional[str] = Field(None, max_length=50)  # 'lead', 'contact', 'deal'
@@ -195,6 +196,7 @@ class TaskUpdateRequest(BaseModel):
     assigned_to: Optional[UUID] = None
     entity_type: Optional[str] = Field(None, max_length=50)
     entity_id: Optional[UUID] = None
+    custom_fields: Optional[Dict[str, Any]] = None
 
 
 class TaskResponse(TaskBase):
@@ -229,18 +231,20 @@ class NoteBase(BaseModel):
 
 class NoteCreateRequest(NoteBase):
     """Create note request"""
-    pass
+    custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class NoteUpdateRequest(BaseModel):
     """Update note request"""
     content: Optional[str] = Field(None, min_length=1)
+    custom_fields: Optional[Dict[str, Any]] = None
 
 
 class NoteResponse(NoteBase):
     """Note response"""
     id: UUID
     company_id: UUID
+    custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
     created_by: Optional[UUID]
     created_at: datetime
     updated_at: datetime
