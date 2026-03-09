@@ -27,6 +27,7 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
+from utils.services.webhook import fire_webhook_event
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
@@ -67,6 +68,21 @@ async def create_contact(
     if data.tags:
         # TODO: Implement tag association
         pass
+
+    # Fire outbound webhook
+    await fire_webhook_event(
+        company_id=user.company_id,
+        event_type="contact.created",
+        data={
+            "id": str(contact.id),
+            "first_name": contact.first_name,
+            "last_name": contact.last_name,
+            "phone": contact.phone,
+            "email": contact.email,
+            "company_name": contact.company_name,
+        },
+        session=session,
+    )
 
     return contact
 

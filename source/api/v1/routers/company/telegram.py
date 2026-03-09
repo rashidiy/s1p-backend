@@ -1,126 +1,210 @@
 """
-Telegram bot configuration endpoints for company admins.
-
-GET    /telegram/config     — get config for current company
-PUT    /telegram/config     — update notification preferences (admin only)
-POST   /telegram/connect    — save chat_id for company (admin only)
-DELETE /telegram/disconnect — remove chat_id (admin only)
+Telegram bot configuration and management endpoints
 """
 
-import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
 
 from db import get_session
 from db.models.user import User
-from db.models.telegram_config import TelegramConfig
-from api.v1.schemas.telegram import (
-    TelegramConfigResponse,
-    TelegramConfigUpdateRequest,
-    TelegramConnectRequest,
-)
+from db.models.telegram_config import TelegramBotConfig
 from utils.permissions import require_permissions, Permissions
+from utils.services.telegram import TelegramService
 
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/telegram", tags=["Telegram Integration"])
+router = APIRouter(prefix="/telegram", tags=["Telegram"])
 
 
-async def _get_or_create_config(
-    company_id, session: AsyncSession
-) -> TelegramConfig:
-    """Get existing config or create a default one for the company."""
-    config = await TelegramConfig.get(session=session, company_id=company_id)
-    if not config:
-        config = await TelegramConfig.create(
-            session=session,
-            company_id=company_id,
-        )
-    return config
+# Schemas
 
+class TelegramConfigCreate(BaseModel):
+    chat_id: str = Field(..., description="Telegram chat/group ID")
+    notification_filters: Optional[Dict[str, bool]] = Field(
+        default=None,
+        description="Event filters: call_completed, call_missed, new_lead, deal_stage_change"
+    )
+    enabled: bool = True
+
+
+class TelegramConfigUpdate(BaseModel):
+    chat_id: Optional[str] = None
+    notification_filters: Optional[Dict[str, bool]] = None
+    enabled: Optional[bool] = None
+
+
+class TelegramConfigResponse(BaseModel):
+    id: str
+    company_id: str
+    chat_id: str
+    notification_filters: dict
+    enabled: bool
+
+    class Config:
+        from_attributes = True
+
+
+# Endpoints
 
 @router.get("/config", response_model=TelegramConfigResponse)
 @require_permissions(Permissions.SETTINGS_READ)
 async def get_telegram_config(
-    admin: User = User.current(),
-    session: AsyncSession = Depends(get_session),
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
 ):
-    """Get Telegram notification configuration for the current company."""
-    config = await _get_or_create_config(admin.company_id, session)
-    return TelegramConfigResponse.model_validate(config)
+    """Get company's Telegram bot configuration"""
+    config = await TelegramBotConfig.get(
+        session=session,
+        company_id=user.company_id
+    )
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Telegram bot not configured"
+        )
+
+    return TelegramConfigResponse(
+        id=str(config.id),
+        company_id=str(config.company_id),
+        chat_id=config.chat_id,
+        notification_filters=config.notification_filters or {},
+        enabled=config.enabled
+    )
+
+
+@router.post("/config", response_model=TelegramConfigResponse, status_code=status.HTTP_201_CREATED)
+@require_permissions(Permissions.SETTINGS_MANAGE)
+async def create_telegram_config(
+    data: TelegramConfigCreate,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
+):
+    """Create or update Telegram bot configuration for the company"""
+    # Check if config already exists
+    existing = await TelegramBotConfig.get(
+        session=session,
+        company_id=user.company_id
+    )
+
+    default_filters = {
+        "call_completed": True,
+        "call_missed": True,
+        "new_lead": True,
+        "deal_stage_change": True,
+    }
+
+    if existing:
+        # Update existing
+        existing.chat_id = data.chat_id
+        existing.enabled = data.enabled
+        if data.notification_filters is not None:
+            existing.notification_filters = data.notification_filters
+        existing.deleted_at = None  # Re-enable if soft-deleted
+        await existing.update(session=session)
+        config = existing
+    else:
+        # Create new
+        config = await TelegramBotConfig.create(
+            session=session,
+            company_id=user.company_id,
+            chat_id=data.chat_id,
+            notification_filters=data.notification_filters or default_filters,
+            enabled=data.enabled
+        )
+
+    return TelegramConfigResponse(
+        id=str(config.id),
+        company_id=str(config.company_id),
+        chat_id=config.chat_id,
+        notification_filters=config.notification_filters or {},
+        enabled=config.enabled
+    )
 
 
 @router.put("/config", response_model=TelegramConfigResponse)
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def update_telegram_config(
-    data: TelegramConfigUpdateRequest,
-    admin: User = User.current(),
-    session: AsyncSession = Depends(get_session),
+    data: TelegramConfigUpdate,
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
 ):
-    """Update Telegram notification preferences (admin only)."""
-    config = await _get_or_create_config(admin.company_id, session)
-
-    update_data = data.model_dump(exclude_unset=True)
-    if not update_data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update",
-        )
-
-    for field, value in update_data.items():
-        setattr(config, field, value)
-
-    await config.update(session=session)
-    return TelegramConfigResponse.model_validate(config)
-
-
-@router.post("/connect", response_model=TelegramConfigResponse)
-@require_permissions(Permissions.SETTINGS_MANAGE)
-async def connect_telegram(
-    data: TelegramConnectRequest,
-    admin: User = User.current(),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Connect a Telegram chat to the company (admin only).
-
-    Saves the chat_id so the bot knows where to send notifications.
-    """
-    config = await _get_or_create_config(admin.company_id, session)
-    config.chat_id = data.chat_id
-    config.bot_enabled = True
-    await config.update(session=session)
-
-    logger.info(
-        "Telegram connected for company %s (chat_id=%s)",
-        admin.company_id,
-        data.chat_id,
+    """Update Telegram bot configuration"""
+    config = await TelegramBotConfig.get(
+        session=session,
+        company_id=user.company_id
     )
-    return TelegramConfigResponse.model_validate(config)
 
-
-@router.delete("/disconnect", response_model=TelegramConfigResponse)
-@require_permissions(Permissions.SETTINGS_MANAGE)
-async def disconnect_telegram(
-    admin: User = User.current(),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Disconnect Telegram from the company (admin only).
-
-    Removes the chat_id. Notifications will stop.
-    """
-    config = await _get_or_create_config(admin.company_id, session)
-
-    if config.chat_id is None:
+    if not config:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Telegram is not connected",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Telegram bot not configured"
         )
 
-    config.chat_id = None
-    config.bot_enabled = False
+    if data.chat_id is not None:
+        config.chat_id = data.chat_id
+    if data.notification_filters is not None:
+        config.notification_filters = data.notification_filters
+    if data.enabled is not None:
+        config.enabled = data.enabled
+
     await config.update(session=session)
 
-    logger.info("Telegram disconnected for company %s", admin.company_id)
-    return TelegramConfigResponse.model_validate(config)
+    return TelegramConfigResponse(
+        id=str(config.id),
+        company_id=str(config.company_id),
+        chat_id=config.chat_id,
+        notification_filters=config.notification_filters or {},
+        enabled=config.enabled
+    )
+
+
+@router.delete("/config", status_code=status.HTTP_204_NO_CONTENT)
+@require_permissions(Permissions.SETTINGS_MANAGE)
+async def delete_telegram_config(
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
+):
+    """Delete Telegram bot configuration"""
+    config = await TelegramBotConfig.get(
+        session=session,
+        company_id=user.company_id
+    )
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Telegram bot not configured"
+        )
+
+    await config.delete(session=session)
+    return None
+
+
+@router.post("/test")
+@require_permissions(Permissions.SETTINGS_MANAGE)
+async def send_test_message(
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session)
+):
+    """Send a test notification to verify bot is working"""
+    config = await TelegramBotConfig.get(
+        session=session,
+        company_id=user.company_id
+    )
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Telegram bot not configured"
+        )
+
+    success = await TelegramService.send_test_message(config.chat_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send test message. Check bot token and chat_id."
+        )
+
+    return {"success": True, "message": "Test message sent"}

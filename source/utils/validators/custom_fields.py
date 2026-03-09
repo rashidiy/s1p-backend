@@ -1,125 +1,147 @@
 """
-Custom field value validation utility
-
-Validates custom_fields values dict against CustomFieldDefinition list.
+Custom field value validation against field definitions
 """
 
-import re
-from typing import Any
-
+from typing import Dict, Any, List, Optional
+from datetime import date, datetime
+from uuid import UUID
 from fastapi import HTTPException, status
-
-from db.models.custom_field import CustomFieldDefinition
-
-
-# ISO date pattern: YYYY-MM-DD
-ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 
 
 def validate_custom_field_values(
-    values: dict[str, Any],
-    definitions: list[CustomFieldDefinition],
-) -> dict[str, Any]:
+    values: Dict[str, Any],
+    definitions: List,
+    partial: bool = False
+) -> Dict[str, Any]:
     """
     Validate custom field values against their definitions.
 
     Args:
-        values: Dict of {field_name: value} submitted by the client.
-        definitions: List of CustomFieldDefinition objects for the entity type.
+        values: Dict of field_name -> value to validate
+        definitions: List of CustomFieldDefinition objects
+        partial: If True, skip required field checks (for partial updates)
 
     Returns:
-        Cleaned dict of validated values.
+        Validated values dict
 
     Raises:
-        HTTPException 422 with detailed error messages on validation failure.
+        HTTPException 422 on validation errors
     """
-    errors: list[str] = []
-    clean: dict[str, Any] = {}
+    if not values:
+        if not partial:
+            # Check required fields
+            required_fields = [d for d in definitions if d.is_required]
+            if required_fields:
+                missing = [d.field_name for d in required_fields]
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Missing required custom fields: {', '.join(missing)}"
+                )
+        return values or {}
 
-    # Build lookup by field_name
-    defs_by_name: dict[str, CustomFieldDefinition] = {
-        d.field_name: d for d in definitions if d.deleted_at is None
-    }
+    defs_by_name = {d.field_name: d for d in definitions}
+    errors = []
 
-    # Check required fields are present
-    for field_name, defn in defs_by_name.items():
-        if defn.required and field_name not in values:
-            errors.append(f"Required custom field '{field_name}' is missing")
+    # Check for unknown fields
+    unknown = set(values.keys()) - set(defs_by_name.keys())
+    if unknown:
+        errors.append(f"Unknown custom fields: {', '.join(sorted(unknown))}")
 
-    # Validate provided values
+    # Validate each provided value
     for field_name, value in values.items():
-        defn = defs_by_name.get(field_name)
-        if defn is None:
-            errors.append(f"Unknown custom field '{field_name}'")
+        if field_name not in defs_by_name:
             continue
 
-        # Allow None for non-required fields
+        definition = defs_by_name[field_name]
+
+        # Allow null values for non-required fields
         if value is None:
-            if defn.required:
-                errors.append(f"Required custom field '{field_name}' cannot be null")
-            else:
-                clean[field_name] = None
+            if definition.is_required:
+                errors.append(f"Field '{field_name}' is required and cannot be null")
             continue
 
-        field_type = defn.field_type
+        field_type = definition.field_type
+        if hasattr(field_type, 'value'):
+            field_type = field_type.value
 
         if field_type == "text":
             if not isinstance(value, str):
-                errors.append(
-                    f"Custom field '{field_name}' must be a string (got {type(value).__name__})"
-                )
-            else:
-                clean[field_name] = value
+                errors.append(f"Field '{field_name}' must be a string")
 
         elif field_type == "number":
             if not isinstance(value, (int, float)):
-                errors.append(
-                    f"Custom field '{field_name}' must be a number (got {type(value).__name__})"
-                )
-            else:
-                clean[field_name] = value
-
-        elif field_type == "dropdown":
-            if not isinstance(value, str):
-                errors.append(
-                    f"Custom field '{field_name}' must be a string (got {type(value).__name__})"
-                )
-            elif defn.options and value not in defn.options:
-                errors.append(
-                    f"Custom field '{field_name}' value '{value}' is not in allowed options: {defn.options}"
-                )
-            else:
-                clean[field_name] = value
-
-        elif field_type == "date":
-            if not isinstance(value, str):
-                errors.append(
-                    f"Custom field '{field_name}' must be an ISO date string YYYY-MM-DD (got {type(value).__name__})"
-                )
-            elif not ISO_DATE_PATTERN.match(value):
-                errors.append(
-                    f"Custom field '{field_name}' must be an ISO date string YYYY-MM-DD (got '{value}')"
-                )
-            else:
-                clean[field_name] = value
+                errors.append(f"Field '{field_name}' must be a number")
 
         elif field_type == "boolean":
             if not isinstance(value, bool):
-                errors.append(
-                    f"Custom field '{field_name}' must be a boolean (got {type(value).__name__})"
-                )
-            else:
-                clean[field_name] = value
+                errors.append(f"Field '{field_name}' must be a boolean")
 
-        else:
-            errors.append(
-                f"Custom field '{field_name}' has unsupported type '{field_type}'"
-            )
+        elif field_type == "date":
+            if not isinstance(value, str):
+                errors.append(f"Field '{field_name}' must be a date string (YYYY-MM-DD)")
+            else:
+                try:
+                    datetime.strptime(value, "%Y-%m-%d")
+                except ValueError:
+                    errors.append(f"Field '{field_name}' must be a valid date (YYYY-MM-DD)")
+
+        elif field_type == "dropdown":
+            options = definition.options or []
+            if value not in options:
+                errors.append(
+                    f"Field '{field_name}' value '{value}' is not in allowed options: {options}"
+                )
+
+    # Check required fields not provided
+    if not partial:
+        for definition in definitions:
+            if definition.is_required and definition.field_name not in values:
+                errors.append(f"Required custom field '{definition.field_name}' is missing")
 
     if errors:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"custom_field_errors": errors},
+            detail={"custom_field_errors": errors}
         )
 
-    return clean
+    return values
+
+
+async def validate_entity_custom_fields(
+    session: AsyncSession,
+    company_id: UUID,
+    entity_type: str,
+    custom_fields: Optional[Dict[str, Any]],
+    partial: bool = False,
+) -> None:
+    """
+    Fetch definitions for an entity type and validate custom field values.
+
+    Call this from entity create/update endpoints.
+    """
+    from db.models.custom_field_definition import CustomFieldDefinition
+
+    query = (
+        select(CustomFieldDefinition)
+        .where(
+            and_(
+                CustomFieldDefinition.company_id == company_id,
+                CustomFieldDefinition.entity_type == entity_type,
+                CustomFieldDefinition.deleted_at.is_(None),
+            )
+        )
+    )
+    result = await session.execute(query)
+    definitions = result.scalars().all()
+
+    if not definitions and not custom_fields:
+        return
+
+    if definitions:
+        validate_custom_field_values(
+            values=custom_fields or {},
+            definitions=definitions,
+            partial=partial,
+        )

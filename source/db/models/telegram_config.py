@@ -1,12 +1,11 @@
 """
-TelegramConfig model - Per-company Telegram bot notification settings
+TelegramBotConfig model - Per-company Telegram notification settings
 """
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, BigInteger,
-    ForeignKey, UniqueConstraint, text
+    Column, DateTime, String, Boolean, ForeignKey, text
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -14,18 +13,15 @@ from db.base import Base
 from db.mixins.object_manager import ObjectManagerMixin
 
 
-class TelegramConfig(Base, ObjectManagerMixin):
+class TelegramBotConfig(Base, ObjectManagerMixin):
     """
     Telegram bot configuration per company.
 
-    Maps a company to a Telegram chat_id and stores notification preferences.
-    Multi-tenant: one config per company, unique constraint on company_id.
+    One shared bot (token in env var), each company configures
+    which chat_id receives notifications and which events to send.
     """
 
-    __tablename__ = "telegram_configs"
-    __table_args__ = (
-        UniqueConstraint('company_id', name='uq_telegram_config_company'),
-    )
+    __tablename__ = "telegram_bot_configs"
 
     id = Column(
         UUID(as_uuid=True),
@@ -33,25 +29,32 @@ class TelegramConfig(Base, ObjectManagerMixin):
         server_default=text("gen_random_uuid()")
     )
 
-    # Company relationship (one config per company)
     company_id = Column(
         UUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
+        unique=True,
         index=True
     )
 
-    # Telegram chat ID — set when company connects via /start command
-    chat_id = Column(BigInteger, nullable=True)
+    # Telegram chat/group ID where notifications are sent
+    chat_id = Column(String(100), nullable=False, index=True)
 
-    # Master switch
-    bot_enabled = Column(Boolean, default=True, nullable=False)
+    # Which notifications to send
+    # {"call_completed": true, "call_missed": true, "new_lead": true, "deal_stage_change": true}
+    notification_filters = Column(
+        JSONB,
+        nullable=False,
+        server_default=text(
+            "'{\"call_completed\": true, \"call_missed\": true, "
+            "\"new_lead\": true, \"deal_stage_change\": true}'::jsonb"
+        )
+    )
 
-    # Notification preferences
-    notify_completed_calls = Column(Boolean, default=True, nullable=False)
-    notify_missed_calls = Column(Boolean, default=True, nullable=False)
-    notify_new_leads = Column(Boolean, default=True, nullable=False)
-    notify_deal_stage_change = Column(Boolean, default=True, nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False)
+
+    # Soft delete
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -62,15 +65,14 @@ class TelegramConfig(Base, ObjectManagerMixin):
     )
 
     # Relationships
-    company = relationship("Company", backref="telegram_config", uselist=False)
+    company = relationship("Company", backref="telegram_config")
 
     def __repr__(self):
-        return (
-            f"<TelegramConfig(company_id={self.company_id}, "
-            f"chat_id={self.chat_id}, enabled={self.bot_enabled})>"
-        )
+        return f"<TelegramBotConfig(company_id={self.company_id}, chat_id={self.chat_id}, enabled={self.enabled})>"
 
-    @property
-    def is_connected(self) -> bool:
-        """Check if Telegram chat is connected and bot is enabled."""
-        return self.chat_id is not None and self.bot_enabled
+    def is_event_enabled(self, event_type: str) -> bool:
+        """Check if a specific notification event is enabled"""
+        if not self.enabled:
+            return False
+        filters = self.notification_filters or {}
+        return filters.get(event_type, False)

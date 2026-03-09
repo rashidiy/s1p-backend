@@ -50,7 +50,8 @@ class SMTPConfig:
 class TelegramConfig:
     """Telegram bot configuration"""
     BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    ENABLED = bool(os.getenv('TELEGRAM_BOT_TOKEN', ''))
+    WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '')
+    ENABLED = os.getenv('TELEGRAM_ENABLED', 'false').lower() == 'true'
 
 
 class WebhookConfig:

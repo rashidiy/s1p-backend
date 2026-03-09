@@ -18,6 +18,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from api.v1.routers import router as v1
+from api.v1.routers.public import router as public_v1
 from db import get_session
 
 # Read allowed CORS origins from env (comma-separated), default to localhost:3000
@@ -36,7 +37,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
-
 
 app = FastAPI(
     docs_url=None,
@@ -65,10 +65,12 @@ app.add_middleware(
 )
 
 app.include_router(v1)
+app.include_router(public_v1)
 
 PATH_FILTERS = {
     "owner": lambda p: p.startswith("/api/v1/owner"),
     "company": lambda p: p.startswith("/api/v1/auth") or p.startswith("/api/v1/company"),
+    "public": lambda p: p.startswith("/api/public/v1"),
 }
 
 

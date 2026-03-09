@@ -135,6 +135,16 @@ class Company(Base, ObjectManagerMixin):
         back_populates="company",
         cascade="all, delete-orphan"
     )
+    api_keys = relationship(
+        "ApiKey",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+    webhook_endpoints = relationship(
+        "WebhookEndpoint",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Company(id={self.id}, name='{self.name}', provider='{self.provider_type}')>"
