@@ -7,6 +7,8 @@ from uuid import UUID
 from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, Field
 
+from db.models.enums import DealStageEnum
+
 
 # ===== Contact Schemas =====
 
@@ -98,6 +100,7 @@ class LeadResponse(LeadBase):
     status: Optional[str] = None
     pipeline_stage: Optional[str] = None
     assigned_to: Optional[UUID] = None
+    created_by: Optional[UUID] = None
     tags: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
@@ -137,6 +140,7 @@ class DealUpdateRequest(BaseModel):
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
+    stage: Optional[DealStageEnum] = None
     amount: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = Field(None, max_length=10)
     probability: Optional[int] = Field(None, ge=0, le=100)
@@ -152,6 +156,7 @@ class DealResponse(DealBase):
     company_id: UUID
     stage: Optional[str] = None
     assigned_to: Optional[UUID] = None
+    created_by: Optional[UUID] = None
     tags: Optional[List[str]] = None
     closed_date: Optional[date] = None
     created_at: datetime
