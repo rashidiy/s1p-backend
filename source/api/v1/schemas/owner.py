@@ -133,7 +133,7 @@ class CompanyDetailResponse(CompanyResponse):
     """Detailed company response with config"""
     provider_config: dict
     settings: Optional[dict] = None
-    webhook_token: str
+    webhook_token: Optional[str] = None
 
     class Config:
         from_attributes = True
