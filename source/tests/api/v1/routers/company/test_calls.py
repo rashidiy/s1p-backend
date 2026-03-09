@@ -53,13 +53,13 @@ class TestGetCall:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == str(test_call_event.id)
+        assert data["id"] == test_call_event.id
 
     @pytest.mark.asyncio
     async def test_get_call_not_found(self, client: AsyncClient, auth_headers):
         """Test getting non-existent call fails."""
         response = await client.get(
-            f"/api/v1/company/calls/{uuid4()}",
+            "/api/v1/company/calls/999999999",
             headers=auth_headers
         )
         assert response.status_code == 404
@@ -81,7 +81,7 @@ class TestGetCallRecording:
     async def test_get_recording_not_found(self, client: AsyncClient, auth_headers):
         """Test getting recording for non-existent call fails."""
         response = await client.get(
-            f"/api/v1/company/calls/{uuid4()}/recording",
+            "/api/v1/company/calls/999999999/recording",
             headers=auth_headers
         )
         assert response.status_code == 404
