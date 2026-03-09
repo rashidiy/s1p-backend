@@ -5,6 +5,7 @@ Test configuration and fixtures for S1P
 import asyncio
 import os
 import sys
+import random
 import uuid
 from typing import AsyncGenerator, Generator
 from datetime import datetime, timedelta
@@ -34,6 +35,7 @@ MAIN_DATABASE_URL = f"postgresql+asyncpg://{os.environ.get('POSTGRES_USER', 'pos
 
 from db.base import Base
 from db.models import Owner, Company, User, Contact, Lead, Deal, Task, Note, CallEvent
+from db.models.sipuni import Sipuni
 from db.models.permission_group import PermissionGroup
 from db.models.enums import RoleEnum, ProviderEnum, LeadStatusEnum, DealStageEnum, TaskStatusEnum, TaskPriorityEnum
 from utils.managers import PasswordManager, JWTManager
@@ -326,7 +328,7 @@ async def test_note(db_session: AsyncSession, test_company: Company, test_contac
         company_id=test_company.id,
         content="Test note content",
         entity_type="contact",
-        entity_id=test_contact.id,
+        entity_id=str(test_contact.id),
         created_by=test_user.id,
     )
     db_session.add(note)
@@ -338,7 +340,7 @@ async def test_note(db_session: AsyncSession, test_company: Company, test_contac
 async def test_call_event(db_session: AsyncSession, test_company: Company, test_user: User) -> CallEvent:
     """Create a test call event."""
     call = CallEvent(
-        id=uuid.uuid4(),
+        id=random.randint(1_000_000, 9_999_999),
         company_id=test_company.id,
         provider_type=test_company.provider_type,
         provider_call_id=f"call_{uuid.uuid4().hex[:8]}",
@@ -350,6 +352,27 @@ async def test_call_event(db_session: AsyncSession, test_company: Company, test_
     db_session.add(call)
     await db_session.flush()
     return call
+
+
+@pytest_asyncio.fixture
+async def test_sipuni(db_session: AsyncSession, test_user: User) -> Sipuni:
+    """Create a test Sipuni integration."""
+    cabinet_id = "12345"
+    token = f"{cabinet_id}:" + uuid.uuid4().hex[:58]  # 64 chars total
+    sipuni = Sipuni(
+        id=uuid.uuid4(),
+        company_name="Test Sipuni Company",
+        cabinet_id=cabinet_id,
+        security_key="test-security-key",
+        user_id=test_user.id,
+        token=token,
+        partner_name="Test Partner",
+        partner_contact="partner@test.com",
+        comment="Test comment",
+    )
+    db_session.add(sipuni)
+    await db_session.flush()
+    return sipuni
 
 
 @pytest_asyncio.fixture
@@ -366,3 +389,67 @@ async def test_permission_group(db_session: AsyncSession, test_company: Company)
     db_session.add(group)
     await db_session.flush()
     return group
+
+
+@pytest_asyncio.fixture
+async def active_user(db_session: AsyncSession) -> User:
+    """Create a second active user in a different company (for isolation tests)."""
+    owner2 = Owner(
+        id=uuid.uuid4(),
+        email=f"owner2_{uuid.uuid4().hex[:8]}@test.com",
+        password_hash=PasswordManager.hash("testpassword123"),
+        first_name="Other",
+        last_name="Owner",
+        phone="+9876543210",
+        is_active=True,
+        email_verified=True
+    )
+    db_session.add(owner2)
+    await db_session.flush()
+
+    company2 = Company(
+        id=uuid.uuid4(),
+        owner_id=owner2.id,
+        name="Other Company",
+        subdomain=f"other_{uuid.uuid4().hex[:8]}",
+        provider_type=ProviderEnum.SIPUNI,
+        provider_config={"cabinet_id": "99999", "security_key": "other-secret"},
+        webhook_token=str(uuid.uuid4()),
+        is_active=True
+    )
+    db_session.add(company2)
+    await db_session.flush()
+
+    user2 = User(
+        id=uuid.uuid4(),
+        company_id=company2.id,
+        email=f"user2_{uuid.uuid4().hex[:8]}@test.com",
+        password_hash=PasswordManager.hash("testpassword123"),
+        first_name="Other",
+        last_name="User",
+        role=RoleEnum.COMPANY_ADMIN,
+        permissions=["*"],
+        is_active=True,
+        email_verified=True
+    )
+    db_session.add(user2)
+    await db_session.flush()
+    return user2
+
+
+@pytest.fixture
+def active_auth_headers(active_user: User) -> dict:
+    """Auth headers for a different user (not in test_company)."""
+    credentials = JWTManager.generate_credentials(
+        sub=active_user.id,
+        company_id=active_user.company_id,
+        role=active_user.role.value,
+        permissions=active_user.permissions or []
+    )
+    return {"Authorization": f"Bearer {credentials['access']}"}
+
+
+@pytest.fixture
+def test_session(db_session: AsyncSession) -> AsyncSession:
+    """Alias for db_session (used by some sipuni tests)."""
+    return db_session

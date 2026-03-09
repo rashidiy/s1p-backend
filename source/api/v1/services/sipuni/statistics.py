@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.schemas.sipuni.statistics import RepresentEnum
 from db.models.enums import CallStatusEnum
-from db.models.sipuni import CallEvent
+from db.models.call_event import CallEvent
 
 
 # ────────────────────────────────────────────
