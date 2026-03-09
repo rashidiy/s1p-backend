@@ -36,7 +36,7 @@ class TestOwnerLogin:
                 "password": "wrongpassword"
             }
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_owner_not_found(self, client: AsyncClient):

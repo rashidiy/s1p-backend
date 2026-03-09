@@ -4,7 +4,7 @@ CustomFieldDefinition model - Typed custom field definitions per entity type
 
 from sqlalchemy import (
     Column, DateTime, String, Boolean, Integer, ForeignKey,
-    Index, UniqueConstraint, text
+    Enum as SQLEnum, Index, UniqueConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -12,6 +12,7 @@ from sqlalchemy.sql import func
 
 from db.base import Base
 from db.mixins.object_manager import ObjectManagerMixin
+from db.models.enums import CustomFieldTypeEnum
 
 
 class CustomFieldDefinition(Base, ObjectManagerMixin):
@@ -55,9 +56,16 @@ class CustomFieldDefinition(Base, ObjectManagerMixin):
 
     # Field metadata
     field_name = Column(String(100), nullable=False)
-    field_type = Column(String(20), nullable=False)  # "text" | "number" | "dropdown" | "date" | "boolean"
+    field_type = Column(
+        SQLEnum(
+            CustomFieldTypeEnum,
+            name="custom_field_type_enum",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        nullable=False,
+    )
     options = Column(JSONB, nullable=True)  # For dropdown: ["option1", "option2", ...]
-    required = Column(Boolean, nullable=False, server_default=text("false"))
+    is_required = Column(Boolean, nullable=False, server_default=text("false"))
     sort_order = Column(Integer, nullable=False, server_default=text("0"))
 
     # Soft delete

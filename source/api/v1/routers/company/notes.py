@@ -76,13 +76,13 @@ async def list_notes(
 
     # Filters
     if contact_id:
-        query = query.where(Note.entity_type == "contact", Note.entity_id == contact_id)
+        query = query.where(Note.entity_type == "contact", Note.entity_id == str(contact_id))
     if lead_id:
-        query = query.where(Note.entity_type == "lead", Note.entity_id == lead_id)
+        query = query.where(Note.entity_type == "lead", Note.entity_id == str(lead_id))
     if deal_id:
-        query = query.where(Note.entity_type == "deal", Note.entity_id == deal_id)
+        query = query.where(Note.entity_type == "deal", Note.entity_id == str(deal_id))
     if task_id:
-        query = query.where(Note.entity_type == "task", Note.entity_id == task_id)
+        query = query.where(Note.entity_type == "task", Note.entity_id == str(task_id))
     if call_id:
         query = query.where(Note.entity_type == "call", Note.entity_id == str(call_id))
     if created_by:
