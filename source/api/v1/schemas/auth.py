@@ -19,8 +19,9 @@ class AuthSchema:
     class AuthorizedResponse(BaseModel):
         id: uuid.UUID
         first_name: str = Field(..., max_length=255)
-        last_name: str = Field(..., max_length=255)
-        email: str = Field(..., max_length=2048)
+        last_name: Optional[str] = Field(None, max_length=255)
+        email: Optional[str] = Field(None, max_length=2048)
+        phone: Optional[str] = Field(None, max_length=50)
         is_active: bool
         must_change_password: bool = False
         credentials: "AuthSchema.BearerToken"

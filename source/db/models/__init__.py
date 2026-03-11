@@ -28,6 +28,10 @@ from .permission_group import PermissionGroup
 # Telegram
 from .telegram_config import TelegramBotConfig
 
+# Telegram Auth
+from .invite_token import InviteToken
+from .telegram_auth_challenge import TelegramAuthChallenge
+
 # Custom fields
 from .custom_field import CustomFieldDefinition
 
@@ -64,6 +68,9 @@ __all__ = [
     "PermissionGroup",
     # Telegram
     "TelegramBotConfig",
+    # Telegram Auth
+    "InviteToken",
+    "TelegramAuthChallenge",
     # Custom fields
     "CustomFieldDefinition",
     # Public API

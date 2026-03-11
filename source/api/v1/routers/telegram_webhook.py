@@ -3,19 +3,30 @@ Telegram bot webhook endpoint — public, NO authentication.
 
 Receives Telegram updates via POST, routes /start commands to connect
 companies by looking up chat_id in TelegramConfig.
+
+Also handles auth flows:
+- /start login_{CHALLENGE_ID} — sends OTP for login
+- /register — creates registration challenge and sends link
 """
 
 import logging
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from aiogram import Bot, Dispatcher, Router as AiogramRouter
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Update, Message
 
-from core.config import TelegramConfig as TelegramBotConfig
-from db import get_session
-from db.models.telegram_config import TelegramConfig
+from core.config import DatabaseConfig, TelegramConfig as TelegramBotConfig
+from db.models.telegram_auth_challenge import TelegramAuthChallenge
+from db.models.user import User
+from utils.services.invite_token_service import generate_otp, hash_token
 from utils.services.telegram_service import get_bot
 
 logger = logging.getLogger(__name__)
@@ -28,16 +39,88 @@ dp = Dispatcher()
 dp.include_router(tg_router)
 
 
+# ── DB session factory for bot handlers (not in request context) ──────
+_bot_engine = None
+_bot_session_factory = None
+
+
+def _get_bot_session_factory():
+    """Get a session factory for bot handlers (outside FastAPI request context)."""
+    global _bot_engine, _bot_session_factory
+    if _bot_session_factory is None:
+        _bot_engine = create_async_engine(
+            DatabaseConfig.url(),
+            future=True,
+            echo=False,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+        )
+        _bot_session_factory = sessionmaker(
+            bind=_bot_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _bot_session_factory
+
+
+# ── Redis helpers for OTP rate limiting ──────────────────────────────
+
+async def _get_redis():
+    """Get Redis client for OTP rate limiting."""
+    try:
+        import redis.asyncio as aioredis
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        return aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+    except Exception:
+        return None
+
+
+async def _check_otp_rate_limit(user_id: str) -> bool:
+    """Check if an OTP was sent for this user in the last 60 seconds."""
+    client = await _get_redis()
+    if not client:
+        return False
+    val = await client.get(f"otp_rate:{user_id}")
+    return val is not None
+
+
+async def _set_otp_rate_limit(user_id: str) -> None:
+    """Set OTP rate limit key (60s TTL)."""
+    client = await _get_redis()
+    if not client:
+        return
+    await client.setex(f"otp_rate:{user_id}", 60, "1")
+
+
+async def _check_otp_lockout(user_id: str) -> bool:
+    """Check if user is locked out from OTP verification."""
+    client = await _get_redis()
+    if not client:
+        return False
+    val = await client.get(f"otp_lockout:{user_id}")
+    return val is not None
+
+
+# ── /start command handler ───────────────────────────────────────────
+
 @tg_router.message(CommandStart())
 async def handle_start(message: Message) -> None:
     """
     Handle /start command.
 
-    If the message text contains a deep-link payload (company token),
-    it can be used for future auto-connect flows. For now, we just
-    acknowledge the connection and tell the admin to use the CRM UI
-    to connect this chat.
+    - /start (no payload): Show Chat ID for notification setup
+    - /start login_{CHALLENGE_ID}: Generate OTP and send to user for login
     """
+    text = message.text or ""
+    parts = text.strip().split(maxsplit=1)
+    payload = parts[1] if len(parts) > 1 else ""
+
+    if payload.startswith("login_"):
+        await _handle_login_start(message, payload)
+        return
+
+    # Default /start behavior — show Chat ID
     chat_id = message.chat.id
     await message.answer(
         f"S1P CRM Bot connected\\!\n\n"
@@ -47,6 +130,149 @@ async def handle_start(message: Message) -> None:
         parse_mode="MarkdownV2",
     )
 
+
+async def _handle_login_start(message: Message, payload: str) -> None:
+    """
+    Handle /start login_{CHALLENGE_ID} deep link.
+
+    1. Parse challenge ID
+    2. Look up challenge (login, not expired, not used)
+    3. Find user by telegram_user_id + company_id
+    4. Generate OTP, hash it, store in challenge
+    5. Send OTP to user via Telegram DM
+    """
+    challenge_id = payload[len("login_"):]
+    telegram_user_id = message.from_user.id
+
+    session_factory = _get_bot_session_factory()
+    async with session_factory() as session:
+        try:
+            # Look up challenge
+            challenge = await session.get(TelegramAuthChallenge, challenge_id)
+            now = datetime.now(timezone.utc)
+
+            if (
+                not challenge
+                or challenge.purpose != "login"
+                or challenge.used
+            ):
+                await message.answer(
+                    "This login link has expired. Please request a new one from the login page."
+                )
+                return
+
+            if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
+                await message.answer(
+                    "This login link has expired. Please request a new one from the login page."
+                )
+                return
+
+            # Find user by telegram_user_id + company_id
+            user = await User.get(
+                session=session,
+                telegram_user_id=telegram_user_id,
+                company_id=challenge.company_id,
+            )
+            if not user or user.deleted_at is not None:
+                await message.answer(
+                    "No account found for this Telegram account in this company."
+                )
+                return
+
+            if not user.is_active or user.is_suspended:
+                await message.answer(
+                    "Your account is suspended. Contact your administrator."
+                )
+                return
+
+            # Check OTP rate limit (1 per 60 seconds per user)
+            if await _check_otp_rate_limit(str(user.id)):
+                await message.answer(
+                    "Please wait before requesting another code."
+                )
+                return
+
+            # Check lockout
+            if await _check_otp_lockout(str(user.id)):
+                await message.answer(
+                    "Account temporarily locked. Try again later."
+                )
+                return
+
+            # Generate OTP
+            otp = generate_otp()
+            otp_hashed = hash_token(otp)
+
+            # Update challenge
+            challenge.telegram_user_id = telegram_user_id
+            challenge.user_id = user.id
+            challenge.otp_hash = otp_hashed
+            challenge.expires_at = now + timedelta(minutes=5)
+
+            await session.commit()
+
+            # Set rate limit
+            await _set_otp_rate_limit(str(user.id))
+
+            # Send OTP to user
+            await message.answer(
+                f"Your login code: {otp}\n\n"
+                f"This code expires in 5 minutes. Enter it on the login page."
+            )
+
+        except Exception:
+            logger.exception("Error handling login /start command")
+            await message.answer(
+                "An error occurred. Please try again."
+            )
+
+
+# ── /register command handler ────────────────────────────────────────
+
+@tg_router.message(Command("register"))
+async def handle_register(message: Message) -> None:
+    """
+    Handle /register command.
+
+    Creates a registration challenge and sends the user a link
+    to the registration page on the website.
+    """
+    telegram_user_id = message.from_user.id
+
+    session_factory = _get_bot_session_factory()
+    async with session_factory() as session:
+        try:
+            now = datetime.now(timezone.utc)
+            challenge_id = secrets.token_urlsafe(16)
+
+            challenge = TelegramAuthChallenge(
+                id=challenge_id,
+                company_id=None,  # Resolved from invite token at registration
+                purpose="register",
+                telegram_user_id=telegram_user_id,
+                expires_at=now + timedelta(minutes=10),
+            )
+            session.add(challenge)
+            await session.commit()
+
+            # Build registration link
+            from core.config import AppConfig
+            base_url = AppConfig.FRONTEND_URL.rstrip("/")
+            reg_url = f"{base_url}/auth/register?s={challenge_id}"
+
+            await message.answer(
+                f"To complete registration, open this link and enter your invite code:\n\n"
+                f"{reg_url}"
+            )
+
+        except Exception:
+            logger.exception("Error handling /register command")
+            await message.answer(
+                "An error occurred. Please try again."
+            )
+
+
+# ── Webhook endpoint ────────────────────────────────────────────────
 
 @router.post("/webhooks/telegram")
 async def telegram_webhook(request: Request):

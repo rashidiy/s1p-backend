@@ -6,7 +6,7 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, String, Text, ForeignKey,
+    BigInteger, Boolean, Column, DateTime, String, Text, ForeignKey,
     Index, UniqueConstraint, text
 )
 from sqlalchemy import Enum as SQLEnum
@@ -29,9 +29,11 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint('company_id', 'email', name='uq_company_email'),
+        UniqueConstraint('company_id', 'phone', name='uq_company_phone'),
         Index('idx_users_company_id', 'company_id'),
         Index('idx_users_email', 'email'),
         Index('idx_users_role', 'role'),
+        Index('idx_users_telegram_user_id', 'telegram_user_id'),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -48,12 +50,17 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
         index=True
     )
 
+    # Telegram
+    telegram_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True, unique=True
+    )
+
     # Personal info
     first_name: Mapped[str] = mapped_column(String(225), nullable=False)
     last_name: Mapped[Optional[str]] = mapped_column(String(225))
-    email: Mapped[str] = mapped_column(String(225), nullable=False, index=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(50))
-    password_hash: Mapped[str] = mapped_column(String(225), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(225), nullable=True, index=True)
+    phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
 
     # Role & Permissions
     role: Mapped[RoleEnum] = mapped_column(

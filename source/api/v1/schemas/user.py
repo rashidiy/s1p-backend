@@ -25,7 +25,7 @@ def _validate_permissions(permissions: List[str]) -> List[str]:
 
 class UserBase(BaseModel):
     """Base user schema"""
-    email: EmailStr
+    email: Optional[EmailStr] = None
     first_name: str = Field(..., min_length=1, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
