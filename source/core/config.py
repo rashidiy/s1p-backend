@@ -33,6 +33,7 @@ class JWTConfig:
 class AppConfig:
     """Application configuration"""
     BASE_URL = os.getenv('BASE_URL', 'http://localhost:8000')
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
 
 class SMTPConfig:

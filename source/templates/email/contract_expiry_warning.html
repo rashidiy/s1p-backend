@@ -3,6 +3,12 @@
 {% block title %}Contract Expiring Soon{% endblock %}
 {% block header_subtitle %}Action Required{% endblock %}
 
+{% block mascot %}
+<div class="mascot-section">
+  <img src="{{ base_url }}/illustrations/bot-thinking.png" alt="S1P Bot" width="100" height="100" style="width:100px;height:100px;">
+</div>
+{% endblock %}
+
 {% block content %}
 <h2>Your contract is expiring soon</h2>
 
@@ -20,8 +26,8 @@
 
 <div class="warning-box">
   <p>
-    After expiry, a {{ grace_period_days }}-day grace period begins.
-    Once the grace period ends, company access will be blocked until the contract is renewed.
+    &#x26A0;&#xFE0F; After expiry, a {{ grace_period_days }}-day grace period begins.
+    Once it ends, company access will be blocked until the contract is renewed.
   </p>
 </div>
 

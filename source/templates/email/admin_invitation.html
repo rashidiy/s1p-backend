@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}You've been invited to S1P - {{ company_name }}{% endblock %}
+{% block title %}You've been invited to S1P — {{ company_name }}{% endblock %}
 {% block header_subtitle %}Admin Invitation{% endblock %}
+
+{% block mascot %}
+<div class="mascot-section">
+  <img src="{{ base_url }}/illustrations/bot-default.png" alt="S1P Bot" width="100" height="100" style="width:100px;height:100px;">
+</div>
+{% endblock %}
 
 {% block content %}
 <h2>Welcome to S1P, {{ first_name }}!</h2>
@@ -12,24 +18,24 @@
 </p>
 
 <div class="info-box">
-  <p>As an admin, you will have full access to manage your company's CRM,
+  <p>As an admin, you'll have full access to manage your company's CRM,
   users, and integrations.</p>
 </div>
 
-<p>To get started, please set your password by clicking the button below:</p>
+<p>To get started, set your password by clicking the button below:</p>
 
 <div class="cta-wrapper">
   <a href="{{ set_password_url }}" class="cta-button">Set Your Password</a>
 </div>
 
 <div class="warning-box">
-  <p>This link will expire in 48 hours. If it expires, contact your account
-  owner to resend the invitation.</p>
+  <p>&#x23F3; This link will expire in <strong>48 hours</strong>. If it expires, contact your
+  account owner to resend the invitation.</p>
 </div>
 
 <div class="divider"></div>
 
-<p style="font-size: 13px; color: #888888;">
+<p class="muted">
   If you did not expect this invitation, you can safely ignore this email.
 </p>
 {% endblock %}
