@@ -64,10 +64,12 @@ def require_permissions(*required_permissions: str):
                 raise PermissionDenied("Authentication required")
 
             # Block users who haven't changed their temporary password
+            # Telegram users skip this check (they authenticate via Telegram, not password)
             if hasattr(user, 'email_verified') and user.email_verified is False:
-                raise PermissionDenied(
-                    "Password change required. Please change your temporary password before accessing the system."
-                )
+                if not getattr(user, 'telegram_user_id', None):
+                    raise PermissionDenied(
+                        "Password change required. Please change your temporary password before accessing the system."
+                    )
 
             # Owners have all permissions
             if user.role == RoleEnum.OWNER:

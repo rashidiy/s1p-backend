@@ -33,6 +33,7 @@ class UserBase(BaseModel):
 
 class UserInviteRequest(UserBase):
     """Admin invites operator via email"""
+    email: EmailStr  # Required for email-based invite (overrides Optional in UserBase)
     role: str = Field(default="company_operator", description="Role: company_admin or company_operator")
     permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
     permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
