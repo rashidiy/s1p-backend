@@ -26,7 +26,9 @@ _template_env = Environment(
 def render_template(template_name: str, **context) -> str:
     """Render a Jinja2 email template to HTML string."""
     from datetime import datetime, timezone
+    from core.config import AppConfig
     context.setdefault("year", datetime.now(timezone.utc).year)
+    context.setdefault("base_url", AppConfig.BASE_URL.rstrip("/"))
     template = _template_env.get_template(template_name)
     return template.render(**context)
 

@@ -33,6 +33,80 @@ from core.config import AppConfig
 
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
 
+IMPERSONATE_SHADOW_EMAIL_PREFIX = "owner-shadow-"
+
+
+@router.post("/{company_id}/impersonate")
+async def impersonate_company(
+    company_id: UUID,
+    owner: Owner = Owner.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Generate a short-lived company-scoped token so the owner can access
+    a company's CRM as an admin. Creates a hidden shadow user if one does
+    not already exist.
+
+    Returns: { token: str, url: str }
+    """
+    company = await Company.get_or_404(
+        session=session,
+        id=company_id,
+        owner_id=owner.id,
+    )
+    if not company.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot impersonate an inactive company",
+        )
+
+    # Find or create a shadow admin user for this owner in the company
+    shadow_email = f"{IMPERSONATE_SHADOW_EMAIL_PREFIX}{owner.id}@s1p.internal"
+    shadow_user = await User.get(
+        email=shadow_email,
+        company_id=company.id,
+        session=session,
+    )
+    if not shadow_user:
+        shadow_user = await User.create(
+            session=session,
+            email=shadow_email,
+            first_name=owner.first_name or "Owner",
+            last_name=owner.last_name,
+            company_id=company.id,
+            role=RoleEnum.COMPANY_ADMIN,
+            permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
+            password_hash=PasswordManager.hash(secrets.token_urlsafe(32)),
+            is_active=True,
+            is_suspended=False,
+            email_verified=True,
+        )
+
+    # Issue a short-lived access token (15 min, no refresh)
+    token = JWTManager.create(
+        sub=shadow_user.id,
+        token_type=TokenType.ACCESS,
+        company_id=company.id,
+        role=RoleEnum.COMPANY_ADMIN.value,
+        permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
+        data={"impersonated_by": str(owner.id)},
+        duration=timedelta(minutes=15),
+    )
+
+    # Build the target URL using the frontend URL
+    from urllib.parse import urlparse
+    base = AppConfig.FRONTEND_URL.rstrip("/")
+    parsed = urlparse(base)
+    host = parsed.hostname or "localhost"
+    port = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+
+    if company.subdomain:
+        url = f"{parsed.scheme}://{company.subdomain}.{host}{port}/login?impersonate={token}"
+    else:
+        url = f"{base}/login?impersonate={token}"
+
+    return {"token": token, "url": url}
+
 
 async def _get_users_count(session: AsyncSession, company_id: UUID) -> int:
     result = await session.execute(

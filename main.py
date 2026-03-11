@@ -12,6 +12,7 @@ sys.path.append('source')
 from fastapi import FastAPI, Query, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -66,6 +67,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Subdomain", "X-Forwarded-Host"],
 )
+
+app.mount("/illustrations", StaticFiles(directory="source/static/illustrations"), name="illustrations")
 
 app.include_router(v1)
 app.include_router(public_v1)

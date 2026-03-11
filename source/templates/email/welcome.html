@@ -3,22 +3,27 @@
 {% block title %}Welcome to {{ company_name }}{% endblock %}
 {% block header_subtitle %}Welcome Aboard{% endblock %}
 
+{% block mascot %}
+<div class="mascot-section">
+  <img src="{{ base_url }}/illustrations/bot-celebrating.png" alt="S1P Bot" width="100" height="100" style="width:100px;height:100px;">
+</div>
+{% endblock %}
+
 {% block content %}
 <h2>Welcome, {{ user_name }}!</h2>
 
 <p>
-  You're all set up and ready to go with <strong>{{ company_name }}</strong>'s CRM system.
+  You're all set up and ready to go with <strong>{{ company_name }}</strong>.
+  Here's what you can do:
 </p>
 
-<p>Here's what you can do:</p>
-
-<div class="info-box">
-  <p>&#x2714; Make and receive calls</p>
-  <p>&#x2714; Manage your contacts and leads</p>
-  <p>&#x2714; Track deals through your pipeline</p>
-  <p>&#x2714; Organize tasks and stay on schedule</p>
-  <p>&#x2714; View performance analytics</p>
-</div>
+<ul class="feature-list">
+  <li><span class="icon">&#x260E;</span> Make and receive calls</li>
+  <li><span class="icon">&#x1F4CB;</span> Manage contacts and leads</li>
+  <li><span class="icon">&#x1F4B0;</span> Track deals through your pipeline</li>
+  <li><span class="icon">&#x2705;</span> Organize tasks and stay on schedule</li>
+  <li><span class="icon">&#x1F4CA;</span> View performance analytics</li>
+</ul>
 
 <div class="cta-wrapper">
   <a href="{{ login_url }}" class="cta-button">Go to Dashboard</a>
@@ -26,7 +31,7 @@
 
 <div class="divider"></div>
 
-<p style="font-size: 13px; color: #888888;">
+<p class="muted">
   Need help? Reach out to your company administrator for support.
 </p>
 {% endblock %}

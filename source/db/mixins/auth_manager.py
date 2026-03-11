@@ -64,8 +64,9 @@ class AuthenticationManagerMixin:
                 if user.is_suspended:
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended.")
 
-            # Check contract status for company users
-            if hasattr(user, 'company_id') and user.company_id:
+            # Check contract status for company users (skip for owner impersonation)
+            is_impersonating = payload.data and payload.data.get("impersonated_by")
+            if hasattr(user, 'company_id') and user.company_id and not is_impersonating:
                 from utils.contract_enforcement import check_contract_active
                 await check_contract_active(user.company_id, session)
 
