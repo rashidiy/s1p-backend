@@ -125,7 +125,7 @@ async def login(
     company = await _resolve_company(subdomain, session)
 
     user = await User.get(email=data.email, company_id=company.id, session=session)
-    if not user or not PasswordManager.verify(data.password, user.password_hash):
+    if not user or not user.password_hash or not PasswordManager.verify(data.password, user.password_hash):
         await record_failed_login(data.email)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
 
@@ -264,6 +264,13 @@ async def reset_password(
 
     Requires old password for verification.
     """
+    # Telegram users have no password — they cannot use password reset
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset not available for Telegram accounts",
+        )
+
     if not PasswordManager.verify(data.old_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

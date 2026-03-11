@@ -89,7 +89,7 @@ async def login_owner(
             detail="Invalid email or password"
         )
 
-    if not PasswordManager.verify(data.password, owner.password_hash):
+    if not owner.password_hash or not PasswordManager.verify(data.password, owner.password_hash):
         await record_failed_login(data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -160,6 +160,13 @@ async def reset_password(
 
     Requires old password for verification.
     """
+    # Telegram users have no password — they cannot use password reset
+    if not owner.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset not available for Telegram accounts",
+        )
+
     if not PasswordManager.verify(data.old_password, owner.password_hash):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

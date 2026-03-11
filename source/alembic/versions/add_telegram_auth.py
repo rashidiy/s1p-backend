@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
@@ -44,8 +45,14 @@ def upgrade() -> None:
                     existing_type=sa.String(50),
                     nullable=False)
 
-    # 6. Add unique constraint for company_id + phone
-    op.create_unique_constraint('uq_company_phone', 'users', ['company_id', 'phone'])
+    # 6. Add partial unique index for company_id + phone (only when phone is not empty)
+    op.create_index(
+        'uq_company_phone_not_empty',
+        'users',
+        ['company_id', 'phone'],
+        unique=True,
+        postgresql_where=text("phone != '' AND phone IS NOT NULL"),
+    )
 
     # 7. Create invite_tokens table
     op.create_table(
@@ -106,7 +113,7 @@ def downgrade() -> None:
     op.drop_index('idx_invite_tokens_company_id', table_name='invite_tokens')
     op.drop_table('invite_tokens')
 
-    op.drop_constraint('uq_company_phone', 'users', type_='unique')
+    op.drop_index('uq_company_phone_not_empty', table_name='users')
     op.alter_column('users', 'phone', existing_type=sa.String(50), nullable=True)
     op.alter_column('users', 'password_hash', existing_type=sa.String(225), nullable=False)
     op.alter_column('users', 'email', existing_type=sa.String(225), nullable=False)

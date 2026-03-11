@@ -29,7 +29,12 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint('company_id', 'email', name='uq_company_email'),
-        UniqueConstraint('company_id', 'phone', name='uq_company_phone'),
+        Index(
+            'uq_company_phone_not_empty',
+            'company_id', 'phone',
+            unique=True,
+            postgresql_where=text("phone != '' AND phone IS NOT NULL"),
+        ),
         Index('idx_users_company_id', 'company_id'),
         Index('idx_users_email', 'email'),
         Index('idx_users_role', 'role'),
