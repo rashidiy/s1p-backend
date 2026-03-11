@@ -53,6 +53,7 @@ class TelegramConfig:
     BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
     WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '')
     ENABLED = os.getenv('TELEGRAM_ENABLED', 'false').lower() == 'true'
+    BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 's1p_crm_bot')
 
 
 class WebhookConfig:

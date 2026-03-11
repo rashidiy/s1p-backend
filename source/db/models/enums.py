@@ -138,3 +138,9 @@ class CustomFieldTypeEnum(str, enum.Enum):
     DROPDOWN = "dropdown"
     DATE = "date"
     BOOLEAN = "boolean"
+
+
+class ChallengePurposeEnum(str, enum.Enum):
+    """Telegram auth challenge purpose"""
+    LOGIN = "login"
+    REGISTER = "register"
