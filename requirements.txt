@@ -55,3 +55,5 @@ aiogram==3.20.0
 
 # Type Annotations
 annotated-types==0.7.0
+cachetools
+python-telegram-bot
