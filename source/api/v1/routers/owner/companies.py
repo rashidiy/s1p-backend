@@ -4,8 +4,8 @@ Owner's company management endpoints
 
 import re
 import secrets
-from datetime import timedelta
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -26,10 +26,9 @@ from api.v1.schemas.owner import (
 )
 from api.v1.schemas.user import UserResponse
 from utils.managers import PasswordManager, JWTManager, TokenType
-from utils.services.email_service import EmailService
 from utils.contract_enforcement import check_user_limit
 from utils.permissions import ROLE_PERMISSIONS
-from core.config import AppConfig
+from core.config import AppConfig, TelegramConfig
 
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
 
@@ -179,15 +178,14 @@ async def create_company(
 async def invite_admin(
     company_id: UUID,
     data: InviteAdminRequest,
-    background_tasks: BackgroundTasks,
     owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Invite a company admin (Owner only)
+    Invite a company admin via Telegram invite token flow.
 
-    Creates a COMPANY_ADMIN user with a random temporary password
-    and sends an invitation email with a set-password link.
+    Creates an InviteToken with COMPANY_ADMIN role.
+    Returns the plaintext token and deep link — no user is created until registration.
     """
     company = await Company.get_or_404(
         session=session,
@@ -195,64 +193,55 @@ async def invite_admin(
         owner_id=owner.id,
     )
 
-    # Check if user already exists in this company
-    existing_user = await User.get(
-        email=data.email,
-        company_id=company.id,
-        session=session,
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email already exists in this company",
-        )
-
     # Check contract user limit
     await check_user_limit(company.id, RoleEnum.COMPANY_ADMIN, session)
 
-    # Generate temporary password and hash it
-    temporary_password = secrets.token_urlsafe(16)
+    # Check if phone already in use (if provided)
+    if data.phone:
+        existing_user = await User.get(
+            session=session,
+            phone=data.phone,
+            company_id=company.id,
+        )
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this phone already exists in this company",
+            )
 
-    # Create admin user
-    user = await User.create(
+    # Generate token
+    from utils.services.invite_token_service import generate_invite_token, hash_invite_token
+    from db.models.invite_token import InviteToken
+
+    raw_token = generate_invite_token()
+    token_hash = hash_invite_token(raw_token)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=48)
+
+    invite = await InviteToken.create(
         session=session,
-        email=data.email,
+        company_id=company.id,
+        token_hash=token_hash,
+        role=RoleEnum.COMPANY_ADMIN,
         first_name=data.first_name,
         last_name=data.last_name,
         phone=data.phone,
-        company_id=company.id,
-        role=RoleEnum.COMPANY_ADMIN,
-        permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
-        password_hash=PasswordManager.hash(temporary_password),
-        is_active=True,
-        is_suspended=False,
-        email_verified=False,
+        permissions=ROLE_PERMISSIONS.get(RoleEnum.COMPANY_ADMIN, []),
+        created_by=None,  # Owner doesn't have a User record in this company
+        expires_at=expires_at,
     )
 
-    # Create a temporary JWT token for set-password flow
-    set_password_token = JWTManager.create(
-        sub=user.id,
-        token_type=TokenType.TEMPORARY,
-        company_id=company.id,
-        role=RoleEnum.COMPANY_ADMIN.value,
-        data={"purpose": "set_password", "email": user.email},
-        duration=timedelta(hours=48),
-    )
-    set_password_url = f"{AppConfig.BASE_URL}/set-password?token={set_password_token}"
-
-    # Send invitation email as background task
-    EmailService.send_admin_invitation(
-        background_tasks=background_tasks,
-        email=user.email,
-        first_name=user.first_name,
-        company_name=company.name,
-        set_password_url=set_password_url,
-    )
+    bot_username = TelegramConfig.BOT_USERNAME
+    deep_link = f"https://t.me/{bot_username}?start=inv_{invite.id.hex}"
 
     return InviteAdminResponse(
-        user_id=user.id,
-        email=user.email,
-        message="Invitation sent",
+        invite_token=raw_token,
+        deep_link=deep_link,
+        company_name=company.name,
+        expires_at=expires_at,
+        role=RoleEnum.COMPANY_ADMIN.value,
+        first_name=data.first_name,
+        phone=data.phone,
     )
 
 

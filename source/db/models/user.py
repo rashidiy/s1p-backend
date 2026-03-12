@@ -29,6 +29,7 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint('company_id', 'email', name='uq_company_email'),
+        UniqueConstraint('company_id', 'telegram_user_id', name='uq_company_telegram_user_id'),
         Index(
             'uq_company_phone_not_empty',
             'company_id', 'phone',
@@ -57,8 +58,12 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
 
     # Telegram
     telegram_user_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, nullable=True, unique=True
+        BigInteger, nullable=True
     )
+    telegram_username: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
+    telegram_first_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
+    telegram_last_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
+    telegram_avatar_file_id: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
 
     # Personal info
     first_name: Mapped[str] = mapped_column(String(225), nullable=False)

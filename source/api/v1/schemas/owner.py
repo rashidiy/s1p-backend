@@ -2,9 +2,10 @@
 Owner schemas for API requests and responses
 """
 
+from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
@@ -92,18 +93,21 @@ class CompanyCreateRequest(BaseModel):
 
 
 class InviteAdminRequest(BaseModel):
-    """Owner invites a superadmin to a company (gets full admin permissions)"""
-    email: EmailStr
+    """Owner invites a company admin via Telegram invite token flow"""
     first_name: str = Field(..., min_length=1, max_length=225)
     last_name: str | None = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
 
 
 class InviteAdminResponse(BaseModel):
-    """Response after admin invitation is sent"""
-    user_id: UUID
-    email: str
-    message: str
+    """Response after admin invitation token is created"""
+    invite_token: str
+    deep_link: str
+    company_name: str
+    expires_at: datetime
+    role: str
+    first_name: str
+    phone: Optional[str] = None
 
 
 class CompanyUpdateRequest(BaseModel):
