@@ -6,7 +6,7 @@ companies by looking up chat_id in TelegramConfig.
 
 Also handles auth flows:
 - /start login_{CHALLENGE_ID} — sends OTP for login
-- /register — creates registration challenge and sends link
+- /start inv_{TOKEN_ID_HEX} — deep link invite registration
 """
 
 import logging
@@ -15,12 +15,11 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from aiogram import Bot, Dispatcher, Router as AiogramRouter
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import CommandStart
 from aiogram.types import Update, Message
 
 from core.config import DatabaseConfig, TelegramConfig as TelegramBotConfig
@@ -120,6 +119,10 @@ async def handle_start(message: Message) -> None:
         await _handle_login_start(message, payload)
         return
 
+    if payload.startswith("inv_"):
+        await _handle_invite_start(message, payload)
+        return
+
     # Default /start behavior — show Chat ID
     chat_id = message.chat.id
     await message.answer(
@@ -129,6 +132,11 @@ async def handle_start(message: Message) -> None:
         "in the CRM to start receiving notifications\\.",
         parse_mode="MarkdownV2",
     )
+
+
+def _format_error(text: str) -> str:
+    """Format an error message for MarkdownV2."""
+    return text
 
 
 async def _handle_login_start(message: Message, payload: str) -> None:
@@ -141,6 +149,8 @@ async def _handle_login_start(message: Message, payload: str) -> None:
     4. Generate OTP, hash it, store in challenge
     5. Send OTP to user via Telegram DM
     """
+    from utils.services.telegram_service import _escape_md
+
     challenge_id = payload[len("login_"):]
     telegram_user_id = message.from_user.id
 
@@ -157,13 +167,15 @@ async def _handle_login_start(message: Message, payload: str) -> None:
                 or challenge.used
             ):
                 await message.answer(
-                    "This login link has expired. Please request a new one from the login page."
+                    "Эта ссылка для входа истекла\\. Запросите новую на странице входа\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
             if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
                 await message.answer(
-                    "This login link has expired. Please request a new one from the login page."
+                    "Эта ссылка для входа истекла\\. Запросите новую на странице входа\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
@@ -175,27 +187,31 @@ async def _handle_login_start(message: Message, payload: str) -> None:
             )
             if not user or user.deleted_at is not None:
                 await message.answer(
-                    "No account found for this Telegram account in this company."
+                    "Аккаунт для этого Telegram не найден в данной компании\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
             if not user.is_active or user.is_suspended:
                 await message.answer(
-                    "Your account is suspended. Contact your administrator."
+                    "Ваш аккаунт заблокирован\\. Обратитесь к администратору\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
             # Check OTP rate limit (1 per 60 seconds per user)
             if await _check_otp_rate_limit(str(user.id)):
                 await message.answer(
-                    "Please wait before requesting another code."
+                    "Подождите перед запросом нового кода\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
             # Check lockout
             if await _check_otp_lockout(str(user.id)):
                 await message.answer(
-                    "Account temporarily locked. Try again later."
+                    "Аккаунт временно заблокирован\\. Попробуйте позже\\.",
+                    parse_mode="MarkdownV2",
                 )
                 return
 
@@ -216,40 +232,119 @@ async def _handle_login_start(message: Message, payload: str) -> None:
 
             # Send OTP to user
             await message.answer(
-                f"Your login code: {otp}\n\n"
-                f"This code expires in 5 minutes. Enter it on the login page."
+                f"*Код для входа:* `{otp}`\n\n"
+                f"_Код действует 5 минут\\. Введите его на странице входа\\._",
+                parse_mode="MarkdownV2",
             )
 
         except Exception:
             logger.exception("Error handling login /start command")
             await message.answer(
-                "An error occurred. Please try again."
+                "Произошла ошибка\\. Попробуйте ещё раз\\.",
+                parse_mode="MarkdownV2",
             )
 
 
-# ── /register command handler ────────────────────────────────────────
-
-@tg_router.message(Command("register"))
-async def handle_register(message: Message) -> None:
+async def _handle_invite_start(message: Message, payload: str) -> None:
     """
-    Handle /register command.
+    Handle /start inv_{TOKEN_ID_HEX} deep link.
 
-    Creates a registration challenge and sends the user a link
-    to the registration page on the website.
+    1. Parse InviteToken UUID from hex payload
+    2. Validate: exists, not expired, not used
+    3. Check telegram_user_id not already registered in this company
+    4. Capture Telegram profile data
+    5. Fetch profile photo
+    6. Create TelegramAuthChallenge with purpose="register", telegram_data, invite_token_id
+    7. Send registration link
     """
+    from uuid import UUID as PyUUID
+    from utils.services.telegram_service import _escape_md
+
+    token_hex = payload[len("inv_"):]
+    try:
+        token_id = PyUUID(hex=token_hex)
+    except (ValueError, AttributeError):
+        await message.answer("Invalid invite link\\.", parse_mode="MarkdownV2")
+        return
+
     telegram_user_id = message.from_user.id
 
     session_factory = _get_bot_session_factory()
     async with session_factory() as session:
         try:
-            now = datetime.now(timezone.utc)
-            challenge_id = secrets.token_urlsafe(16)
+            from db.models.invite_token import InviteToken
 
+            invite = await session.get(InviteToken, token_id)
+            now = datetime.now(timezone.utc)
+
+            if not invite:
+                await message.answer(
+                    _format_error("Ссылка приглашения недействительна\\."),
+                    parse_mode="MarkdownV2",
+                )
+                return
+
+            if invite.used_at is not None:
+                await message.answer(
+                    _format_error("Это приглашение уже было использовано\\."),
+                    parse_mode="MarkdownV2",
+                )
+                return
+
+            if invite.expires_at.replace(tzinfo=timezone.utc) < now:
+                await message.answer(
+                    _format_error("Срок действия приглашения истёк\\."),
+                    parse_mode="MarkdownV2",
+                )
+                return
+
+            # Check if telegram user already registered in this company
+            existing = await User.get(
+                session=session,
+                telegram_user_id=telegram_user_id,
+                company_id=invite.company_id,
+            )
+            if existing:
+                await message.answer(
+                    _format_error("Этот Telegram аккаунт уже зарегистрирован в этой компании\\."),
+                    parse_mode="MarkdownV2",
+                )
+                return
+
+            # Capture telegram profile data
+            tg_user = message.from_user
+            telegram_data = {
+                "first_name": tg_user.first_name,
+                "last_name": tg_user.last_name,
+                "username": tg_user.username,
+            }
+
+            # Try to get profile photo
+            try:
+                bot = get_bot()
+                if bot:
+                    photos = await bot.get_user_profile_photos(user_id=telegram_user_id, limit=1)
+                    if photos.total_count > 0 and photos.photos:
+                        # Get the largest photo (last in the list)
+                        photo = photos.photos[0][-1]
+                        telegram_data["avatar_file_id"] = photo.file_id
+            except Exception:
+                logger.debug("Could not fetch profile photo for user %s", telegram_user_id)
+
+            # Get company name
+            from db.models.company import Company
+            company = await session.get(Company, invite.company_id)
+            company_name = company.name if company else "компанию"
+
+            # Create registration challenge
+            challenge_id = secrets.token_urlsafe(16)
             challenge = TelegramAuthChallenge(
                 id=challenge_id,
-                company_id=None,  # Resolved from invite token at registration
+                company_id=invite.company_id,
                 purpose="register",
                 telegram_user_id=telegram_user_id,
+                telegram_data=telegram_data,
+                invite_token_id=invite.id,
                 expires_at=now + timedelta(minutes=10),
             )
             session.add(challenge)
@@ -260,15 +355,23 @@ async def handle_register(message: Message) -> None:
             base_url = AppConfig.FRONTEND_URL.rstrip("/")
             reg_url = f"{base_url}/auth/register?s={challenge_id}"
 
+            escaped_company = _escape_md(company_name)
+            escaped_url = _escape_md(reg_url)
+
             await message.answer(
-                f"To complete registration, open this link and enter your invite code:\n\n"
-                f"{reg_url}"
+                f"*Добро пожаловать\\!*\n\n"
+                f"Вас пригласили в *{escaped_company}* \\(S1P CRM\\)\\.\n\n"
+                f"Для завершения регистрации перейдите по ссылке:\n"
+                f"\U0001f449 {escaped_url}\n\n"
+                f"_Ссылка действует 10 минут\\._",
+                parse_mode="MarkdownV2",
             )
 
         except Exception:
-            logger.exception("Error handling /register command")
+            logger.exception("Error handling invite /start command")
             await message.answer(
-                "An error occurred. Please try again."
+                "Произошла ошибка\\. Попробуйте ещё раз\\.",
+                parse_mode="MarkdownV2",
             )
 
 

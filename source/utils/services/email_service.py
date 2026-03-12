@@ -10,10 +10,7 @@ import logging
 from fastapi import BackgroundTasks
 
 from utils.tasks.email_tasks import (
-    send_invitation_email,
-    send_admin_invitation_email,
     send_password_reset_email,
-    send_welcome_email,
     send_contract_expiry_warning_email,
     send_contract_expired_email,
 )
@@ -30,44 +27,6 @@ class EmailService:
         return secrets.token_urlsafe(length)[:length]
 
     @staticmethod
-    def send_operator_invitation(
-        background_tasks: BackgroundTasks,
-        to_email: str,
-        company_name: str,
-        temporary_password: str,
-        invited_by: str,
-        role_display: str = "an operator",
-        login_url: str = "https://yourcompany.crm.com",
-    ) -> None:
-        """Schedule operator invitation email as a background task."""
-        background_tasks.add_task(
-            send_invitation_email,
-            to_email=to_email,
-            company_name=company_name,
-            temporary_password=temporary_password,
-            invited_by=invited_by,
-            role_display=role_display,
-            login_url=login_url,
-        )
-
-    @staticmethod
-    def send_admin_invitation(
-        background_tasks: BackgroundTasks,
-        email: str,
-        first_name: str,
-        company_name: str,
-        set_password_url: str,
-    ) -> None:
-        """Schedule admin invitation email with set-password link as a background task."""
-        background_tasks.add_task(
-            send_admin_invitation_email,
-            to_email=email,
-            first_name=first_name,
-            company_name=company_name,
-            set_password_url=set_password_url,
-        )
-
-    @staticmethod
     def send_password_reset(
         background_tasks: BackgroundTasks,
         to_email: str,
@@ -82,23 +41,6 @@ class EmailService:
             reset_token=reset_token,
             reset_url=reset_url,
             company_name=company_name,
-        )
-
-    @staticmethod
-    def send_welcome(
-        background_tasks: BackgroundTasks,
-        to_email: str,
-        user_name: str,
-        company_name: str,
-        login_url: str = "https://yourcompany.crm.com",
-    ) -> None:
-        """Schedule welcome email as a background task."""
-        background_tasks.add_task(
-            send_welcome_email,
-            to_email=to_email,
-            user_name=user_name,
-            company_name=company_name,
-            login_url=login_url,
         )
 
     @staticmethod
