@@ -104,6 +104,10 @@ class UserResponse(UserBase):
     is_suspended: bool
     email_verified: bool
     language: str
+    telegram_user_id: Optional[int] = None
+    telegram_username: Optional[str] = None
+    telegram_first_name: Optional[str] = None
+    telegram_last_name: Optional[str] = None
     created_at: datetime
 
     class Config:

@@ -42,6 +42,8 @@ class InviteTokenCreateResponse(BaseModel):
     role: str
     first_name: str
     phone: str
+    deep_link: Optional[str] = None
+    company_name: Optional[str] = None
 
 
 class InviteTokenListItem(BaseModel):
@@ -94,7 +96,20 @@ class VerifyOtpRequest(BaseModel):
 
 # ── Registration Schemas ─────────────────────────────────────────────
 
+class RegisterPrefillResponse(BaseModel):
+    """Pre-fill data for registration form from Telegram profile"""
+    telegram_first_name: Optional[str] = None
+    telegram_last_name: Optional[str] = None
+    telegram_username: Optional[str] = None
+    telegram_avatar_file_id: Optional[str] = None
+    invite_phone: Optional[str] = None
+    invite_first_name: Optional[str] = None
+
+
 class TelegramRegisterRequest(BaseModel):
     """User completes registration with invite token"""
     session_id: str = Field(..., min_length=1)
     invite_token: str = Field(..., min_length=1)
+    first_name: Optional[str] = Field(None, max_length=225)
+    last_name: Optional[str] = Field(None, max_length=225)
+    phone: Optional[str] = Field(None, max_length=50)

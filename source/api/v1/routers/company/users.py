@@ -4,7 +4,7 @@ User management endpoints (Company Admin manages operators)
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, func, select
 from typing import List, Optional
@@ -20,7 +20,6 @@ from db.models.permission_group import PermissionGroup
 from db.models.invite_token import InviteToken
 from db.models.enums import RoleEnum
 from api.v1.schemas.user import (
-    UserInviteRequest,
     UserUpdateRequest,
     UserResponse,
     UserDetailResponse,
@@ -33,106 +32,11 @@ from api.v1.schemas.telegram_auth import (
     InviteTokenListItem,
     InviteTokenListResponse,
 )
-from utils.managers import PasswordManager
 from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
 from utils.contract_enforcement import check_user_limit
-from utils.services.email_service import EmailService
 from utils.services.invite_token_service import generate_invite_token, hash_invite_token
-from core.config import AppConfig
 
 router = APIRouter(prefix="/users", tags=["User Management"])
-
-
-@router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@require_permissions(Permissions.USERS_CREATE)
-async def invite_operator(
-    data: UserInviteRequest,
-    background_tasks: BackgroundTasks,
-    admin: User = User.current(),
-    session: AsyncSession = Depends(get_session),
-):
-    """
-    Invite a new operator (Company Admin only)
-
-    Sends email invitation with temporary password.
-    Operator must change password on first login.
-    """
-    # Check if user already exists in this company
-    existing_user = await User.get(
-        email=data.email,
-        company_id=admin.company_id,
-        session=session
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email already exists in your company"
-        )
-
-    # Validate role
-    try:
-        role = RoleEnum(data.role)
-        if role == RoleEnum.OWNER:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot create owner-level users"
-            )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role. Must be one of: {[e.value for e in RoleEnum if e != RoleEnum.OWNER]}"
-        )
-
-    # Check contract user limit
-    await check_user_limit(admin.company_id, role, session)
-
-    # Validate permission_group_id if provided
-    permission_group_id = None
-    if data.permission_group_id:
-        group = await PermissionGroup.get(id=data.permission_group_id, session=session)
-        if not group:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group not found")
-        if group.company_id is not None and group.company_id != admin.company_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Permission group does not belong to this company")
-        permission_group_id = group.id
-
-    # Generate temporary password
-    temporary_password = EmailService.generate_temporary_password()
-
-    # Create user
-    user = await User.create(
-        session=session,
-        email=data.email,
-        first_name=data.first_name,
-        last_name=data.last_name,
-        phone=data.phone or "",
-        company_id=admin.company_id,
-        role=role,
-        permissions=data.permissions if data.permissions else ROLE_PERMISSIONS.get(role, []),
-        permission_group_id=permission_group_id,
-        password_hash=PasswordManager.hash(temporary_password),
-        is_active=True,
-        is_suspended=False,
-        email_verified=False
-    )
-
-    # Send invitation email
-    from db.models.company import Company
-    company = await session.get(Company, admin.company_id)
-    company_name = company.name if company else "Your Company"
-
-    role_display = role.value.replace("company_", "a ").title()
-    EmailService.send_operator_invitation(
-        background_tasks=background_tasks,
-        to_email=user.email,
-        company_name=company_name,
-        temporary_password=temporary_password,
-        invited_by=admin.full_name,
-        role_display=role_display,
-        login_url=f"{AppConfig.BASE_URL}/login",
-    )
-
-    return user
 
 
 @router.get("/me", response_model=UserResponse)
@@ -525,12 +429,24 @@ async def invite_telegram(
         expires_at=expires_at,
     )
 
+    # Get company name
+    from db.models.company import Company
+    company = await session.get(Company, admin.company_id)
+    company_name = company.name if company else "Your Company"
+
+    # Build deep link
+    from core.config import TelegramConfig
+    bot_username = TelegramConfig.BOT_USERNAME
+    deep_link = f"https://t.me/{bot_username}?start=inv_{invite.id.hex}"
+
     return InviteTokenCreateResponse(
         invite_token=raw_token,
         expires_at=expires_at,
         role=role.value,
         first_name=data.first_name,
         phone=data.phone,
+        deep_link=deep_link,
+        company_name=company_name,
     )
 
 
