@@ -50,9 +50,9 @@ class InviteToken(Base, ObjectManagerMixin):
         nullable=False,
     )
 
-    first_name: Mapped[str] = mapped_column(String(225), nullable=False)
+    first_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
-    phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     permissions = Column(
         JSONB,

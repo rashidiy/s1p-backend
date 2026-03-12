@@ -9,7 +9,10 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import httpx
+
 from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Response as FastAPIResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select, func
@@ -20,6 +23,7 @@ from api.v1.schemas import AuthSchema
 from api.v1.schemas.telegram_auth import (
     ChallengeStatusResponse,
     LoginChallengeResponse,
+    RegisterPrefillResponse,
     TelegramRegisterRequest,
     VerifyOtpRequest,
 )
@@ -30,6 +34,7 @@ from db.models.invite_token import InviteToken
 from db.models.telegram_auth_challenge import TelegramAuthChallenge
 from utils.managers import JWTManager
 from utils.services.invite_token_service import hash_invite_token, hash_token
+from utils.services.telegram_service import get_bot
 from . import router
 from .auth import _extract_subdomain, _resolve_company, _set_auth_cookies
 
@@ -310,6 +315,104 @@ async def verify_otp(
     return user
 
 
+# ── Endpoint 7: Register Prefill ──────────────────────────────────────
+
+@router.get('/telegram/register-prefill/{challenge_id}', response_model=RegisterPrefillResponse)
+@limiter.limit("10/minute")
+async def get_register_prefill(
+    challenge_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Get pre-fill data for the registration form.
+    Returns Telegram profile data captured by the bot.
+    """
+    challenge = await session.get(TelegramAuthChallenge, challenge_id)
+    now = datetime.now(timezone.utc)
+
+    if (
+        not challenge
+        or challenge.purpose != "register"
+        or challenge.used
+        or challenge.expires_at.replace(tzinfo=timezone.utc) < now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Challenge not found or expired",
+        )
+
+    telegram_data = challenge.telegram_data or {}
+
+    # Get invite token data if linked
+    invite_phone = None
+    invite_first_name = None
+    if challenge.invite_token_id:
+        invite = await session.get(InviteToken, challenge.invite_token_id)
+        if invite:
+            invite_phone = invite.phone
+            invite_first_name = invite.first_name
+
+    return RegisterPrefillResponse(
+        telegram_first_name=telegram_data.get("first_name"),
+        telegram_last_name=telegram_data.get("last_name"),
+        telegram_username=telegram_data.get("username"),
+        telegram_avatar_file_id=telegram_data.get("avatar_file_id"),
+        invite_phone=invite_phone,
+        invite_first_name=invite_first_name,
+    )
+
+
+# ── Endpoint 7b: Register Avatar ─────────────────────────────────────
+
+@router.get('/telegram/avatar/{challenge_id}')
+@limiter.limit("10/minute")
+async def get_register_avatar(
+    challenge_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Proxy endpoint to download user's Telegram avatar.
+    """
+    challenge = await session.get(TelegramAuthChallenge, challenge_id)
+    now = datetime.now(timezone.utc)
+
+    if (
+        not challenge
+        or challenge.purpose != "register"
+        or challenge.used
+        or challenge.expires_at.replace(tzinfo=timezone.utc) < now
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    telegram_data = challenge.telegram_data or {}
+    file_id = telegram_data.get("avatar_file_id")
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+
+    # Get file path from Telegram
+    bot = get_bot()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bot unavailable")
+
+    try:
+        file = await bot.get_file(file_id)
+        file_url = f"https://api.telegram.org/file/bot{TelegramConfig.BOT_TOKEN}/{file.file_path}"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(file_url)
+            resp.raise_for_status()
+
+            return FastAPIResponse(
+                content=resp.content,
+                media_type=resp.headers.get("content-type", "image/jpeg"),
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar unavailable")
+
+
 # ── Endpoint 8: Complete Registration ─────────────────────────────────
 
 @router.post(
@@ -398,17 +501,27 @@ async def telegram_register(
             detail="This Telegram account is already registered",
         )
 
+    # Get telegram data from challenge
+    telegram_data = challenge.telegram_data or {}
+
+    # Priority: user form > Telegram data > InviteToken data
+    final_first_name = data.first_name or telegram_data.get("first_name") or invite.first_name or "User"
+    final_last_name = data.last_name or telegram_data.get("last_name") or invite.last_name
+    final_phone = data.phone or (invite.phone if invite.phone else "")
+
     # 5. Check no existing user with this phone + company_id
-    existing_phone = await User.get(
-        session=session,
-        phone=invite.phone,
-        company_id=invite.company_id,
-    )
-    if existing_phone:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this phone number already exists",
+    final_phone_check = data.phone or invite.phone
+    if final_phone_check:
+        existing_phone = await User.get(
+            session=session,
+            phone=final_phone_check,
+            company_id=invite.company_id,
         )
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this phone number already exists",
+            )
 
     # 6. Create user
     from utils.permissions import ROLE_PERMISSIONS
@@ -416,19 +529,23 @@ async def telegram_register(
 
     user = await User.create(
         session=session,
-        first_name=invite.first_name,
-        last_name=invite.last_name,
-        phone=invite.phone,
+        first_name=final_first_name,
+        last_name=final_last_name,
+        phone=final_phone,
         company_id=invite.company_id,
         role=invite.role,
         permissions=invite.permissions if invite.permissions else ROLE_PERMISSIONS.get(invite.role, []),
         permission_group_id=invite.permission_group_id,
         telegram_user_id=telegram_user_id,
+        telegram_username=telegram_data.get("username"),
+        telegram_first_name=telegram_data.get("first_name"),
+        telegram_last_name=telegram_data.get("last_name"),
+        telegram_avatar_file_id=telegram_data.get("avatar_file_id"),
         email=None,
         password_hash=None,
         is_active=True,
         is_suspended=False,
-        email_verified=True,  # No email to verify
+        email_verified=True,
         commit=False,
     )
 

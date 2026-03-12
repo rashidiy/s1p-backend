@@ -8,7 +8,7 @@ import uuid
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from db import Base, ObjectManagerMixin
 
@@ -74,11 +74,20 @@ class TelegramAuthChallenge(Base, ObjectManagerMixin):
         Boolean, default=False, server_default="false",
     )
 
+    telegram_data = Column(JSONB, nullable=True)
+
+    invite_token_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("invite_tokens.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     company = relationship("Company")
     user = relationship("User")
+    invite_token = relationship("InviteToken")
 
     def __repr__(self):
         return f"<TelegramAuthChallenge(id={self.id}, purpose='{self.purpose}')>"
