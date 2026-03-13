@@ -65,6 +65,10 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     telegram_last_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
     telegram_avatar_file_id: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
 
+    # Avatar
+    avatar: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    avatar_is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("'false'"))
+
     # Personal info
     first_name: Mapped[str] = mapped_column(String(225), nullable=False)
     last_name: Mapped[Optional[str]] = mapped_column(String(225))
@@ -90,6 +94,7 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     # Status flags
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_shadow: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("'false'"))
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Soft delete
