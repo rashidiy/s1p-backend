@@ -4,7 +4,7 @@ User management endpoints (Company Admin manages operators)
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, func, select
 from typing import List, Optional
@@ -71,6 +71,64 @@ async def update_my_profile(
     return user
 
 
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    file: UploadFile = FastAPIFile(...),
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Upload a custom avatar for the current user.
+
+    Accepts JPEG, PNG, or WebP images up to 5MB.
+    """
+    # Validate content type
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Allowed: JPEG, PNG, WebP",
+        )
+
+    # Read and validate size (5MB max)
+    file_bytes = await file.read()
+    max_size = 5 * 1024 * 1024
+    if len(file_bytes) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 5MB",
+        )
+
+    from utils.services.avatar_service import save_uploaded_avatar
+    filename = save_uploaded_avatar(str(user.id), file_bytes)
+
+    user.avatar = filename
+    user.avatar_is_custom = True
+    await session.commit()
+    await session.refresh(user)
+
+    return user
+
+
+@router.delete("/me/avatar", response_model=UserResponse)
+async def delete_avatar(
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Remove the current user's avatar.
+    """
+    from utils.services.avatar_service import delete_avatar_file
+    delete_avatar_file(str(user.id))
+
+    user.avatar = None
+    user.avatar_is_custom = False
+    await session.commit()
+    await session.refresh(user)
+
+    return user
+
+
 @router.get("", response_model=UserListResponse)
 @require_permissions(Permissions.USERS_READ)
 async def list_users(
@@ -94,10 +152,11 @@ async def list_users(
     if is_active is not None:
         filters["is_active"] = is_active
 
-    # Build query
+    # Build query (exclude shadow users created for owner impersonation)
     query = select(User).where(
         User.company_id == admin.company_id,
-        User.deleted_at.is_(None)
+        User.deleted_at.is_(None),
+        User.is_shadow.is_(False),
     )
 
     # Search by name or email
@@ -265,6 +324,12 @@ async def delete_user(
         company_id=admin.company_id
     )
 
+    if user.is_shadow:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete system user"
+        )
+
     await user.delete(session=session, hard=hard)
     return None
 
@@ -429,24 +494,12 @@ async def invite_telegram(
         expires_at=expires_at,
     )
 
-    # Get company name
-    from db.models.company import Company
-    company = await session.get(Company, admin.company_id)
-    company_name = company.name if company else "Your Company"
-
-    # Build deep link
-    from core.config import TelegramConfig
-    bot_username = TelegramConfig.BOT_USERNAME
-    deep_link = f"https://t.me/{bot_username}?start=inv_{invite.id.hex}"
-
     return InviteTokenCreateResponse(
         invite_token=raw_token,
         expires_at=expires_at,
         role=role.value,
         first_name=data.first_name,
         phone=data.phone,
-        deep_link=deep_link,
-        company_name=company_name,
     )
 
 

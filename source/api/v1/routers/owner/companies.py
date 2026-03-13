@@ -28,11 +28,36 @@ from api.v1.schemas.user import UserResponse
 from utils.managers import PasswordManager, JWTManager, TokenType
 from utils.contract_enforcement import check_user_limit
 from utils.permissions import ROLE_PERMISSIONS
-from core.config import AppConfig, TelegramConfig
+from core.config import AppConfig
 
 router = APIRouter(prefix="/companies", tags=["Owner Company Management"])
 
 IMPERSONATE_SHADOW_EMAIL_PREFIX = "owner-shadow-"
+
+
+def _shadow_email(owner_id: UUID) -> str:
+    return f"{IMPERSONATE_SHADOW_EMAIL_PREFIX}{owner_id}@s1p.internal"
+
+
+async def _create_shadow_user(
+    session: AsyncSession, owner: Owner, company_id: UUID
+) -> User:
+    """Create an invisible shadow admin user for the owner in a company."""
+    return await User.create(
+        session=session,
+        email=_shadow_email(owner.id),
+        first_name=owner.first_name or "Owner",
+        last_name=owner.last_name,
+        phone="",
+        company_id=company_id,
+        role=RoleEnum.COMPANY_ADMIN,
+        permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
+        password_hash=PasswordManager.hash(secrets.token_urlsafe(32)),
+        is_active=True,
+        is_suspended=False,
+        is_shadow=True,
+        email_verified=True,
+    )
 
 
 @router.post("/{company_id}/impersonate")
@@ -43,8 +68,7 @@ async def impersonate_company(
 ):
     """
     Generate a short-lived company-scoped token so the owner can access
-    a company's CRM as an admin. Creates a hidden shadow user if one does
-    not already exist.
+    a company's CRM as an admin.
 
     Returns: { token: str, url: str }
     """
@@ -59,27 +83,15 @@ async def impersonate_company(
             detail="Cannot impersonate an inactive company",
         )
 
-    # Find or create a shadow admin user for this owner in the company
-    shadow_email = f"{IMPERSONATE_SHADOW_EMAIL_PREFIX}{owner.id}@s1p.internal"
+    # Look up the shadow user (created when company was created)
     shadow_user = await User.get(
-        email=shadow_email,
+        email=_shadow_email(owner.id),
         company_id=company.id,
         session=session,
     )
     if not shadow_user:
-        shadow_user = await User.create(
-            session=session,
-            email=shadow_email,
-            first_name=owner.first_name or "Owner",
-            last_name=owner.last_name,
-            company_id=company.id,
-            role=RoleEnum.COMPANY_ADMIN,
-            permissions=ROLE_PERMISSIONS[RoleEnum.COMPANY_ADMIN],
-            password_hash=PasswordManager.hash(secrets.token_urlsafe(32)),
-            is_active=True,
-            is_suspended=False,
-            email_verified=True,
-        )
+        # Fallback: create if missing (e.g. companies created before this change)
+        shadow_user = await _create_shadow_user(session, owner, company.id)
 
     # Issue a short-lived access token (15 min, no refresh)
     token = JWTManager.create(
@@ -112,6 +124,7 @@ async def _get_users_count(session: AsyncSession, company_id: UUID) -> int:
         select(func.count(User.id)).where(
             User.company_id == company_id,
             User.deleted_at.is_(None),
+            User.is_shadow.is_(False),
         )
     )
     return result.scalar_one()
@@ -166,6 +179,9 @@ async def create_company(
         webhook_token=webhook_token,
         is_active=True
     )
+
+    # Create shadow admin user for owner impersonation
+    await _create_shadow_user(session, owner, company.id)
 
     # Add computed fields
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
@@ -231,12 +247,8 @@ async def invite_admin(
         expires_at=expires_at,
     )
 
-    bot_username = TelegramConfig.BOT_USERNAME
-    deep_link = f"https://t.me/{bot_username}?start=inv_{invite.id.hex}"
-
     return InviteAdminResponse(
         invite_token=raw_token,
-        deep_link=deep_link,
         company_name=company.name,
         expires_at=expires_at,
         role=RoleEnum.COMPANY_ADMIN.value,
@@ -257,7 +269,7 @@ async def list_companies(
     """
     user_count_subq = (
         select(func.count(User.id))
-        .where(User.company_id == Company.id, User.deleted_at.is_(None))
+        .where(User.company_id == Company.id, User.deleted_at.is_(None), User.is_shadow.is_(False))
         .correlate(Company)
         .scalar_subquery()
     )

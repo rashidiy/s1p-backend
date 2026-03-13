@@ -75,6 +75,7 @@ async def check_user_limit(company_id, role: RoleEnum, session: AsyncSession) ->
             User.company_id == company_id,
             User.role == role,
             User.deleted_at.is_(None),
+            User.is_shadow.is_(False),
         )
     )
 
