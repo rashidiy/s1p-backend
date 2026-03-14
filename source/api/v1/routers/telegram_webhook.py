@@ -6,7 +6,7 @@ companies by looking up chat_id in TelegramConfig.
 
 Also handles auth flows:
 - /start login_{CHALLENGE_ID} — sends OTP for login
-- /start inv_{TOKEN_ID_HEX} — deep link invite registration
+- /start reg_{CHALLENGE_ID} — captures Telegram profile for registration
 """
 
 import logging
@@ -119,8 +119,8 @@ async def handle_start(message: Message) -> None:
         await _handle_login_start(message, payload)
         return
 
-    if payload.startswith("inv_"):
-        await _handle_invite_start(message, payload)
+    if payload.startswith("reg_"):
+        await _handle_register_start(message, payload)
         return
 
     # Default /start behavior — show Chat ID
@@ -245,55 +245,45 @@ async def _handle_login_start(message: Message, payload: str) -> None:
             )
 
 
-async def _handle_invite_start(message: Message, payload: str) -> None:
+async def _handle_register_start(message: Message, payload: str) -> None:
     """
-    Handle /start inv_{TOKEN_ID_HEX} deep link.
+    Handle /start reg_{CHALLENGE_ID} deep link.
 
-    1. Parse InviteToken UUID from hex payload
-    2. Validate: exists, not expired, not used
-    3. Check telegram_user_id not already registered in this company
-    4. Capture Telegram profile data
-    5. Fetch profile photo
-    6. Create TelegramAuthChallenge with purpose="register", telegram_data, invite_token_id
-    7. Send registration link
+    Called from the registration page. The challenge was already created
+    by POST /auth/telegram/register-challenge. This handler:
+    1. Loads the challenge
+    2. Captures Telegram profile data + avatar
+    3. Stores telegram_user_id and telegram_data in the challenge
+    4. Sends confirmation message
     """
-    from uuid import UUID as PyUUID
     from utils.services.telegram_service import _escape_md
 
-    token_hex = payload[len("inv_"):]
-    try:
-        token_id = PyUUID(hex=token_hex)
-    except (ValueError, AttributeError):
-        await message.answer("Invalid invite link\\.", parse_mode="MarkdownV2")
-        return
-
+    challenge_id = payload[len("reg_"):]
     telegram_user_id = message.from_user.id
 
     session_factory = _get_bot_session_factory()
     async with session_factory() as session:
         try:
-            from db.models.invite_token import InviteToken
-
-            invite = await session.get(InviteToken, token_id)
+            challenge = await session.get(TelegramAuthChallenge, challenge_id)
             now = datetime.now(timezone.utc)
 
-            if not invite:
+            if not challenge or challenge.purpose != "register":
                 await message.answer(
-                    _format_error("Ссылка приглашения недействительна\\."),
+                    "Ссылка недействительна\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
 
-            if invite.used_at is not None:
+            if challenge.used:
                 await message.answer(
-                    _format_error("Это приглашение уже было использовано\\."),
+                    "Эта ссылка уже использована\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
 
-            if invite.expires_at.replace(tzinfo=timezone.utc) < now:
+            if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
                 await message.answer(
-                    _format_error("Срок действия приглашения истёк\\."),
+                    "Срок действия ссылки истёк\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
@@ -302,11 +292,11 @@ async def _handle_invite_start(message: Message, payload: str) -> None:
             existing = await User.get(
                 session=session,
                 telegram_user_id=telegram_user_id,
-                company_id=invite.company_id,
+                company_id=challenge.company_id,
             )
             if existing:
                 await message.answer(
-                    _format_error("Этот Telegram аккаунт уже зарегистрирован в этой компании\\."),
+                    "Этот Telegram аккаунт уже зарегистрирован в этой компании\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
@@ -325,50 +315,31 @@ async def _handle_invite_start(message: Message, payload: str) -> None:
                 if bot:
                     photos = await bot.get_user_profile_photos(user_id=telegram_user_id, limit=1)
                     if photos.total_count > 0 and photos.photos:
-                        # Get the largest photo (last in the list)
                         photo = photos.photos[0][-1]
                         telegram_data["avatar_file_id"] = photo.file_id
             except Exception:
                 logger.debug("Could not fetch profile photo for user %s", telegram_user_id)
 
-            # Get company name
-            from db.models.company import Company
-            company = await session.get(Company, invite.company_id)
-            company_name = company.name if company else "компанию"
-
-            # Create registration challenge
-            challenge_id = secrets.token_urlsafe(16)
-            challenge = TelegramAuthChallenge(
-                id=challenge_id,
-                company_id=invite.company_id,
-                purpose="register",
-                telegram_user_id=telegram_user_id,
-                telegram_data=telegram_data,
-                invite_token_id=invite.id,
-                expires_at=now + timedelta(minutes=10),
-            )
-            session.add(challenge)
+            # Update challenge with Telegram data
+            challenge.telegram_user_id = telegram_user_id
+            challenge.telegram_data = telegram_data
             await session.commit()
 
-            # Build registration link
-            from core.config import AppConfig
-            base_url = AppConfig.FRONTEND_URL.rstrip("/")
-            reg_url = f"{base_url}/auth/register?s={challenge_id}"
-
+            # Get company name for confirmation message
+            from db.models.company import Company
+            company = await session.get(Company, challenge.company_id)
+            company_name = company.name if company else "компанию"
             escaped_company = _escape_md(company_name)
-            escaped_url = _escape_md(reg_url)
 
             await message.answer(
-                f"*Добро пожаловать\\!*\n\n"
-                f"Вас пригласили в *{escaped_company}* \\(S1P CRM\\)\\.\n\n"
-                f"Для завершения регистрации перейдите по ссылке:\n"
-                f"\U0001f449 {escaped_url}\n\n"
-                f"_Ссылка действует 10 минут\\._",
+                f"Telegram подключён\\!\n\n"
+                f"Вернитесь на страницу регистрации *{escaped_company}* "
+                f"для завершения\\.",
                 parse_mode="MarkdownV2",
             )
 
         except Exception:
-            logger.exception("Error handling invite /start command")
+            logger.exception("Error handling register /start command")
             await message.answer(
                 "Произошла ошибка\\. Попробуйте ещё раз\\.",
                 parse_mode="MarkdownV2",

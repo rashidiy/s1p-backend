@@ -5,7 +5,7 @@ User management schemas
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api.v1.schemas.validators import PasswordValidator
 from utils.permissions import Permissions
@@ -25,32 +25,9 @@ def _validate_permissions(permissions: List[str]) -> List[str]:
 
 class UserBase(BaseModel):
     """Base user schema"""
-    email: Optional[EmailStr] = None
     first_name: str = Field(..., min_length=1, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
-
-
-class UserInviteRequest(UserBase):
-    """Admin invites operator via email"""
-    email: EmailStr  # Required for email-based invite (overrides Optional in UserBase)
-    role: str = Field(default="company_operator", description="Role: company_admin or company_operator")
-    permissions: Optional[List[str]] = Field(default_factory=list, description="Custom permissions")
-    permission_group_id: Optional[UUID] = Field(None, description="Permission group to assign")
-
-    @field_validator("permissions")
-    @classmethod
-    def check_permissions(cls, v):
-        if v:
-            return _validate_permissions(v)
-        return v
-
-
-class UserCreateRequest(PasswordValidator, UserBase):
-    """Create user with password (internal use)"""
-    password: str = Field(..., min_length=8, max_length=100)
-    role: str = Field(default="company_operator")
-    permissions: Optional[List[str]] = Field(default_factory=list)
 
 
 class UserUpdateRequest(BaseModel):
@@ -72,19 +49,6 @@ class UserUpdateRequest(BaseModel):
         return v
 
 
-class PasswordChangeRequest(PasswordValidator, BaseModel):
-    """Change password request"""
-    old_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8, max_length=100)
-
-
-class PasswordResetRequest(PasswordValidator, BaseModel):
-    """Reset password (for temporary passwords)"""
-    email: EmailStr
-    temporary_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8, max_length=100)
-
-
 class ProfileUpdateRequest(BaseModel):
     """Update own profile (non-admin fields only)"""
     first_name: Optional[str] = Field(None, min_length=1, max_length=225)
@@ -102,16 +66,24 @@ class UserResponse(UserBase):
     permission_group_id: Optional[UUID] = None
     is_active: bool
     is_suspended: bool
-    email_verified: bool
     language: str
     telegram_user_id: Optional[int] = None
     telegram_username: Optional[str] = None
     telegram_first_name: Optional[str] = None
     telegram_last_name: Optional[str] = None
+    avatar: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode='after')
+    def compute_avatar_url(self):
+        if self.avatar:
+            from core.config import AppConfig
+            self.avatar_url = f"{AppConfig.BASE_URL}/media/avatars/{self.avatar}"
+        return self
 
 
 class UserDetailResponse(UserResponse):

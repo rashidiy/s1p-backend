@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import TelegramConfig as TelegramBotConfig, AppConfig
-from db.models.telegram_config import TelegramConfig
+from db.models.telegram_config import TelegramBotConfig as TelegramConfig
 from db.models.contact import Contact
 from db.models.user import User
 

@@ -102,7 +102,6 @@ class InviteAdminRequest(BaseModel):
 class InviteAdminResponse(BaseModel):
     """Response after admin invitation token is created"""
     invite_token: str
-    deep_link: str
     company_name: str
     expires_at: datetime
     role: str

@@ -138,6 +138,8 @@ async def _handle_message(message: dict, session: AsyncSession):
 
             if payload.startswith("login_"):
                 await _handle_login_start(chat_id, telegram_user_id, payload, session)
+            elif payload.startswith("reg_"):
+                await _handle_register_start(chat_id, telegram_user_id, from_user, payload, session)
             else:
                 # Default /start — show Chat ID
                 await _send_message(
@@ -245,11 +247,110 @@ async def _handle_login_start(
     # Set rate limit
     await _set_otp_rate_limit(str(user.id))
 
+    # Update Telegram avatar if user hasn't uploaded a custom one
+    if not user.avatar_is_custom:
+        try:
+            bot = _get_bot()
+            if bot:
+                try:
+                    photos = await bot.get_user_profile_photos(user_id=telegram_user_id, limit=1)
+                    if photos.total_count > 0 and photos.photos:
+                        photo = photos.photos[0][-1]
+                        from utils.services.avatar_service import download_telegram_avatar
+                        filename = await download_telegram_avatar(str(user.id), telegram_user_id)
+                        if filename:
+                            user.avatar = filename
+                            user.telegram_avatar_file_id = photo.file_id
+                            await session.commit()
+                finally:
+                    await bot.session.close()
+        except Exception:
+            logger.debug("Failed to update avatar during login for user %s", user.id)
+
     # Send OTP to user
     await _send_message(
         chat_id,
         f"Your login code: {otp}\n\n"
         f"This code expires in 5 minutes. Enter it on the login page."
+    )
+
+
+async def _handle_register_start(
+    chat_id: int,
+    telegram_user_id: int,
+    from_user: dict,
+    payload: str,
+    session: AsyncSession,
+) -> None:
+    """
+    Handle /start reg_{CHALLENGE_ID} deep link.
+
+    Captures Telegram profile data and stores it in the challenge
+    so the registration page can complete the flow.
+    """
+    challenge_id = payload[len("reg_"):]
+    now = datetime.now(timezone.utc)
+
+    challenge = await session.get(TelegramAuthChallenge, challenge_id)
+
+    if not challenge or challenge.purpose != "register":
+        await _send_message(chat_id, "This link is invalid.")
+        return
+
+    if challenge.used:
+        await _send_message(chat_id, "This link has already been used.")
+        return
+
+    if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
+        await _send_message(chat_id, "This link has expired.")
+        return
+
+    # Check if telegram user already registered in this company
+    existing = await User.get(
+        session=session,
+        telegram_user_id=telegram_user_id,
+        company_id=challenge.company_id,
+    )
+    if existing:
+        await _send_message(
+            chat_id,
+            "This Telegram account is already registered in this company."
+        )
+        return
+
+    # Capture telegram profile data
+    telegram_data = {
+        "first_name": from_user.get("first_name"),
+        "last_name": from_user.get("last_name"),
+        "username": from_user.get("username"),
+    }
+
+    # Try to get profile photo
+    try:
+        bot = _get_bot()
+        if bot:
+            photos = await bot.get_user_profile_photos(user_id=telegram_user_id, limit=1)
+            if photos.total_count > 0 and photos.photos:
+                photo = photos.photos[0][-1]
+                telegram_data["avatar_file_id"] = photo.file_id
+            await bot.session.close()
+    except Exception:
+        logger.debug("Could not fetch profile photo for user %s", telegram_user_id)
+
+    # Update challenge with Telegram data
+    challenge.telegram_user_id = telegram_user_id
+    challenge.telegram_data = telegram_data
+    await session.commit()
+
+    # Get company name for confirmation message
+    from db.models.company import Company
+    company = await session.get(Company, challenge.company_id)
+    company_name = company.name if company else "the company"
+
+    await _send_message(
+        chat_id,
+        f"Telegram connected!\n\n"
+        f"Return to the {company_name} registration page to complete signup."
     )
 
 
@@ -279,7 +380,7 @@ async def _handle_register(
 
     # Build registration link
     base_url = AppConfig.FRONTEND_URL.rstrip("/")
-    reg_url = f"{base_url}/auth/register?s={challenge_id}"
+    reg_url = f"{base_url}/register?s={challenge_id}"
 
     await _send_message(
         chat_id,
