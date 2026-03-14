@@ -2,10 +2,21 @@
 Public API schemas — API key management + public read-only endpoints
 """
 
+import base64
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date
 from pydantic import BaseModel, Field, ConfigDict
+
+
+def encode_cursor(item_id) -> str:
+    """Encode an item ID as a cursor string."""
+    return base64.urlsafe_b64encode(str(item_id).encode()).decode()
+
+
+def decode_cursor(cursor: str):
+    """Decode a cursor string back to an item ID."""
+    return base64.urlsafe_b64decode(cursor.encode()).decode()
 
 
 # ===== API Key Management Schemas =====
@@ -44,15 +55,13 @@ class ApiKeyListResponse(BaseModel):
     total: int
 
 
-# ===== Public API Paginated Response =====
+# ===== Cursor-Based Paginated Response =====
 
-class PublicPaginatedResponse(BaseModel):
-    """Paginated response for public API (matches internal pattern)"""
-    items: List[Any]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+class CursorPaginatedResponse(BaseModel):
+    """Cursor-based paginated response for public API"""
+    data: List[Any]
+    cursor: Optional[str] = None
+    has_more: bool
 
 
 # ===== Public Entity Schemas (simplified, read-only) =====
