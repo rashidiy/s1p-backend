@@ -134,7 +134,7 @@ async def _get_users_count(session: AsyncSession, company_id: UUID) -> int:
 async def create_company(
     data: CompanyCreateRequest,
     owner: Owner = Owner.current(),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Create a new company
@@ -167,6 +167,14 @@ async def create_company(
         existing = await Company.get(session=session, subdomain=subdomain)
         if existing:
             subdomain = f"{subdomain}_{uuid4().hex[:6]}"
+    else:
+        # Check uniqueness for user-provided subdomain
+        existing = await Company.get(session=session, subdomain=subdomain)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A company with this subdomain already exists",
+            )
 
     # Create company
     company = await Company.create(
