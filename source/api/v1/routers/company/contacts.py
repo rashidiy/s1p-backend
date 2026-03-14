@@ -26,6 +26,7 @@ from api.v1.schemas.crm import (
     ContactResponse,
     PaginatedResponse
 )
+from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 from utils.services.webhook import fire_webhook_event
 
@@ -111,6 +112,10 @@ async def list_contacts(
         Contact.company_id == user.company_id,
         Contact.deleted_at.is_(None)
     ]
+
+    # Operator scoping: operators only see their assigned contacts
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        conditions.append(Contact.assigned_to == user.id)
 
     # Search
     if search:
@@ -289,6 +294,11 @@ async def get_contact(
         )
 
     contact = row[0]
+
+    # Operators can only see their own contacts
+    if user.role == RoleEnum.COMPANY_OPERATOR and contact.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+
     contact_dict = {
         "id": contact.id,
         "company_id": contact.company_id,
@@ -331,6 +341,10 @@ async def update_contact(
         id=contact_id,
         company_id=user.company_id
     )
+
+    # Operators can only update their own contacts
+    if user.role == RoleEnum.COMPANY_OPERATOR and contact.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
     # Check email uniqueness if changing
     if data.email and data.email != contact.email:
@@ -379,6 +393,10 @@ async def delete_contact(
         company_id=user.company_id
     )
 
+    # Operators can only delete their own contacts
+    if user.role == RoleEnum.COMPANY_OPERATOR and contact.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+
     await contact.delete(session=session, hard=hard)
     return None
 
@@ -402,6 +420,10 @@ async def get_contact_activity(
         id=contact_id,
         company_id=user.company_id
     )
+
+    # Operators can only view their own contacts' activity
+    if user.role == RoleEnum.COMPANY_OPERATOR and contact.assigned_to != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
     # Get related leads (limited)
     leads_query = (
