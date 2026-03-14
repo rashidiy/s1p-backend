@@ -149,31 +149,6 @@ async def _validate_entity_ownership(
             )
 
 
-async def _send_telegram_call_notification(company_id, call_event, call_state):
-    """Fire-and-forget Telegram notification for a call event using a fresh DB session."""
-    from db.base import AsyncDatabaseSession
-    session_factory = AsyncDatabaseSession()
-    async for session in session_factory():
-        try:
-            if call_state in (
-                CallStatusEnum.NOANSWER,
-                CallStatusEnum.BUSY,
-                CallStatusEnum.CANCEL,
-            ):
-                await TelegramService.send_missed_call_notification(
-                    company_id, call_event, session
-                )
-            elif call_state == CallStatusEnum.ANSWER:
-                await TelegramService.send_call_notification(
-                    company_id, call_event, session
-                )
-        except Exception:
-            logger.exception(
-                "Telegram notification background task failed for company %s",
-                company_id,
-            )
-
-
 @router.get("/{token}")
 async def handle_webhook(
     token: str,
@@ -342,7 +317,7 @@ async def _fire_call_webhook(session, company_id, call_data: dict, call_id):
 
 async def _send_call_notification(company_id, call_data: dict):
     """Background task: send Telegram notification for call events."""
-    from utils.services.telegram import TelegramService
+    from utils.services.telegram_service import TelegramService
     from sqlalchemy import or_
 
     state = call_data.get('state')

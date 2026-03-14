@@ -402,7 +402,7 @@ async def _notify_new_lead(company_id, lead_id, lead_title, source, contact_name
     """Background task: send Telegram notification for new lead."""
     import logging
     from db.base import AsyncDatabaseSession
-    from utils.services.telegram import TelegramService
+    from utils.services.telegram_service import TelegramService
 
     try:
         async for session in AsyncDatabaseSession()():
