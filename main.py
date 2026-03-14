@@ -26,7 +26,7 @@ from db import get_session
 _cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 CORS_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 # Allow all *.localhost:3000 subdomains in development
-CORS_ORIGIN_REGEX = r"^https?://[\w-]+\.localhost(:\d+)?$"
+CORS_ORIGIN_REGEX = r"^https?://[\w.-]+\.localhost(:\d+)?$"
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -68,10 +68,40 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Subdomain", "X-Forwarded-Host"],
 )
 
+os.makedirs("source/static/media/avatars", exist_ok=True)
+app.mount("/media", StaticFiles(directory="source/static/media"), name="media")
 app.mount("/illustrations", StaticFiles(directory="source/static/illustrations"), name="illustrations")
 
 app.include_router(v1)
 app.include_router(public_v1)
+
+
+# ── Telegram webhook registration ──────────────────────────────────
+@app.on_event("startup")
+async def register_telegram_webhook():
+    """Register the Telegram bot webhook URL on startup."""
+    from core.config import TelegramConfig
+
+    if not TelegramConfig.ENABLED:
+        return
+    if not TelegramConfig.BOT_TOKEN:
+        return
+
+    webhook_base = os.getenv("TELEGRAM_WEBHOOK_URL", os.getenv("BASE_URL", ""))
+    if not webhook_base:
+        return
+
+    webhook_url = f"{webhook_base}/api/v1/webhooks/telegram/{TelegramConfig.WEBHOOK_SECRET}"
+
+    try:
+        from aiogram import Bot
+        bot = Bot(token=TelegramConfig.BOT_TOKEN)
+        await bot.set_webhook(url=webhook_url)
+        info = await bot.get_webhook_info()
+        await bot.session.close()
+        print(f"[Telegram] Webhook registered: {info.url}")
+    except Exception as e:
+        print(f"[Telegram] Failed to register webhook: {e}")
 
 PATH_FILTERS = {
     "owner": lambda p: p.startswith("/api/v1/owner"),

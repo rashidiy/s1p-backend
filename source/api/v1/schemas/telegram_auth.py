@@ -42,8 +42,6 @@ class InviteTokenCreateResponse(BaseModel):
     role: str
     first_name: str
     phone: str
-    deep_link: Optional[str] = None
-    company_name: Optional[str] = None
 
 
 class InviteTokenListItem(BaseModel):
@@ -113,3 +111,30 @@ class TelegramRegisterRequest(BaseModel):
     first_name: Optional[str] = Field(None, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
+    skip_avatar: bool = False
+
+
+# ── Register Challenge Schemas (invite code → Telegram connect) ─────
+
+class RegisterChallengeRequest(BaseModel):
+    """Create a registration challenge from an invite code"""
+    invite_token: str = Field(..., min_length=1)
+
+
+class RegisterChallengeResponse(BaseModel):
+    """Returned when creating a registration challenge"""
+    challenge_id: str
+    deep_link: str
+    company_name: str
+    invite_first_name: Optional[str] = None
+    invite_last_name: Optional[str] = None
+    invite_phone: Optional[str] = None
+
+
+class RegisterChallengeStatusResponse(BaseModel):
+    """Status of a registration challenge (polling)"""
+    status: str  # "pending" | "telegram_connected" | "expired" | "used"
+    telegram_first_name: Optional[str] = None
+    telegram_last_name: Optional[str] = None
+    telegram_username: Optional[str] = None
+    has_avatar: bool = False

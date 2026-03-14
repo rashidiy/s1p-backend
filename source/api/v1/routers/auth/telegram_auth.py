@@ -23,7 +23,9 @@ from api.v1.schemas import AuthSchema
 from api.v1.schemas.telegram_auth import (
     ChallengeStatusResponse,
     LoginChallengeResponse,
-    RegisterPrefillResponse,
+    RegisterChallengeRequest,
+    RegisterChallengeResponse,
+    RegisterChallengeStatusResponse,
     TelegramRegisterRequest,
     VerifyOtpRequest,
 )
@@ -315,51 +317,119 @@ async def verify_otp(
     return user
 
 
-# ── Endpoint 7: Register Prefill ──────────────────────────────────────
+# ── Endpoint 7: Create Register Challenge ─────────────────────────────
 
-@router.get('/telegram/register-prefill/{challenge_id}', response_model=RegisterPrefillResponse)
+@router.post('/telegram/register-challenge', response_model=RegisterChallengeResponse)
 @limiter.limit("10/minute")
-async def get_register_prefill(
+async def create_register_challenge(
+    data: RegisterChallengeRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Validate an invite code and create a registration challenge.
+
+    Returns a Telegram deep link for the user to connect their account.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Hash and look up invite token
+    token_hash = hash_invite_token(data.invite_token)
+    result = await session.execute(
+        select(InviteToken).where(InviteToken.token_hash == token_hash)
+    )
+    invite = result.scalar_one_or_none()
+
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired invite token",
+        )
+    if invite.used_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This invite token has already been used",
+        )
+    if invite.expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired invite token",
+        )
+
+    # Get company name
+    from db.models import Company
+    company = await session.get(Company, invite.company_id)
+    company_name = company.name if company else ""
+
+    # Create registration challenge
+    challenge_id = secrets.token_urlsafe(16)
+    challenge = TelegramAuthChallenge(
+        id=challenge_id,
+        company_id=invite.company_id,
+        purpose="register",
+        invite_token_id=invite.id,
+        expires_at=now + timedelta(minutes=10),
+    )
+    session.add(challenge)
+    await session.commit()
+
+    # Build deep link
+    bot_username = TelegramConfig.BOT_USERNAME
+    deep_link = f"https://t.me/{bot_username}?start=reg_{challenge_id}"
+
+    return RegisterChallengeResponse(
+        challenge_id=challenge_id,
+        deep_link=deep_link,
+        company_name=company_name,
+        invite_first_name=invite.first_name,
+        invite_last_name=invite.last_name,
+        invite_phone=invite.phone,
+    )
+
+
+# ── Endpoint 7a: Poll Register Challenge Status ──────────────────────
+
+@router.get(
+    '/telegram/register-challenge/{challenge_id}/status',
+    response_model=RegisterChallengeStatusResponse,
+)
+@limiter.limit("30/minute")
+async def poll_register_challenge_status(
     challenge_id: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get pre-fill data for the registration form.
-    Returns Telegram profile data captured by the bot.
+    Poll the status of a registration challenge.
+
+    Frontend polls this to know when the user has connected Telegram.
     """
     challenge = await session.get(TelegramAuthChallenge, challenge_id)
-    now = datetime.now(timezone.utc)
-
-    if (
-        not challenge
-        or challenge.purpose != "register"
-        or challenge.used
-        or challenge.expires_at.replace(tzinfo=timezone.utc) < now
-    ):
+    if not challenge or challenge.purpose != "register":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Challenge not found or expired",
+            detail="Challenge not found",
         )
+
+    now = datetime.now(timezone.utc)
+
+    if challenge.used:
+        challenge_status = "used"
+    elif challenge.expires_at.replace(tzinfo=timezone.utc) < now:
+        challenge_status = "expired"
+    elif challenge.telegram_user_id:
+        challenge_status = "telegram_connected"
+    else:
+        challenge_status = "pending"
 
     telegram_data = challenge.telegram_data or {}
 
-    # Get invite token data if linked
-    invite_phone = None
-    invite_first_name = None
-    if challenge.invite_token_id:
-        invite = await session.get(InviteToken, challenge.invite_token_id)
-        if invite:
-            invite_phone = invite.phone
-            invite_first_name = invite.first_name
-
-    return RegisterPrefillResponse(
+    return RegisterChallengeStatusResponse(
+        status=challenge_status,
         telegram_first_name=telegram_data.get("first_name"),
         telegram_last_name=telegram_data.get("last_name"),
         telegram_username=telegram_data.get("username"),
-        telegram_avatar_file_id=telegram_data.get("avatar_file_id"),
-        invite_phone=invite_phone,
-        invite_first_name=invite_first_name,
+        has_avatar=bool(telegram_data.get("avatar_file_id")),
     )
 
 
@@ -559,6 +629,18 @@ async def telegram_register(
 
     await session.commit()
     await session.refresh(user)
+
+    # 8a. Download Telegram avatar if available and not skipped
+    if telegram_data.get("avatar_file_id") and not data.skip_avatar:
+        try:
+            from utils.services.avatar_service import download_telegram_avatar
+            filename = await download_telegram_avatar(str(user.id), telegram_user_id)
+            if filename:
+                user.avatar = filename
+                await session.commit()
+                await session.refresh(user)
+        except Exception:
+            logger.debug("Failed to download avatar during registration for user %s", user.id)
 
     # 9. Generate credentials
     credentials = _generate_credentials_for_user(user, response)
