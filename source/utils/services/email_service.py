@@ -13,7 +13,6 @@ from utils.tasks.email_tasks import (
     send_password_reset_email,
     send_contract_expiry_warning_email,
     send_contract_expired_email,
-    send_admin_invitation_email,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,21 +87,4 @@ class EmailService:
             in_grace_period=in_grace_period,
             grace_days_remaining=grace_days_remaining,
             renew_url=renew_url,
-        )
-
-    @staticmethod
-    def send_admin_invitation(
-        background_tasks: BackgroundTasks,
-        to_email: str,
-        first_name: str,
-        company_name: str,
-        set_password_url: str,
-    ) -> None:
-        """Schedule admin invitation email as a background task."""
-        background_tasks.add_task(
-            send_admin_invitation_email,
-            to_email=to_email,
-            first_name=first_name,
-            company_name=company_name,
-            set_password_url=set_password_url,
         )
