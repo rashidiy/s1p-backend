@@ -2,26 +2,35 @@
 Public API — Deals (read-only)
 """
 
+from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
 from db.models.deal import Deal
-from api.v1.schemas.public import PublicDealResponse, PublicPaginatedResponse
+from api.v1.schemas.public import (
+    PublicDealResponse,
+    CursorPaginatedResponse,
+    encode_cursor,
+    decode_cursor,
+)
 from utils.api_key_auth import get_api_key_company
 
 router = APIRouter(prefix="/deals", tags=["Public API — Deals"])
 
 
-@router.get("", response_model=PublicPaginatedResponse)
+@router.get("", response_model=CursorPaginatedResponse)
 async def list_deals(
     api_key_info: tuple[UUID, UUID] = Depends(get_api_key_company),
     session: AsyncSession = Depends(get_session),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    cursor: Optional[str] = Query(None, description="Pagination cursor from previous response"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
+    created_from: Optional[datetime] = Query(None, alias="from", description="Filter: created_at >= this datetime"),
+    created_to: Optional[datetime] = Query(None, alias="to", description="Filter: created_at <= this datetime"),
 ):
     """List deals for the company."""
     company_id, _ = api_key_info
@@ -31,20 +40,37 @@ async def list_deals(
         Deal.deleted_at.is_(None),
     ]
 
-    total = await session.scalar(
-        select(func.count()).select_from(Deal).where(and_(*conditions))
-    ) or 0
+    # Date range filters
+    if created_from:
+        conditions.append(Deal.created_at >= created_from)
+    if created_to:
+        conditions.append(Deal.created_at <= created_to)
+
+    # Cursor filter
+    if cursor:
+        try:
+            cursor_id = decode_cursor(cursor)
+            cursor_uuid = UUID(cursor_id)
+            conditions.append(Deal.id < cursor_uuid)
+        except (ValueError, Exception):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid cursor"
+            )
 
     query = (
         select(Deal)
         .where(and_(*conditions))
-        .order_by(Deal.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .order_by(Deal.id.desc())
+        .limit(limit + 1)  # Fetch one extra to determine has_more
     )
 
     result = await session.execute(query)
-    items = result.scalars().all()
+    items = list(result.scalars().all())
+
+    has_more = len(items) > limit
+    if has_more:
+        items = items[:limit]
 
     data = []
     for deal in items:
@@ -64,10 +90,10 @@ async def list_deals(
             updated_at=deal.updated_at,
         ))
 
-    return PublicPaginatedResponse(
-        items=data,
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size if total > 0 else 0,
+    next_cursor = encode_cursor(items[-1].id) if items and has_more else None
+
+    return CursorPaginatedResponse(
+        data=data,
+        cursor=next_cursor,
+        has_more=has_more,
     )
