@@ -499,7 +499,7 @@ async def _notify_deal_stage_change(company_id, deal_id, deal_title, old_stage, 
     """Background task: send Telegram notification for deal stage change."""
     import logging
     from db.base import AsyncDatabaseSession
-    from utils.services.telegram import TelegramService
+    from utils.services.telegram_service import TelegramService
 
     try:
         async for session in AsyncDatabaseSession()():
