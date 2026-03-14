@@ -11,7 +11,7 @@ from db import get_session
 from db.models.user import User
 from db.models.telegram_config import TelegramBotConfig
 from utils.permissions import require_permissions, Permissions
-from utils.services.telegram import TelegramService
+from utils.services.telegram_service import TelegramService
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 
