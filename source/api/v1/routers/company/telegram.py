@@ -4,44 +4,19 @@ Telegram bot configuration and management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
-from typing import Optional, Dict
 
 from db import get_session
 from db.models.user import User
 from db.models.telegram_config import TelegramBotConfig
 from utils.permissions import require_permissions, Permissions
-from utils.services.telegram import TelegramService
+from utils.services.telegram_service import TelegramService
+from api.v1.schemas.telegram import (
+    TelegramConfigResponse,
+    TelegramConfigCreateRequest,
+    TelegramConfigUpdateRequest,
+)
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
-
-
-# Schemas
-
-class TelegramConfigCreate(BaseModel):
-    chat_id: str = Field(..., description="Telegram chat/group ID")
-    notification_filters: Optional[Dict[str, bool]] = Field(
-        default=None,
-        description="Event filters: call_completed, call_missed, new_lead, deal_stage_change"
-    )
-    enabled: bool = True
-
-
-class TelegramConfigUpdate(BaseModel):
-    chat_id: Optional[str] = None
-    notification_filters: Optional[Dict[str, bool]] = None
-    enabled: Optional[bool] = None
-
-
-class TelegramConfigResponse(BaseModel):
-    id: str
-    company_id: str
-    chat_id: str
-    notification_filters: dict
-    enabled: bool
-
-    class Config:
-        from_attributes = True
 
 
 # Endpoints
@@ -64,68 +39,47 @@ async def get_telegram_config(
             detail="Telegram bot not configured"
         )
 
-    return TelegramConfigResponse(
-        id=str(config.id),
-        company_id=str(config.company_id),
-        chat_id=config.chat_id,
-        notification_filters=config.notification_filters or {},
-        enabled=config.enabled
-    )
+    return TelegramConfigResponse.from_model(config)
 
 
 @router.post("/config", response_model=TelegramConfigResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def create_telegram_config(
-    data: TelegramConfigCreate,
+    data: TelegramConfigCreateRequest,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
     """Create or update Telegram bot configuration for the company"""
-    # Check if config already exists
     existing = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
     )
 
-    default_filters = {
-        "call_completed": True,
-        "call_missed": True,
-        "new_lead": True,
-        "deal_stage_change": True,
-    }
+    filters = data.to_notification_filters()
 
     if existing:
-        # Update existing
         existing.chat_id = data.chat_id
-        existing.enabled = data.enabled
-        if data.notification_filters is not None:
-            existing.notification_filters = data.notification_filters
+        existing.enabled = data.bot_enabled
+        existing.notification_filters = filters
         existing.deleted_at = None  # Re-enable if soft-deleted
         await existing.update(session=session)
         config = existing
     else:
-        # Create new
         config = await TelegramBotConfig.create(
             session=session,
             company_id=user.company_id,
             chat_id=data.chat_id,
-            notification_filters=data.notification_filters or default_filters,
-            enabled=data.enabled
+            notification_filters=filters,
+            enabled=data.bot_enabled,
         )
 
-    return TelegramConfigResponse(
-        id=str(config.id),
-        company_id=str(config.company_id),
-        chat_id=config.chat_id,
-        notification_filters=config.notification_filters or {},
-        enabled=config.enabled
-    )
+    return TelegramConfigResponse.from_model(config)
 
 
 @router.put("/config", response_model=TelegramConfigResponse)
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def update_telegram_config(
-    data: TelegramConfigUpdate,
+    data: TelegramConfigUpdateRequest,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
@@ -141,22 +95,20 @@ async def update_telegram_config(
             detail="Telegram bot not configured"
         )
 
-    if data.chat_id is not None:
-        config.chat_id = data.chat_id
-    if data.notification_filters is not None:
-        config.notification_filters = data.notification_filters
-    if data.enabled is not None:
-        config.enabled = data.enabled
+    model_fields = data.to_model_fields()
+
+    if "enabled" in model_fields:
+        config.enabled = model_fields["enabled"]
+
+    if "notification_filters" in model_fields:
+        # Merge partial updates into existing filters
+        current_filters = config.notification_filters or {}
+        current_filters.update(model_fields["notification_filters"])
+        config.notification_filters = current_filters
 
     await config.update(session=session)
 
-    return TelegramConfigResponse(
-        id=str(config.id),
-        company_id=str(config.company_id),
-        chat_id=config.chat_id,
-        notification_filters=config.notification_filters or {},
-        enabled=config.enabled
-    )
+    return TelegramConfigResponse.from_model(config)
 
 
 @router.delete("/config", status_code=status.HTTP_204_NO_CONTENT)
