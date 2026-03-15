@@ -95,11 +95,22 @@ async def register_telegram_webhook():
 
     try:
         from aiogram import Bot
+        from aiogram.types import BotCommand
         bot = Bot(token=TelegramConfig.BOT_TOKEN)
         await bot.set_webhook(url=webhook_url)
+
+        # Register bot commands
+        commands = [
+            BotCommand(command="today", description="Today's statistics"),
+            BotCommand(command="search", description="Search contacts"),
+            BotCommand(command="myleads", description="My assigned leads"),
+            BotCommand(command="start", description="Start the bot"),
+        ]
+        await bot.set_my_commands(commands)
+
         info = await bot.get_webhook_info()
         await bot.session.close()
-        print(f"[Telegram] Webhook registered: {info.url}")
+        print(f"[Telegram] Webhook registered: {info.url}, commands set")
     except Exception as e:
         print(f"[Telegram] Failed to register webhook: {e}")
 
