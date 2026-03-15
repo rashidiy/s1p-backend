@@ -40,10 +40,15 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_my_profile(user: User = User.current()):
+async def get_my_profile(
+    user: User = User.current(),
+    session: AsyncSession = Depends(get_session),
+):
     """
     Get current user's own profile
     """
+    await session.refresh(user, ["company"])
+    user.company_subdomain = user.company.subdomain if user.company else None
     return user
 
 
