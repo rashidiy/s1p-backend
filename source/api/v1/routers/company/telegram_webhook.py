@@ -153,6 +153,16 @@ async def _handle_message(message: dict, session: AsyncSession):
         elif text.startswith("/register"):
             await _handle_register(chat_id, telegram_user_id, session)
 
+        elif text.startswith("/today"):
+            await _handle_today_command(chat_id, session)
+
+        elif text.startswith("/search"):
+            query = text[len("/search"):].strip()
+            await _handle_search_command(chat_id, query, session)
+
+        elif text.startswith("/myleads"):
+            await _handle_myleads_command(chat_id, telegram_user_id, session)
+
     except Exception:
         logger.exception("Error handling message from Telegram user %s", telegram_user_id)
 
@@ -403,6 +413,165 @@ async def _send_message(chat_id: int, text: str) -> None:
         logger.exception("Failed to send Telegram message to chat %s", chat_id)
     finally:
         await bot.session.close()
+
+
+# ── Bot commands (/today, /search, /myleads) ─────────────────────────
+
+async def _get_config_by_chat(chat_id: int, session: AsyncSession):
+    """Find TelegramBotConfig by chat_id or group_chat_id."""
+    from sqlalchemy import or_
+    result = await session.execute(
+        select(TelegramBotConfig).where(
+            or_(
+                TelegramBotConfig.chat_id == str(chat_id),
+                TelegramBotConfig.group_chat_id == chat_id,
+            ),
+            TelegramBotConfig.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _handle_today_command(chat_id: int, session: AsyncSession):
+    """Handle /today — show today's stats for the company."""
+    from datetime import date, datetime, timezone
+    from utils.services.analytics_service import AnalyticsService
+    from utils.services.telegram_i18n import no_data_text
+
+    config = await _get_config_by_chat(chat_id, session)
+    if not config:
+        await _send_message(chat_id, "Bot not configured for this chat")
+        return
+
+    lang = config.language or "ru"
+    today = date.today()
+    start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+    end = datetime.combine(today, datetime.max.time()).replace(tzinfo=timezone.utc)
+
+    try:
+        call_stats = await AnalyticsService.get_call_stats(
+            session=session,
+            company_id=config.company_id,
+            from_date=start,
+            to_date=end,
+        )
+        lead_stats = await AnalyticsService.get_lead_stats(
+            session=session,
+            company_id=config.company_id,
+            from_date=start,
+            to_date=end,
+        )
+
+        from utils.services.telegram_i18n import daily_digest_message
+        text = daily_digest_message(
+            date=today.isoformat(),
+            total_calls=call_stats.total_calls if call_stats else 0,
+            missed_calls=call_stats.missed_calls if call_stats else 0,
+            avg_duration_sec=int(call_stats.avg_duration_seconds) if call_stats and call_stats.avg_duration_seconds else 0,
+            new_leads=lead_stats.total_leads if lead_stats else 0,
+            deals_won=0,
+            deals_lost=0,
+            lang=lang,
+        )
+        await _send_message(chat_id, text)
+
+    except Exception:
+        logger.exception("Error in /today command for chat %s", chat_id)
+        await _send_message(chat_id, no_data_text(lang))
+
+
+async def _handle_search_command(chat_id: int, query: str, session: AsyncSession):
+    """Handle /search {query} — search contacts by phone/name."""
+    from db.models.contact import Contact
+    from utils.services.telegram_i18n import search_header, no_data_text
+
+    if not query:
+        await _send_message(chat_id, "Usage: /search <phone or name>")
+        return
+
+    config = await _get_config_by_chat(chat_id, session)
+    if not config:
+        await _send_message(chat_id, "Bot not configured for this chat")
+        return
+
+    lang = config.language or "ru"
+
+    from sqlalchemy import or_
+    results = await session.execute(
+        select(Contact)
+        .where(
+            Contact.company_id == config.company_id,
+            Contact.deleted_at.is_(None),
+            or_(
+                Contact.phone.ilike(f"%{query}%"),
+                Contact.first_name.ilike(f"%{query}%"),
+                Contact.last_name.ilike(f"%{query}%"),
+            ),
+        )
+        .limit(5)
+    )
+    contacts = results.scalars().all()
+
+    if not contacts:
+        await _send_message(chat_id, no_data_text(lang))
+        return
+
+    header = search_header(query, lang)
+    lines = [header, ""]
+    for c in contacts:
+        name = f"{c.first_name or ''} {c.last_name or ''}".strip() or "—"
+        phone = c.phone or "—"
+        lines.append(f"• {name} — {phone}")
+
+    await _send_message(chat_id, "\n".join(lines))
+
+
+async def _handle_myleads_command(chat_id: int, telegram_user_id: int, session: AsyncSession):
+    """Handle /myleads — show leads assigned to the user."""
+    from utils.services.telegram_i18n import my_leads_header, no_data_text
+
+    config = await _get_config_by_chat(chat_id, session)
+    if not config:
+        await _send_message(chat_id, "Bot not configured for this chat")
+        return
+
+    lang = config.language or "ru"
+
+    # Find CRM user by telegram_user_id
+    user = await User.get(
+        session=session,
+        telegram_user_id=telegram_user_id,
+        company_id=config.company_id,
+    )
+    if not user:
+        from utils.services.telegram_i18n import link_telegram_text
+        await _send_message(chat_id, link_telegram_text(lang))
+        return
+
+    results = await session.execute(
+        select(Lead)
+        .where(
+            Lead.company_id == config.company_id,
+            Lead.assigned_to == user.id,
+            Lead.deleted_at.is_(None),
+            Lead.status.notin_(["converted", "lost"]),
+        )
+        .limit(10)
+    )
+    leads = results.scalars().all()
+
+    if not leads:
+        await _send_message(chat_id, no_data_text(lang))
+        return
+
+    header = my_leads_header(lang)
+    lines = [header, ""]
+    for lead in leads:
+        title = lead.title or "—"
+        status_val = lead.status if isinstance(lead.status, str) else (lead.status.value if lead.status else "—")
+        lines.append(f"• {title} [{status_val}]")
+
+    await _send_message(chat_id, "\n".join(lines))
 
 
 # ── Callback query handlers (V2 — shortened prefixes) ────────────────

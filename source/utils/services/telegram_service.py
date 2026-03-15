@@ -12,6 +12,7 @@ V2 additions:
 """
 
 import logging
+import os
 from typing import Optional
 from uuid import UUID
 
@@ -32,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 # Shared bot instance — initialized once, reused across requests
 _bot: Optional[Bot] = None
+
+# Smart grouping TTL (seconds) — edit existing message instead of sending new
+GROUPING_WINDOW = 30 * 60  # 30 minutes
 
 
 def get_bot() -> Optional[Bot]:
@@ -111,21 +115,124 @@ class TelegramService:
         return user.full_name
 
     @staticmethod
+    async def _get_redis():
+        """Get Redis client for smart grouping. Returns None if unavailable."""
+        try:
+            import redis.asyncio as aioredis
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            return aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        except Exception:
+            return None
+
+    @staticmethod
+    async def _check_grouping(
+        bot: Bot,
+        config: TelegramConfig,
+        phone: str,
+        event_type: str,
+        text: str,
+    ) -> bool:
+        """
+        Smart grouping: if a recent message exists for the same phone+event,
+        edit it with an incremented count instead of sending a new message.
+
+        Returns True if grouped (message edited), False if should send new.
+        Only applies to call notifications.
+        """
+        if event_type not in ("call_completed", "call_missed"):
+            return False
+        if not phone:
+            return False
+
+        redis = await TelegramService._get_redis()
+        if not redis:
+            return False
+
+        key = f"tg:msg:{config.company_id}:{phone}:{event_type}"
+        try:
+            existing = await redis.get(key)
+            if not existing:
+                return False
+
+            # Parse "message_id:count"
+            parts = existing.split(":")
+            if len(parts) != 2:
+                return False
+
+            message_id, count = int(parts[0]), int(parts[1])
+            new_count = count + 1
+
+            # Edit existing message with count suffix
+            chat_id = config.effective_chat_id
+            lang = config.language or "ru"
+            suffix = i18n.grouped_suffix(new_count, lang)
+            new_text = f"{text}\n\n{suffix}"
+
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=new_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                )
+                # Update count in Redis
+                await redis.setex(key, GROUPING_WINDOW, f"{message_id}:{new_count}")
+                return True
+            except Exception:
+                # Edit failed (message too old, deleted, etc.) — send new
+                return False
+        except Exception:
+            return False
+        finally:
+            await redis.aclose()
+
+    @staticmethod
+    async def _store_grouping(
+        config: TelegramConfig,
+        phone: str,
+        event_type: str,
+        message_id: int,
+    ) -> None:
+        """Store message_id for smart grouping (30min window)."""
+        if event_type not in ("call_completed", "call_missed"):
+            return
+        if not phone:
+            return
+
+        redis = await TelegramService._get_redis()
+        if not redis:
+            return
+
+        key = f"tg:msg:{config.company_id}:{phone}:{event_type}"
+        try:
+            await redis.setex(key, GROUPING_WINDOW, f"{message_id}:1")
+        except Exception:
+            pass
+        finally:
+            await redis.aclose()
+
+    @staticmethod
     async def _send(
         bot: Bot,
         config: TelegramConfig,
         text: str,
         event_type: str,
         keyboard: InlineKeyboardMarkup | None = None,
+        phone: str | None = None,
     ) -> Optional[int]:
         """
         Send a message to the right chat/topic.
+        Supports smart grouping for call notifications.
 
         Returns message_id on success, None on failure.
         """
         chat_id = config.effective_chat_id
         if not chat_id:
             return None
+
+        # Smart grouping: try to edit existing message
+        if phone and await TelegramService._check_grouping(bot, config, phone, event_type, text):
+            return None  # Grouped into existing message
 
         thread_id = config.get_topic_thread_id(event_type)
 
@@ -140,6 +247,11 @@ class TelegramService:
             kwargs["message_thread_id"] = thread_id
 
         result = await bot.send_message(**kwargs)
+
+        # Store for future grouping
+        if phone:
+            await TelegramService._store_grouping(config, phone, event_type, result.message_id)
+
         return result.message_id
 
     # ── Public API: object-based signatures ──────────────────────
@@ -194,7 +306,7 @@ class TelegramService:
                 ],
             ])
 
-            await TelegramService._send(bot, config, text, "call_completed", keyboard)
+            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=call_event.phone_1)
         except Exception:
             logger.exception("Failed to send call notification for company %s", company_id)
 
@@ -237,7 +349,7 @@ class TelegramService:
                 ],
             ])
 
-            await TelegramService._send(bot, config, text, "call_missed", keyboard)
+            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=call_event.phone_1)
         except Exception:
             logger.exception("Failed to send missed call notification for company %s", company_id)
 
@@ -329,7 +441,7 @@ class TelegramService:
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await TelegramService._send(bot, config, text, "call_completed", keyboard)
+            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=caller_phone)
         except Exception:
             logger.exception("Failed to send call_completed notification for company %s", company_id)
 
@@ -370,7 +482,7 @@ class TelegramService:
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await TelegramService._send(bot, config, text, "call_missed", keyboard)
+            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=caller_phone)
         except Exception:
             logger.exception("Failed to send call_missed notification for company %s", company_id)
 
