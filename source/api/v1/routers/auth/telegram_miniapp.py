@@ -102,7 +102,7 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
         return None
 
 
-@router.post("/auth/telegram/miniapp", response_model=MiniAppAuthResponse)
+@router.post("/telegram/miniapp", response_model=MiniAppAuthResponse)
 async def miniapp_auth(
     data: MiniAppAuthRequest,
     session: AsyncSession = Depends(get_session),
