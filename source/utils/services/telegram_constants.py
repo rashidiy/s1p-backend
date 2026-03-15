@@ -29,13 +29,14 @@ TOPIC_NAMES = {
     },
 }
 
-# Emoji prefixes for topic names (used when creating forum topics)
-TOPIC_EMOJI = {
-    "calls": "\U0001F4DE",      # 📞
-    "missed": "\U0000260E",     # ☎
-    "leads": "\U0001F4CB",      # 📋
-    "deals": "\U0001F4B0",      # 💰
-    "general": "\U0001F4AC",    # 💬
+# Custom emoji IDs for forum topic icons (from Telegram's built-in "Topics" sticker set)
+# These set the circular icon on the left of the topic name, not text emoji in the name.
+# Retrieved via Bot API getForumTopicIconStickers.
+TOPIC_ICON_EMOJI_ID = {
+    "calls": "5409357944619802453",     # 📱
+    "missed": "5379748062124056162",    # ❗️
+    "leads": "5373251851074415873",     # 📝
+    "deals": "5350452584119279096",     # 💰
 }
 
 # Deal stage display names per locale

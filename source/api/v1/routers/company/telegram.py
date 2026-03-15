@@ -112,16 +112,28 @@ async def update_telegram_config(
 
     if "notification_filters" in model_fields:
         # Merge partial updates into existing filters
-        current_filters = config.notification_filters or {}
+        # Must reassign (not mutate in-place) so SQLAlchemy detects the change
+        current_filters = dict(config.notification_filters or {})
         current_filters.update(model_fields["notification_filters"])
         config.notification_filters = current_filters
 
     # V2 settings
+    old_language = config.language
     for field in ("language", "send_recordings", "daily_digest", "dm_notifications"):
         if field in model_fields:
             setattr(config, field, model_fields[field])
 
     await config.update(session=session)
+
+    # Rename forum topics when language changes
+    new_language = model_fields.get("language")
+    if new_language and new_language != old_language and config.topic_ids and config.effective_chat_id:
+        try:
+            await TelegramService.rename_forum_topics(
+                config.effective_chat_id, config.topic_ids, new_language
+            )
+        except Exception:
+            logger.debug("Failed to rename topics on language change")
 
     return TelegramConfigResponse.from_model(config)
 
@@ -326,7 +338,8 @@ async def manual_setup(
 
     try:
         # Try to create topics via Bot API
-        topic_ids = await TelegramService.create_forum_topics(data.chat_id)
+        lang = config.language if config else "ru"
+        topic_ids = await TelegramService.create_forum_topics(data.chat_id, lang=lang)
 
         config.group_chat_id = int(data.chat_id)
         config.topic_ids = topic_ids
