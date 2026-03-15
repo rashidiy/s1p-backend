@@ -1,8 +1,14 @@
 """
-Telegram notification service — fire-and-forget message sending to company chats.
+Telegram notification service V2 — topic-routed, i18n, fire-and-forget.
 
-Uses aiogram Bot instance to send rich Markdown messages with inline keyboards.
+Uses aiogram Bot to send MarkdownV2 messages with inline keyboards.
 All sends are fire-and-forget: errors are logged, never raised.
+
+V2 additions:
+- Topic routing via message_thread_id (calls/missed/leads/deals/general)
+- i18n: message templates in ru/en/uz based on company's language setting
+- Shortened callback prefixes to fit 64-byte Telegram limit
+- Backward compatible: no topics = send to main chat
 """
 
 import logging
@@ -19,6 +25,8 @@ from core.config import TelegramConfig as TelegramBotConfig, AppConfig
 from db.models.telegram_config import TelegramBotConfig as TelegramConfig
 from db.models.contact import Contact
 from db.models.user import User
+from utils.services.telegram_constants import BUTTON_LABELS, get_locale
+from utils.services import telegram_i18n as i18n
 
 logger = logging.getLogger(__name__)
 
@@ -36,21 +44,15 @@ def get_bot() -> Optional[Bot]:
     return _bot
 
 
-def _escape_md(text: str) -> str:
-    """Escape special characters for Telegram MarkdownV2."""
-    special = r'_*[]()~`>#+-=|{}.!'
-    result = []
-    for ch in text:
-        if ch in special:
-            result.append('\\')
-        result.append(ch)
-    return ''.join(result)
-
-
 def _crm_url(path: str) -> str:
     """Build CRM frontend URL."""
-    base = AppConfig.BASE_URL.rstrip('/')
+    base = AppConfig.FRONTEND_URL.rstrip('/')
     return f"{base}/{path.lstrip('/')}"
+
+
+def _buttons(locale: str) -> dict:
+    """Get button labels for the given locale."""
+    return BUTTON_LABELS.get(locale, BUTTON_LABELS["ru"])
 
 
 class TelegramService:
@@ -59,6 +61,8 @@ class TelegramService:
 
     All methods:
     - Check TelegramConfig for the company (enabled + chat_id present)
+    - Route to the correct forum topic if topics are configured
+    - Use i18n templates based on company's language setting
     - Skip silently if not configured
     - Log errors, never raise
     """
@@ -107,17 +111,46 @@ class TelegramService:
         return user.full_name
 
     @staticmethod
+    async def _send(
+        bot: Bot,
+        config: TelegramConfig,
+        text: str,
+        event_type: str,
+        keyboard: InlineKeyboardMarkup | None = None,
+    ) -> Optional[int]:
+        """
+        Send a message to the right chat/topic.
+
+        Returns message_id on success, None on failure.
+        """
+        chat_id = config.effective_chat_id
+        if not chat_id:
+            return None
+
+        thread_id = config.get_topic_thread_id(event_type)
+
+        kwargs = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": ParseMode.MARKDOWN_V2,
+        }
+        if keyboard:
+            kwargs["reply_markup"] = keyboard
+        if thread_id:
+            kwargs["message_thread_id"] = thread_id
+
+        result = await bot.send_message(**kwargs)
+        return result.message_id
+
+    # ── Public API: object-based signatures ──────────────────────
+
+    @staticmethod
     async def send_call_notification(
         company_id: UUID,
         call_event,
         session: AsyncSession,
     ) -> None:
-        """
-        Send a completed call notification to the company's Telegram chat.
-
-        Rich message with caller info, matched contact, duration, direction,
-        operator name. Inline keyboard: [Assign Lead] [Mark Handled] [Open in CRM]
-        """
+        """Send a completed call notification with topic routing + i18n."""
         try:
             bot = get_bot()
             if not bot:
@@ -127,7 +160,10 @@ class TelegramService:
             if not config or not config.is_event_enabled("call_completed"):
                 return
 
-            # Gather data
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
+
             contact_name = await TelegramService._lookup_contact_name(
                 call_event.phone_1, company_id, session
             )
@@ -135,59 +171,32 @@ class TelegramService:
                 call_event.operator_id, session
             )
 
-            direction_label = (call_event.direction.value if call_event.direction else "unknown").capitalize()
-            duration = call_event.duration_sec
-            minutes = duration // 60
-            seconds = duration % 60
-            duration_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+            direction = (call_event.direction.value if call_event.direction else "unknown")
 
-            # Build message
-            caller_display = _escape_md(contact_name or call_event.phone_1 or "Unknown")
-            lines = [
-                f"*{_escape_md(direction_label)} Call Completed*",
-                "",
-                f"Caller: {caller_display}",
-                f"Phone: {_escape_md(call_event.phone_1 or 'N/A')}",
-                f"Duration: {_escape_md(duration_str)}",
-            ]
-            if operator_name:
-                lines.append(f"Operator: {_escape_md(operator_name)}")
-            if contact_name:
-                lines.append(f"Contact: {_escape_md(contact_name)}")
+            text = i18n.call_completed_message(
+                direction=direction,
+                caller_display=contact_name or call_event.phone_1 or "Unknown",
+                phone=call_event.phone_1 or "N/A",
+                duration_sec=call_event.duration_sec or 0,
+                operator_name=operator_name,
+                contact_name=contact_name,
+                lang=lang,
+            )
 
-            text = "\n".join(lines)
-
-            # Inline keyboard
             call_id = call_event.id
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="Assign Lead",
-                        callback_data=f"assign_lead:{call_id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Mark Handled",
-                        callback_data=f"mark_handled:{call_id}",
-                    ),
+                    InlineKeyboardButton(text=btn["assign_lead"], callback_data=f"al:{call_id}"),
+                    InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="Open in CRM",
-                        url=_crm_url(f"/calls/{call_id}"),
-                    ),
+                    InlineKeyboardButton(text=btn["open_crm"], url=_crm_url(f"/calls/{call_id}")),
                 ],
             ])
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "call_completed", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send call notification for company %s", company_id
-            )
+            logger.exception("Failed to send call notification for company %s", company_id)
 
     @staticmethod
     async def send_missed_call_notification(
@@ -195,9 +204,7 @@ class TelegramService:
         call_event,
         session: AsyncSession,
     ) -> None:
-        """
-        Send an urgent missed call notification with [Callback] button.
-        """
+        """Send a missed call notification with topic routing + i18n."""
         try:
             bot = get_bot()
             if not bot:
@@ -207,48 +214,32 @@ class TelegramService:
             if not config or not config.is_event_enabled("call_missed"):
                 return
 
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
+
             contact_name = await TelegramService._lookup_contact_name(
                 call_event.phone_1, company_id, session
             )
 
-            caller_display = _escape_md(contact_name or call_event.phone_1 or "Unknown")
-            phone_display = _escape_md(call_event.phone_1 or "N/A")
-
-            lines = [
-                "*MISSED CALL*",
-                "",
-                f"From: {caller_display}",
-                f"Phone: {phone_display}",
-            ]
-            if contact_name:
-                lines.append(f"Contact: {_escape_md(contact_name)}")
-
-            text = "\n".join(lines)
+            text = i18n.missed_call_message(
+                caller_display=contact_name or call_event.phone_1 or "Unknown",
+                phone=call_event.phone_1 or "N/A",
+                contact_name=contact_name,
+                lang=lang,
+            )
 
             call_id = call_event.id
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="Callback",
-                        callback_data=f"callback:{call_id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="Open in CRM",
-                        url=_crm_url(f"/calls/{call_id}"),
-                    ),
+                    InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}"),
+                    InlineKeyboardButton(text=btn["open_crm"], url=_crm_url(f"/calls/{call_id}")),
                 ],
             ])
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "call_missed", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send missed call notification for company %s", company_id
-            )
+            logger.exception("Failed to send missed call notification for company %s", company_id)
 
     @staticmethod
     async def send_lead_notification(
@@ -256,9 +247,7 @@ class TelegramService:
         lead,
         session: AsyncSession,
     ) -> None:
-        """
-        Send a new lead notification with [Open Lead] button.
-        """
+        """Send a new lead notification with topic routing + i18n."""
         try:
             bot = get_bot()
             if not bot:
@@ -268,43 +257,27 @@ class TelegramService:
             if not config or not config.is_event_enabled("new_lead"):
                 return
 
-            title = _escape_md(lead.title or "Untitled Lead")
-            source = _escape_md(lead.source or "N/A")
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
 
-            lines = [
-                "*New Lead Created*",
-                "",
-                f"Title: {title}",
-                f"Source: {source}",
-            ]
-
-            if lead.estimated_value:
-                value_str = _escape_md(f"{lead.estimated_value} {lead.currency or 'USD'}")
-                lines.append(f"Value: {value_str}")
-
-            text = "\n".join(lines)
+            text = i18n.new_lead_message(
+                lead_title=lead.title or "Untitled",
+                source=lead.source,
+                estimated_value=lead.estimated_value,
+                currency=lead.currency or "USD",
+                lang=lang,
+            )
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Open Lead",
-                        url=_crm_url(f"/leads/{lead.id}"),
-                    ),
-                ],
+                [InlineKeyboardButton(text=btn["open_lead"], url=_crm_url(f"/leads/{lead.id}"))],
             ])
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "new_lead", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send lead notification for company %s", company_id
-            )
+            logger.exception("Failed to send lead notification for company %s", company_id)
 
-    # --- Legacy-compatible methods (individual-field signatures) ---
+    # ── Legacy-compatible methods (individual-field signatures) ──
 
     @staticmethod
     async def notify_call_completed(
@@ -328,50 +301,37 @@ class TelegramService:
             if not config or not config.is_event_enabled("call_completed"):
                 return
 
-            direction_label = direction.capitalize()
-            minutes = duration_sec // 60
-            seconds = duration_sec % 60
-            duration_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
 
-            caller_display = _escape_md(contact_name or caller_phone or "Unknown")
-            lines = [
-                f"*{_escape_md(direction_label)} Call Completed*",
-                "",
-                f"Caller: {caller_display}",
-                f"Phone: {_escape_md(caller_phone or 'N/A')}",
-                f"Duration: {_escape_md(duration_str)}",
-            ]
-            if operator_name:
-                lines.append(f"Operator: {_escape_md(operator_name)}")
-            if contact_name:
-                lines.append(f"Contact: {_escape_md(contact_name)}")
-
-            text = "\n".join(lines)
+            text = i18n.call_completed_message(
+                direction=direction,
+                caller_display=contact_name or caller_phone or "Unknown",
+                phone=caller_phone or "N/A",
+                duration_sec=duration_sec,
+                operator_name=operator_name,
+                contact_name=contact_name,
+                recording_url=record_url,
+                lang=lang,
+            )
 
             buttons = []
             if contact_id:
                 buttons.append([InlineKeyboardButton(
-                    text="Open Contact",
+                    text=btn["open_crm"],
                     url=_crm_url(f"/contacts/{contact_id}"),
                 )])
-
             buttons.append([InlineKeyboardButton(
-                text="Mark Handled",
-                callback_data=f"mark_handled:call_completed:{caller_phone[:40]}",
+                text=btn["mark_handled"],
+                callback_data=f"mh:{caller_phone[:50]}",
             )])
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "call_completed", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send call_completed notification for company %s", company_id
-            )
+            logger.exception("Failed to send call_completed notification for company %s", company_id)
 
     @staticmethod
     async def notify_call_missed(
@@ -392,41 +352,27 @@ class TelegramService:
             if not config or not config.is_event_enabled("call_missed"):
                 return
 
-            caller_display = _escape_md(contact_name or caller_phone or "Unknown")
-            lines = [
-                "*MISSED CALL*",
-                "",
-                f"From: {caller_display}",
-                f"Phone: {_escape_md(caller_phone or 'N/A')}",
-            ]
-            if operator_name:
-                lines.append(f"Operator: {_escape_md(operator_name)}")
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
 
-            text = "\n".join(lines)
+            text = i18n.missed_call_message(
+                caller_display=contact_name or caller_phone or "Unknown",
+                phone=caller_phone or "N/A",
+                contact_name=contact_name,
+                lang=lang,
+            )
 
             buttons = [
-                [InlineKeyboardButton(
-                    text="Callback",
-                    callback_data=f"callback:{caller_phone[:40]}",
-                )],
-                [InlineKeyboardButton(
-                    text="Mark Handled",
-                    callback_data=f"mark_handled:call_missed:{caller_phone[:40]}",
-                )],
+                [InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{caller_phone[:50]}")],
+                [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{caller_phone[:50]}")],
             ]
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "call_missed", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send call_missed notification for company %s", company_id
-            )
+            logger.exception("Failed to send call_missed notification for company %s", company_id)
 
     @staticmethod
     async def notify_new_lead(
@@ -448,38 +394,25 @@ class TelegramService:
             if not config or not config.is_event_enabled("new_lead"):
                 return
 
-            title = _escape_md(lead_title or "Untitled Lead")
-            lines = [
-                "*New Lead Created*",
-                "",
-                f"Title: {title}",
-            ]
-            if contact_name:
-                lines.append(f"Contact: {_escape_md(contact_name)}")
-            if source:
-                lines.append(f"Source: {_escape_md(source)}")
-            if estimated_value:
-                lines.append(f"Value: {_escape_md(f'{estimated_value:,.0f}')}")
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
 
-            text = "\n".join(lines)
+            text = i18n.new_lead_message(
+                lead_title=lead_title or "Untitled",
+                source=source,
+                estimated_value=estimated_value,
+                contact_name=contact_name,
+                lang=lang,
+            )
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="Open Lead",
-                    url=_crm_url(f"/leads/{lead_id}"),
-                )],
+                [InlineKeyboardButton(text=btn["open_lead"], url=_crm_url(f"/leads/{lead_id}"))],
             ])
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "new_lead", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send new_lead notification for company %s", company_id
-            )
+            logger.exception("Failed to send new_lead notification for company %s", company_id)
 
     @staticmethod
     async def notify_deal_stage_change(
@@ -502,52 +435,27 @@ class TelegramService:
             if not config or not config.is_event_enabled("deal_stage_change"):
                 return
 
-            stage_names = {
-                "prospecting": "Prospecting",
-                "qualification": "Qualification",
-                "proposal": "Proposal",
-                "negotiation": "Negotiation",
-                "closed_won": "Closed Won",
-                "closed_lost": "Closed Lost",
-            }
+            lang = config.language or "ru"
+            locale = get_locale(lang)
+            btn = _buttons(locale)
 
-            old_name = stage_names.get(old_stage, old_stage)
-            new_name = stage_names.get(new_stage, new_stage)
-
-            lines = [
-                "*Deal Stage Changed*",
-                "",
-                f"Deal: {_escape_md(deal_title)}",
-                f"Stage: {_escape_md(old_name)} → {_escape_md(new_name)}",
-            ]
-            if amount:
-                lines.append(f"Amount: {_escape_md(f'{amount:,.0f}')}")
-            if assigned_to_name:
-                lines.append(f"Assigned to: {_escape_md(assigned_to_name)}")
-
-            text = "\n".join(lines)
+            text = i18n.deal_stage_message(
+                deal_title=deal_title,
+                old_stage=old_stage,
+                new_stage=new_stage,
+                amount=amount,
+                assigned_to_name=assigned_to_name,
+                lang=lang,
+            )
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="Open Deal",
-                    url=_crm_url(f"/deals/{deal_id}"),
-                )],
-                [InlineKeyboardButton(
-                    text="Mark Handled",
-                    callback_data=f"mark_handled:deal_stage:{str(deal_id)[:36]}",
-                )],
+                [InlineKeyboardButton(text=btn["open_deal"], url=_crm_url(f"/deals/{deal_id}"))],
+                [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")],
             ])
 
-            await bot.send_message(
-                chat_id=config.chat_id,
-                text=text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=keyboard,
-            )
+            await TelegramService._send(bot, config, text, "deal_stage_change", keyboard)
         except Exception:
-            logger.exception(
-                "Failed to send deal_stage_change notification for company %s", company_id
-            )
+            logger.exception("Failed to send deal_stage_change notification for company %s", company_id)
 
     @staticmethod
     async def send_test_message(chat_id: str) -> bool:
@@ -566,3 +474,33 @@ class TelegramService:
         except Exception:
             logger.exception("Test message failed for chat_id %s", chat_id)
             return False
+
+    # ── Forum topic creation (via Bot API) ───────────────────────
+
+    @staticmethod
+    async def create_forum_topics(chat_id: str | int) -> dict[str, int]:
+        """
+        Create forum topics in an existing supergroup using the Bot API.
+
+        Returns: {"calls": thread_id, "missed": thread_id, ...}
+        Used by manual setup flow when Pyrogram is not available.
+        """
+        from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_EMOJI
+
+        bot = get_bot()
+        if not bot:
+            raise RuntimeError("Bot not available")
+
+        topic_ids = {"general": 1}  # General is always thread_id=1
+
+        for topic_key in ["calls", "missed", "leads", "deals"]:
+            emoji = TOPIC_EMOJI[topic_key]
+            name = f"{emoji} {TOPIC_NAMES['ru'][topic_key]}"
+
+            result = await bot.create_forum_topic(
+                chat_id=chat_id,
+                name=name,
+            )
+            topic_ids[topic_key] = result.message_thread_id
+
+        return topic_ids
