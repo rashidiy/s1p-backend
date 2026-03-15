@@ -61,6 +61,7 @@ class UserResponse(UserBase):
     """User response"""
     id: UUID
     company_id: Optional[UUID]
+    company_subdomain: Optional[str] = None
     role: str
     permissions: List[str]
     permission_group_id: Optional[UUID] = None
@@ -79,7 +80,7 @@ class UserResponse(UserBase):
         from_attributes = True
 
     @model_validator(mode='after')
-    def compute_avatar_url(self):
+    def compute_fields(self):
         if self.avatar:
             from core.config import AppConfig
             self.avatar_url = f"{AppConfig.BASE_URL}/media/avatars/{self.avatar}"
