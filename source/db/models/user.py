@@ -69,6 +69,10 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     avatar: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     avatar_is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("'false'"))
 
+    # Telegram DM notification preferences
+    # {"my_calls": true, "my_leads": true, "assigned_to_me": true}
+    telegram_dm_prefs = Column(JSONB, nullable=True, server_default=text("'{}'::jsonb"))
+
     # Personal info
     first_name: Mapped[str] = mapped_column(String(225), nullable=False)
     last_name: Mapped[Optional[str]] = mapped_column(String(225))

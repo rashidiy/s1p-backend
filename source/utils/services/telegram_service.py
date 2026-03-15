@@ -616,3 +616,71 @@ class TelegramService:
             topic_ids[topic_key] = result.message_thread_id
 
         return topic_ids
+
+    # ── DM notifications ─────────────────────────────────────────
+
+    @staticmethod
+    async def _send_dm_notifications(
+        config: TelegramConfig,
+        event_type: str,
+        text: str,
+        session: AsyncSession,
+        operator_id: Optional[UUID] = None,
+    ) -> None:
+        """
+        Send DM notifications to operators who have DM prefs enabled.
+
+        Fire-and-forget, rate limited to 1 DM per event per user.
+        Only sends if config.dm_notifications is True.
+        """
+        if not config.dm_notifications:
+            return
+
+        bot = get_bot()
+        if not bot:
+            return
+
+        # Map event_type to DM pref key
+        pref_map = {
+            "call_completed": "my_calls",
+            "call_missed": "my_calls",
+            "new_lead": "my_leads",
+            "deal_stage_change": "assigned_to_me",
+        }
+        pref_key = pref_map.get(event_type)
+        if not pref_key:
+            return
+
+        try:
+            # Find users with DM prefs enabled for this event type
+            from sqlalchemy import select as sa_select
+            result = await session.execute(
+                sa_select(User).where(
+                    User.company_id == config.company_id,
+                    User.telegram_user_id.isnot(None),
+                    User.deleted_at.is_(None),
+                    User.is_active.is_(True),
+                )
+            )
+            users = result.scalars().all()
+
+            for user in users:
+                prefs = user.telegram_dm_prefs or {}
+                if not prefs.get(pref_key, False):
+                    continue
+
+                # If event is operator-specific, only DM that operator
+                if operator_id and pref_key in ("my_calls",) and user.id != operator_id:
+                    continue
+
+                try:
+                    await bot.send_message(
+                        chat_id=user.telegram_user_id,
+                        text=text,
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                    )
+                except Exception:
+                    logger.debug("Failed to send DM to user %s", user.id)
+
+        except Exception:
+            logger.debug("DM notification failed for company %s", config.company_id)
