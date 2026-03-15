@@ -405,77 +405,180 @@ async def _send_message(chat_id: int, text: str) -> None:
         await bot.session.close()
 
 
-# ── Callback query handlers (existing) ───────────────────────────────
+# ── Callback query handlers (V2 — shortened prefixes) ────────────────
+#
+# Callback data format: "prefix:param" (must fit 64 bytes)
+# Prefixes: mh=mark_handled, al=assign_lead, cb=callback, cc=create_contact
+
+async def _find_crm_user(telegram_user_id: int, chat_id: str, session: AsyncSession) -> User | None:
+    """Find a CRM user by telegram_user_id in any company linked to this chat."""
+    from sqlalchemy import or_
+    # Find configs matching this chat
+    config_q = await session.execute(
+        select(TelegramBotConfig.company_id).where(
+            or_(
+                TelegramBotConfig.chat_id == chat_id,
+                TelegramBotConfig.group_chat_id == int(chat_id) if chat_id.lstrip('-').isdigit() else False,
+            ),
+            TelegramBotConfig.deleted_at.is_(None),
+        )
+    )
+    company_ids = [row[0] for row in config_q.all()]
+
+    for cid in company_ids:
+        user = await User.get(
+            session=session,
+            telegram_user_id=telegram_user_id,
+            company_id=cid,
+        )
+        if user and not user.deleted_at:
+            return user
+    return None
+
+
+async def _get_config_for_chat(chat_id: str, session: AsyncSession) -> TelegramBotConfig | None:
+    """Find TelegramBotConfig for a chat (legacy chat_id OR V2 group_chat_id)."""
+    from sqlalchemy import or_
+
+    conditions = [TelegramBotConfig.chat_id == chat_id]
+    if chat_id.lstrip('-').isdigit():
+        conditions.append(TelegramBotConfig.group_chat_id == int(chat_id))
+
+    result = await session.execute(
+        select(TelegramBotConfig).where(
+            or_(*conditions),
+            TelegramBotConfig.enabled.is_(True),
+            TelegramBotConfig.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
 
 async def _handle_callback_query(callback_query: dict, session: AsyncSession):
-    """Process inline button callback queries."""
+    """Process inline button callback queries (V2 shortened prefixes)."""
     callback_data = callback_query.get("data", "")
-    chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
+    message = callback_query.get("message", {})
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    message_id = message.get("message_id")
     callback_query_id = callback_query.get("id")
     user_info = callback_query.get("from", {})
-    username = user_info.get("username", "unknown")
+    telegram_user_id = user_info.get("id")
+    user_display = user_info.get("first_name") or user_info.get("username") or "Unknown"
 
     if not callback_data or not chat_id:
         return
 
-    # Find company by chat_id
-    result = await session.execute(
-        select(TelegramBotConfig).where(
-            TelegramBotConfig.chat_id == chat_id,
-            TelegramBotConfig.enabled.is_(True),
-            TelegramBotConfig.deleted_at.is_(None)
-        )
-    )
-    config = result.scalar_one_or_none()
+    config = await _get_config_for_chat(chat_id, session)
     if not config:
         await _answer_callback(callback_query_id, "Bot not configured for this chat")
         return
 
-    # Parse callback data: "action:param1:param2"
-    parts = callback_data.split(":")
-    action = parts[0] if parts else ""
+    lang = config.language or "ru"
+
+    # Parse: "prefix:param"
+    parts = callback_data.split(":", 1)
+    action = parts[0]
+    param = parts[1] if len(parts) > 1 else ""
 
     try:
-        if action == "mark_handled":
+        if action == "mh":
+            # Mark handled — edit message to add handler name, remove buttons
+            from utils.services.telegram_i18n import handled_text
+            suffix = handled_text(user_display, lang)
+            await _edit_message_handled(chat_id, message_id, message.get("text", ""), suffix)
+            await _answer_callback(callback_query_id, suffix)
+
+        elif action == "al":
+            # Assign lead — find CRM user, assign lead
+            from utils.services.telegram_i18n import lead_assigned_text, link_telegram_text
+
+            crm_user = await _find_crm_user(telegram_user_id, chat_id, session) if telegram_user_id else None
+            if not crm_user:
+                await _answer_callback(callback_query_id, link_telegram_text(lang))
+                return
+
+            lead = await Lead.get(session=session, id=param, company_id=config.company_id)
+            if lead:
+                lead.assigned_to = crm_user.id
+                await session.commit()
+                msg = lead_assigned_text(crm_user.full_name, lang)
+                await _answer_callback(callback_query_id, msg)
+                logger.info("Lead %s assigned to %s via Telegram", param, crm_user.id)
+            else:
+                await _answer_callback(callback_query_id, "Lead not found")
+
+        elif action == "cb":
+            # Callback — show phone number (Phase 1, no telephony integration)
+            await _answer_callback(callback_query_id, f"Call: {param}")
+
+        elif action == "cc":
+            # Create contact from phone
+            from utils.services.telegram_i18n import contact_created_text, link_telegram_text
+            from db.models.contact import Contact
+
+            crm_user = await _find_crm_user(telegram_user_id, chat_id, session) if telegram_user_id else None
+            if not crm_user:
+                await _answer_callback(callback_query_id, link_telegram_text(lang))
+                return
+
+            # Check if contact already exists
+            existing = await session.execute(
+                select(Contact.id).where(
+                    Contact.company_id == config.company_id,
+                    Contact.phone == param,
+                    Contact.deleted_at.is_(None),
+                ).limit(1)
+            )
+            if existing.first():
+                await _answer_callback(callback_query_id, "Contact already exists")
+                return
+
+            contact = await Contact.create(
+                session=session,
+                company_id=config.company_id,
+                phone=param,
+                first_name=param,  # Phone as placeholder name
+                created_by=crm_user.id,
+            )
+            msg = contact_created_text(param, lang)
+            await _answer_callback(callback_query_id, msg)
+            logger.info("Contact created for %s by %s via Telegram", param, crm_user.id)
+
+        # Legacy prefixes (backward compat for messages sent before V2)
+        elif action == "mark_handled":
             await _answer_callback(callback_query_id, "Marked as handled")
-
-        elif action == "assign_lead" and len(parts) >= 2:
-            lead_id = parts[1]
-            await _handle_assign_lead(session, config.company_id, lead_id, username)
-            await _answer_callback(callback_query_id, "Lead will be assigned")
-
-        elif action == "callback" and len(parts) >= 2:
-            phone = parts[1]
-            await _answer_callback(callback_query_id, f"Call back {phone}")
-
-        elif action == "create_contact" and len(parts) >= 2:
-            phone = parts[1]
-            await _answer_callback(callback_query_id, f"Create contact for {phone} in CRM")
-
-        elif action == "open_contact" and len(parts) >= 2:
-            await _answer_callback(callback_query_id, "Open contact in CRM")
+        elif action == "assign_lead":
+            await _answer_callback(callback_query_id, "Use CRM to assign leads")
+        elif action == "callback":
+            await _answer_callback(callback_query_id, f"Call: {param}")
 
         else:
             await _answer_callback(callback_query_id, "Unknown action")
 
     except Exception as e:
-        logger.error(f"Error handling callback {action}: {e}", exc_info=True)
+        logger.error("Error handling callback %s: %s", action, e, exc_info=True)
         await _answer_callback(callback_query_id, "Error processing request")
 
 
-async def _handle_assign_lead(session: AsyncSession, company_id, lead_id: str, username: str):
-    """Handle lead assignment from Telegram button."""
+async def _edit_message_handled(chat_id: str, message_id: int, original_text: str, suffix: str):
+    """Edit the original message to append 'Handled by X' and remove inline keyboard."""
+    bot = _get_bot()
+    if not bot or not message_id:
+        return
+
     try:
-        lead = await Lead.get(
-            session=session,
-            id=lead_id,
-            company_id=company_id
+        from aiogram.enums import ParseMode
+        new_text = f"{original_text}\n\n✅ {suffix}"
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=new_text,
+            parse_mode=ParseMode.MARKDOWN_V2,
         )
-        if lead and not lead.assigned_to:
-            # Log the assignment request — actual assignment needs a CRM user
-            logger.info(f"Lead {lead_id} assignment requested by Telegram user @{username}")
-    except Exception as e:
-        logger.error(f"Failed to handle lead assignment: {e}", exc_info=True)
+    except Exception:
+        logger.debug("Could not edit message %s in chat %s", message_id, chat_id)
+    finally:
+        await bot.session.close()
 
 
 async def _answer_callback(callback_query_id: str, text: str):
@@ -487,6 +590,6 @@ async def _answer_callback(callback_query_id: str, text: str):
     try:
         await bot.answer_callback_query(callback_query_id=callback_query_id, text=text)
     except Exception as e:
-        logger.error(f"Failed to answer callback query: {e}", exc_info=True)
+        logger.error("Failed to answer callback query: %s", e, exc_info=True)
     finally:
         await bot.session.close()
