@@ -2,11 +2,11 @@
 Telegram integration schemas
 
 Flattens the model's JSONB notification_filters into individual boolean fields
-to match what the frontend expects.
+to match what the frontend expects. V2 adds setup flow + expanded config.
 """
 
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict
 
 
 class TelegramConfigResponse(BaseModel):
@@ -19,6 +19,17 @@ class TelegramConfigResponse(BaseModel):
     notify_missed_calls: bool
     notify_new_leads: bool
     notify_deal_stage_change: bool
+
+    # V2 fields
+    group_chat_id: Optional[int] = None
+    setup_status: str = "not_started"
+    setup_error: Optional[str] = None
+    invite_link: Optional[str] = None
+    group_name: Optional[str] = None
+    language: str = "ru"
+    send_recordings: bool = True
+    daily_digest: bool = True
+    dm_notifications: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +46,16 @@ class TelegramConfigResponse(BaseModel):
             notify_missed_calls=filters.get("call_missed", False),
             notify_new_leads=filters.get("new_lead", False),
             notify_deal_stage_change=filters.get("deal_stage_change", False),
+            # V2
+            group_chat_id=config.group_chat_id,
+            setup_status=config.setup_status or "not_started",
+            setup_error=config.setup_error,
+            invite_link=config.invite_link,
+            group_name=config.group_name,
+            language=config.language or "ru",
+            send_recordings=config.send_recordings if config.send_recordings is not None else True,
+            daily_digest=config.daily_digest if config.daily_digest is not None else True,
+            dm_notifications=config.dm_notifications if config.dm_notifications is not None else False,
         )
 
 
@@ -45,6 +66,12 @@ class TelegramConfigUpdateRequest(BaseModel):
     notify_missed_calls: Optional[bool] = None
     notify_new_leads: Optional[bool] = None
     notify_deal_stage_change: Optional[bool] = None
+
+    # V2 settings
+    language: Optional[str] = None
+    send_recordings: Optional[bool] = None
+    daily_digest: Optional[bool] = None
+    dm_notifications: Optional[bool] = None
 
     def to_model_fields(self) -> dict:
         """Convert flat booleans to model fields (enabled + notification_filters)."""
@@ -64,6 +91,17 @@ class TelegramConfigUpdateRequest(BaseModel):
 
         if filters:
             result["notification_filters"] = filters
+
+        # V2 settings
+        if self.language is not None:
+            result["language"] = self.language
+        if self.send_recordings is not None:
+            result["send_recordings"] = self.send_recordings
+        if self.daily_digest is not None:
+            result["daily_digest"] = self.daily_digest
+        if self.dm_notifications is not None:
+            result["dm_notifications"] = self.dm_notifications
+
         return result
 
 
@@ -84,3 +122,25 @@ class TelegramConfigCreateRequest(BaseModel):
             "new_lead": self.notify_new_leads,
             "deal_stage_change": self.notify_deal_stage_change,
         }
+
+
+# ── V2 Setup Schemas ─────────────────────────────────────────────
+
+class TelegramSetupRequest(BaseModel):
+    """Request automated group setup."""
+    company_name: str
+    language: str = "ru"
+
+
+class TelegramSetupStatusResponse(BaseModel):
+    """Setup status response."""
+    setup_status: str  # not_started|creating|ready|failed|manual
+    setup_error: Optional[str] = None
+    invite_link: Optional[str] = None
+    group_name: Optional[str] = None
+    group_chat_id: Optional[int] = None
+
+
+class TelegramManualSetupRequest(BaseModel):
+    """Manual setup — admin provides the chat_id, bot creates topics."""
+    chat_id: str
