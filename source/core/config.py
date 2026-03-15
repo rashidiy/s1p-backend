@@ -56,6 +56,20 @@ class TelegramConfig:
     BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 's1pcrm_bot')
 
 
+class PyrogramConfig:
+    """Pyrogram userbot configuration (MTProto — group creation, topic management)"""
+    API_ID = int(os.getenv('PYROGRAM_API_ID', '0'))
+    API_HASH = os.getenv('PYROGRAM_API_HASH', '')
+    SESSION_STRING = os.getenv('PYROGRAM_SESSION_STRING', '')
+    ENABLED = os.getenv('PYROGRAM_ENABLED', 'false').lower() == 'true'
+
+
+class SignedUrlConfig:
+    """HMAC-SHA256 signed URL configuration for recording delivery"""
+    SECRET = os.getenv('SIGNED_URL_SECRET', os.getenv('JWT_SIGNING_KEY', 'change-me'))
+    DEFAULT_EXPIRY = int(os.getenv('SIGNED_URL_EXPIRY', '86400'))  # 24 hours
+
+
 class WebhookConfig:
     """Webhook security configuration"""
     # IP whitelisting for webhook endpoints

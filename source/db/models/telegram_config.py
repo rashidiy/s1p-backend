@@ -3,14 +3,24 @@ TelegramBotConfig model - Per-company Telegram notification settings
 """
 
 from sqlalchemy import (
-    Column, DateTime, String, Boolean, ForeignKey, text
+    Column, DateTime, Integer, String, Boolean, ForeignKey, Text, text
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import BIGINT, UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from db.base import Base
 from db.mixins.object_manager import ObjectManagerMixin
+
+
+# Topic name → event type mapping
+TOPIC_EVENT_MAP = {
+    "calls": "call_completed",
+    "missed": "call_missed",
+    "leads": "new_lead",
+    "deals": "deal_stage_change",
+    "general": None,
+}
 
 
 class TelegramBotConfig(Base, ObjectManagerMixin):
@@ -19,6 +29,9 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
 
     One shared bot (token in env var), each company configures
     which chat_id receives notifications and which events to send.
+
+    V2 adds: supergroup with topics, automated setup, i18n, recordings,
+    daily digest, DM notifications.
     """
 
     __tablename__ = "telegram_bot_configs"
@@ -37,8 +50,23 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
         index=True
     )
 
-    # Telegram chat/group ID where notifications are sent
-    chat_id = Column(String(100), nullable=False, index=True)
+    # Legacy: simple chat_id for direct messages (kept for backward compat)
+    chat_id = Column(String(100), nullable=True, index=True)
+
+    # V2: supergroup with forum topics
+    group_chat_id = Column(BIGINT, nullable=True)
+    topic_ids = Column(JSONB, nullable=True)  # {"calls": 123, "missed": 124, "leads": 125, "deals": 126, "general": 1}
+    invite_link = Column(String(255), nullable=True)
+    setup_status = Column(String(20), server_default=text("'not_started'"), nullable=False)  # not_started|creating|ready|failed|manual
+    setup_error = Column(Text, nullable=True)
+    group_name = Column(String(255), nullable=True)
+
+    # Notification settings
+    language = Column(String(10), server_default=text("'ru'"), nullable=False)  # ru|en|uz
+    send_recordings = Column(Boolean, server_default=text("'true'"), nullable=False)
+    daily_digest = Column(Boolean, server_default=text("'true'"), nullable=False)
+    dm_notifications = Column(Boolean, server_default=text("'false'"), nullable=False)
+    digest_message_id = Column(Integer, nullable=True)
 
     # Which notifications to send
     # {"call_completed": true, "call_missed": true, "new_lead": true, "deal_stage_change": true}
@@ -76,3 +104,23 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
             return False
         filters = self.notification_filters or {}
         return filters.get(event_type, False)
+
+    @property
+    def effective_chat_id(self) -> str | None:
+        """Returns the group_chat_id (V2) or legacy chat_id, whichever is set."""
+        if self.group_chat_id:
+            return str(self.group_chat_id)
+        return self.chat_id
+
+    def get_topic_thread_id(self, event_type: str) -> int | None:
+        """Get the message_thread_id for routing a notification to the right topic.
+        Returns None if no topics configured (sends to main chat).
+        """
+        if not self.topic_ids:
+            return None
+        # Map event_type → topic name
+        for topic_name, mapped_event in TOPIC_EVENT_MAP.items():
+            if mapped_event == event_type:
+                return self.topic_ids.get(topic_name)
+        # Fallback to general topic
+        return self.topic_ids.get("general")
