@@ -222,53 +222,8 @@ ROLE_PERMISSIONS = {
         "*"
     ],
     RoleEnum.COMPANY_ADMIN: [
-        # Leads
-        Permissions.LEADS_READ,
-        Permissions.LEADS_WRITE,
-        Permissions.LEADS_DELETE,
-        Permissions.LEADS_ASSIGN,
-        # Contacts
-        Permissions.CONTACTS_READ,
-        Permissions.CONTACTS_WRITE,
-        Permissions.CONTACTS_DELETE,
-        Permissions.CONTACTS_IMPORT,
-        Permissions.CONTACTS_EXPORT,
-        # Deals
-        Permissions.DEALS_READ,
-        Permissions.DEALS_WRITE,
-        Permissions.DEALS_DELETE,
-        Permissions.DEALS_ASSIGN,
-        # Tasks
-        Permissions.TASKS_READ,
-        Permissions.TASKS_WRITE,
-        Permissions.TASKS_DELETE,
-        Permissions.TASKS_ASSIGN,
-        # Calls
-        Permissions.CALLS_READ,
-        Permissions.CALLS_WRITE,
-        Permissions.CALLS_MAKE,
-        # Notes
-        Permissions.NOTES_READ,
-        Permissions.NOTES_WRITE,
-        Permissions.NOTES_DELETE,
-        # Users
-        Permissions.USERS_READ,
-        Permissions.USERS_CREATE,
-        Permissions.USERS_UPDATE,
-        Permissions.USERS_WRITE,
-        Permissions.USERS_DELETE,
-        Permissions.USERS_MANAGE,
-        # Statistics
-        Permissions.STATS_READ,
-        Permissions.STATS_EXPORT,
-        # Settings
-        Permissions.SETTINGS_READ,
-        Permissions.SETTINGS_MANAGE,
-        # Company
-        Permissions.COMPANY_READ,
-        Permissions.COMPANY_MANAGE,
-        # Contract
-        Permissions.CONTRACT_READ,
+        # Admins have all permissions within their company
+        "*"
     ],
     RoleEnum.COMPANY_MANAGER: [
         # Leads
