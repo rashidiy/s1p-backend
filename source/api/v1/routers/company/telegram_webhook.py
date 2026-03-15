@@ -452,14 +452,14 @@ async def _handle_today_command(chat_id: int, session: AsyncSession):
         call_stats = await AnalyticsService.get_call_stats(
             session=session,
             company_id=config.company_id,
-            from_date=start,
-            to_date=end,
+            date_from=start,
+            date_to=end,
         )
         lead_stats = await AnalyticsService.get_lead_stats(
             session=session,
             company_id=config.company_id,
-            from_date=start,
-            to_date=end,
+            date_from=start,
+            date_to=end,
         )
 
         from utils.services.telegram_i18n import daily_digest_message
@@ -467,7 +467,7 @@ async def _handle_today_command(chat_id: int, session: AsyncSession):
             date=today.isoformat(),
             total_calls=call_stats.total_calls if call_stats else 0,
             missed_calls=call_stats.missed_calls if call_stats else 0,
-            avg_duration_sec=int(call_stats.avg_duration_seconds) if call_stats and call_stats.avg_duration_seconds else 0,
+            avg_duration_sec=int(call_stats.average_duration) if call_stats and call_stats.average_duration else 0,
             new_leads=lead_stats.total_leads if lead_stats else 0,
             deals_won=0,
             deals_lost=0,

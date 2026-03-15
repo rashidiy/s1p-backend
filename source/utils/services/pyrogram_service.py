@@ -11,7 +11,7 @@ import random
 from typing import Optional
 
 from core.config import PyrogramConfig, TelegramConfig
-from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_EMOJI, get_locale
+from utils.services.telegram_constants import TOPIC_NAMES, get_locale
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +133,7 @@ async def create_group(
             topic_ids = {}
 
             for topic_key in ["calls", "missed", "leads", "deals"]:
-                emoji = TOPIC_EMOJI[topic_key]
-                name = f"{emoji} {topic_names[topic_key]}"
+                name = topic_names[topic_key]
 
                 for attempt in range(3):
                     try:
@@ -153,6 +152,20 @@ async def create_group(
 
             # "General" topic is always thread_id=1
             topic_ids["general"] = 1
+
+            # 3b. Pin topics in order so they don't reorder on new messages
+            try:
+                from pyrogram.raw.functions.channels import ReorderPinnedForumTopics
+                ordered_ids = [topic_ids[k] for k in ["calls", "missed", "leads", "deals"] if k in topic_ids]
+                await client.invoke(
+                    ReorderPinnedForumTopics(
+                        channel=await client.resolve_peer(chat_id),
+                        order=ordered_ids,
+                        force=True,
+                    )
+                )
+            except Exception:
+                logger.debug("Could not pin forum topics for chat %s", chat_id)
 
             # 4. Promote the bot as admin
             if bot_username:

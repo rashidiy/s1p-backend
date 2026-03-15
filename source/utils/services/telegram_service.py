@@ -601,32 +601,66 @@ class TelegramService:
     # ── Forum topic creation (via Bot API) ───────────────────────
 
     @staticmethod
-    async def create_forum_topics(chat_id: str | int) -> dict[str, int]:
+    async def create_forum_topics(chat_id: str | int, lang: str = "ru") -> dict[str, int]:
         """
         Create forum topics in an existing supergroup using the Bot API.
 
         Returns: {"calls": thread_id, "missed": thread_id, ...}
         Used by manual setup flow when Pyrogram is not available.
+        Topics use custom emoji icons (circular icon on the left), not text emoji in the name.
         """
-        from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_EMOJI
+        from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_ICON_EMOJI_ID
 
         bot = get_bot()
         if not bot:
             raise RuntimeError("Bot not available")
 
+        locale = lang if lang in TOPIC_NAMES else "ru"
         topic_ids = {"general": 1}  # General is always thread_id=1
 
         for topic_key in ["calls", "missed", "leads", "deals"]:
-            emoji = TOPIC_EMOJI[topic_key]
-            name = f"{emoji} {TOPIC_NAMES['ru'][topic_key]}"
+            name = TOPIC_NAMES[locale][topic_key]
+            icon_emoji_id = TOPIC_ICON_EMOJI_ID.get(topic_key)
 
-            result = await bot.create_forum_topic(
-                chat_id=chat_id,
-                name=name,
-            )
+            kwargs = {"chat_id": chat_id, "name": name}
+            if icon_emoji_id:
+                kwargs["icon_custom_emoji_id"] = icon_emoji_id
+
+            result = await bot.create_forum_topic(**kwargs)
             topic_ids[topic_key] = result.message_thread_id
 
         return topic_ids
+
+    # ── Forum topic renaming ────────────────────────────────────
+
+    @staticmethod
+    async def rename_forum_topics(chat_id: str | int, topic_ids: dict, lang: str = "ru") -> None:
+        """
+        Rename forum topics to match the given language.
+        Called when the notification language is changed.
+        """
+        from utils.services.telegram_constants import TOPIC_NAMES
+
+        bot = get_bot()
+        if not bot:
+            return
+
+        locale = lang if lang in TOPIC_NAMES else "ru"
+
+        for topic_key in ["calls", "missed", "leads", "deals"]:
+            thread_id = topic_ids.get(topic_key)
+            if not thread_id:
+                continue
+
+            name = TOPIC_NAMES[locale][topic_key]
+            try:
+                await bot.edit_forum_topic(
+                    chat_id=chat_id,
+                    message_thread_id=thread_id,
+                    name=name,
+                )
+            except Exception:
+                logger.debug("Failed to rename topic %s in chat %s", topic_key, chat_id)
 
     # ── DM notifications ─────────────────────────────────────────
 

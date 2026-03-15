@@ -112,15 +112,19 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
             return str(self.group_chat_id)
         return self.chat_id
 
-    def get_topic_thread_id(self, event_type: str) -> int | None:
+    def get_topic_thread_id(self, event_type: str | None) -> int | None:
         """Get the message_thread_id for routing a notification to the right topic.
         Returns None if no topics configured (sends to main chat).
+        Thread ID 1 (General) is returned as None — Telegram routes to General
+        implicitly when no thread_id is specified, and thread_id=1 may fail
+        if the General topic is hidden.
         """
         if not self.topic_ids:
             return None
         # Map event_type → topic name
         for topic_name, mapped_event in TOPIC_EVENT_MAP.items():
             if mapped_event == event_type:
-                return self.topic_ids.get(topic_name)
-        # Fallback to general topic
-        return self.topic_ids.get("general")
+                thread_id = self.topic_ids.get(topic_name)
+                return thread_id if thread_id and thread_id != 1 else None
+        # Fallback to general topic (no thread_id — Telegram uses General implicitly)
+        return None
