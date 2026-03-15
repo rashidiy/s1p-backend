@@ -48,10 +48,22 @@ def get_bot() -> Optional[Bot]:
     return _bot
 
 
-def _crm_url(path: str) -> str:
-    """Build CRM frontend URL."""
+def _crm_url(path: str) -> str | None:
+    """Build CRM frontend URL. Returns None if URL wouldn't be valid for Telegram (non-HTTPS)."""
     base = AppConfig.FRONTEND_URL.rstrip('/')
-    return f"{base}/{path.lstrip('/')}"
+    url = f"{base}/{path.lstrip('/')}"
+    # Telegram rejects non-HTTPS URLs in inline keyboard buttons
+    if not url.startswith("https://"):
+        return None
+    return url
+
+
+def _url_button(text: str, path: str) -> InlineKeyboardButton | None:
+    """Create a URL button, or None if the URL isn't valid for Telegram."""
+    url = _crm_url(path)
+    if not url:
+        return None
+    return InlineKeyboardButton(text=text, url=url)
 
 
 def _buttons(locale: str) -> dict:
@@ -296,15 +308,16 @@ class TelegramService:
             )
 
             call_id = call_event.id
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            rows = [
                 [
                     InlineKeyboardButton(text=btn["assign_lead"], callback_data=f"al:{call_id}"),
                     InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
                 ],
-                [
-                    InlineKeyboardButton(text=btn["open_crm"], url=_crm_url(f"/calls/{call_id}")),
-                ],
-            ])
+            ]
+            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
+            if crm_btn:
+                rows.append([crm_btn])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=call_event.phone_1)
         except Exception:
@@ -342,12 +355,11 @@ class TelegramService:
             )
 
             call_id = call_event.id
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}"),
-                    InlineKeyboardButton(text=btn["open_crm"], url=_crm_url(f"/calls/{call_id}")),
-                ],
-            ])
+            row = [InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}")]
+            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
+            if crm_btn:
+                row.append(crm_btn)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[row])
 
             await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=call_event.phone_1)
         except Exception:
@@ -381,9 +393,8 @@ class TelegramService:
                 lang=lang,
             )
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn["open_lead"], url=_crm_url(f"/leads/{lead.id}"))],
-            ])
+            lead_btn = _url_button(btn["open_lead"], f"/leads/{lead.id}")
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[lead_btn]]) if lead_btn else None
 
             await TelegramService._send(bot, config, text, "new_lead", keyboard)
         except Exception:
@@ -430,10 +441,9 @@ class TelegramService:
 
             buttons = []
             if contact_id:
-                buttons.append([InlineKeyboardButton(
-                    text=btn["open_crm"],
-                    url=_crm_url(f"/contacts/{contact_id}"),
-                )])
+                contact_btn = _url_button(btn["open_crm"], f"/contacts/{contact_id}")
+                if contact_btn:
+                    buttons.append([contact_btn])
             buttons.append([InlineKeyboardButton(
                 text=btn["mark_handled"],
                 callback_data=f"mh:{caller_phone[:50]}",
@@ -518,9 +528,8 @@ class TelegramService:
                 lang=lang,
             )
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn["open_lead"], url=_crm_url(f"/leads/{lead_id}"))],
-            ])
+            lead_btn = _url_button(btn["open_lead"], f"/leads/{lead_id}")
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[lead_btn]]) if lead_btn else None
 
             await TelegramService._send(bot, config, text, "new_lead", keyboard)
         except Exception:
@@ -560,10 +569,12 @@ class TelegramService:
                 lang=lang,
             )
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn["open_deal"], url=_crm_url(f"/deals/{deal_id}"))],
-                [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")],
-            ])
+            rows = []
+            deal_btn = _url_button(btn["open_deal"], f"/deals/{deal_id}")
+            if deal_btn:
+                rows.append([deal_btn])
+            rows.append([InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "deal_stage_change", keyboard)
         except Exception:
