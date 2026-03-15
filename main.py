@@ -111,6 +111,16 @@ async def register_telegram_webhook():
         info = await bot.get_webhook_info()
         await bot.session.close()
         print(f"[Telegram] Webhook registered: {info.url}, commands set")
+
+        # Start daily digest scheduler
+        try:
+            from utils.tasks.telegram_digest import digest_scheduler
+            import asyncio
+            asyncio.create_task(digest_scheduler())
+            print("[Telegram] Digest scheduler started")
+        except Exception as e:
+            print(f"[Telegram] Failed to start digest scheduler: {e}")
+
     except Exception as e:
         print(f"[Telegram] Failed to register webhook: {e}")
 
