@@ -56,6 +56,10 @@ Jinja2==3.1.6
 # Telegram Bot
 aiogram==3.20.0
 
+# Telegram Userbot (MTProto — group creation, topic management)
+pyrogram>=2.0.106
+tgcrypto>=1.2.5
+
 # Type Annotations
 annotated-types==0.7.0
 cachetools
