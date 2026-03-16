@@ -144,7 +144,7 @@ async def delete_telegram_config(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Delete Telegram bot configuration"""
+    """Delete Telegram bot configuration and destroy the Telegram group."""
     config = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -156,7 +156,18 @@ async def delete_telegram_config(
             detail="Telegram bot not configured"
         )
 
-    await config.delete(session=session)
+    # Destroy the Telegram group via Pyrogram userbot
+    group_chat_id = config.group_chat_id
+    if group_chat_id:
+        from utils.services import pyrogram_service
+        if pyrogram_service.is_available():
+            deleted = await pyrogram_service.delete_group(group_chat_id)
+            if not deleted:
+                logger.warning("Could not delete Telegram group %s, proceeding with config removal", group_chat_id)
+
+    # Hard-delete the config row (not soft-delete) so it can be recreated
+    await session.delete(config)
+    await session.commit()
     return None
 
 

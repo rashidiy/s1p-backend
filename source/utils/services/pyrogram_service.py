@@ -3,6 +3,9 @@ Pyrogram userbot service — group creation, bot promotion, invite links.
 
 Uses a single dedicated Telegram account (Premium recommended) via MTProto.
 All operations are serialized with asyncio.Lock to prevent FloodWait issues.
+
+Topic creation is delegated to the Bot API (TelegramService.create_forum_topics)
+because Pyrogram's high-level create_forum_topic has compatibility issues across forks.
 """
 
 import asyncio
@@ -74,6 +77,9 @@ async def create_group(
     """
     Create a supergroup with forum topics enabled.
 
+    Pyrogram handles: group creation, forum toggle, bot promotion, invite link, topic pinning.
+    Bot API handles: topic creation (via TelegramService.create_forum_topics).
+
     Returns: {
         "group_chat_id": int,
         "topic_ids": {"calls": int, "missed": int, "leads": int, "deals": int, "general": int},
@@ -99,7 +105,7 @@ async def create_group(
                 try:
                     group = await client.create_supergroup(
                         title=group_name,
-                        about=f"S1P CRM notifications for {company_name}",
+                        description=f"S1P CRM notifications for {company_name}",
                     )
                     break
                 except FloodWait as e:
@@ -114,49 +120,44 @@ async def create_group(
             # 2. Enable forum/topics
             for attempt in range(3):
                 try:
-                    await client.set_chat_permissions(chat_id, client.types.ChatPermissions())
-                    # Toggle forum mode
+                    from pyrogram.types import ChatPermissions
+                    from pyrogram.raw.functions.channels import ToggleForum
                     await client.invoke(
-                        client.raw.functions.channels.ToggleForum(
+                        ToggleForum(
                             channel=await client.resolve_peer(chat_id),
                             enabled=True,
+                            tabs=True,
                         )
                     )
+                    # Restore member permissions (send messages, media, etc.)
+                    await client.set_chat_permissions(chat_id, ChatPermissions(
+                        all_perms=True,
+                    ))
                     break
                 except FloodWait as e:
                     if attempt == 2:
                         raise
                     await _handle_flood(e, "enable_forum")
 
-            # 3. Create topics
-            topic_names = TOPIC_NAMES[locale]
-            topic_ids = {}
+            # 3. Promote the bot as admin BEFORE creating topics
+            #    (bot needs admin rights to create topics via Bot API)
+            if bot_username:
+                try:
+                    bot_username = bot_username.lstrip("@")
+                    await setup_bot_admin(client, chat_id, bot_username)
+                    await asyncio.sleep(1)  # Wait for Telegram to propagate permissions
+                except Exception:
+                    logger.warning("Could not promote bot @%s — manual promotion needed", bot_username)
 
-            for topic_key in ["calls", "missed", "leads", "deals"]:
-                name = topic_names[topic_key]
+            # 4. Create topics via Bot API (more reliable than Pyrogram's raw API)
+            from utils.services.telegram_service import TelegramService
+            topic_ids = await TelegramService.create_forum_topics(str(chat_id), lang=lang)
 
-                for attempt in range(3):
-                    try:
-                        result = await client.create_forum_topic(
-                            chat_id=chat_id,
-                            title=name,
-                        )
-                        topic_ids[topic_key] = result.id
-                        break
-                    except FloodWait as e:
-                        if attempt == 2:
-                            raise
-                        await _handle_flood(e, f"create_topic:{topic_key}")
-
-                await asyncio.sleep(0.5)  # Rate limit safety
-
-            # "General" topic is always thread_id=1
-            topic_ids["general"] = 1
-
-            # 3b. Pin topics in order so they don't reorder on new messages
+            # 5. Pin topics in order (userbot-only method)
+            # Order: Лиды, Пропущенные, Сделки, Звонки (left to right after General)
             try:
-                from pyrogram.raw.functions.channels import ReorderPinnedForumTopics
-                ordered_ids = [topic_ids[k] for k in ["calls", "missed", "leads", "deals"] if k in topic_ids]
+                from pyrogram.raw.functions.channels.reorder_pinned_forum_topics import ReorderPinnedForumTopics
+                ordered_ids = [topic_ids[k] for k in ["leads", "missed", "deals", "calls"] if k in topic_ids]
                 await client.invoke(
                     ReorderPinnedForumTopics(
                         channel=await client.resolve_peer(chat_id),
@@ -167,15 +168,7 @@ async def create_group(
             except Exception:
                 logger.debug("Could not pin forum topics for chat %s", chat_id)
 
-            # 4. Promote the bot as admin
-            if bot_username:
-                try:
-                    bot_username = bot_username.lstrip("@")
-                    await setup_bot_admin(client, chat_id, bot_username)
-                except Exception:
-                    logger.warning("Could not promote bot @%s — manual promotion needed", bot_username)
-
-            # 5. Generate invite link
+            # 6. Generate invite link
             invite = await generate_invite_link(client, chat_id)
 
             return {
@@ -221,6 +214,51 @@ async def generate_invite_link(client, chat_id: int) -> str:
         name="S1P Setup",
     )
     return link.invite_link
+
+
+async def delete_group(chat_id: int) -> bool:
+    """
+    Delete a supergroup via Pyrogram userbot.
+
+    The userbot must join the group first (if not already a member),
+    then delete it. Returns True on success, False on failure.
+    """
+    async with _lock:
+        client = await _get_client()
+        if not client:
+            return False
+
+        try:
+            from pyrogram.errors import FloodWait
+
+            # Join the group if not already a member (needed to delete)
+            try:
+                await client.get_chat(chat_id)
+            except Exception:
+                # Not in cache — try to join via bot's invite link
+                from utils.services.telegram_service import get_bot
+                bot = get_bot()
+                if bot:
+                    try:
+                        result = await bot.create_chat_invite_link(
+                            chat_id=chat_id,
+                            name="userbot_delete",
+                        )
+                        await client.join_chat(result.invite_link)
+                    except Exception:
+                        logger.debug("Could not join group %s for deletion", chat_id)
+                        return False
+
+            await client.delete_supergroup(chat_id)
+            logger.info("Deleted Telegram group %s", chat_id)
+            return True
+
+        except FloodWait as e:
+            logger.warning("FloodWait deleting group %s: %ss", chat_id, e.value)
+            return False
+        except Exception:
+            logger.exception("Failed to delete Telegram group %s", chat_id)
+            return False
 
 
 async def shutdown() -> None:
