@@ -4,7 +4,6 @@ Telegram bot configuration and management endpoints
 V2 adds: POST /setup, GET /setup/status, POST /setup/manual
 """
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks

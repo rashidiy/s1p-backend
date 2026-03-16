@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, tzinfo, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 
 from fastapi import Depends
 from fastapi.params import Query

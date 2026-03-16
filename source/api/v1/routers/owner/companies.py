@@ -24,7 +24,6 @@ from api.v1.schemas.owner import (
     InviteAdminRequest,
     InviteAdminResponse,
 )
-from api.v1.schemas.user import UserResponse
 from utils.managers import PasswordManager, JWTManager, TokenType
 from utils.contract_enforcement import check_user_limit
 from utils.permissions import ROLE_PERMISSIONS

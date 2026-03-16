@@ -7,7 +7,7 @@ from uuid import UUID
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, HTTPException, status
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -318,7 +318,6 @@ async def _fire_call_webhook(session, company_id, call_data: dict, call_id):
 async def _send_call_notification(company_id, call_data: dict):
     """Background task: send Telegram notification for call events."""
     from utils.services.telegram_service import TelegramService
-    from sqlalchemy import or_
 
     state = call_data.get('state')
     if not state:

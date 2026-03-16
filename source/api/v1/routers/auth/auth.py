@@ -1,5 +1,4 @@
 import logging
-from datetime import timedelta
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -9,9 +8,6 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
-
-from api.v1.schemas import AuthSchema
-from core.config import AppConfig
 from db import get_session
 from db.models import User, Company
 from utils.managers import JWTManager, TokenType

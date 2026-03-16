@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from fastapi import Response as FastAPIResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
@@ -31,7 +31,7 @@ from api.v1.schemas.telegram_auth import (
 )
 from core.config import TelegramConfig
 from db import get_session
-from db.models import Company, User
+from db.models import User
 from db.models.invite_token import InviteToken
 from db.models.telegram_auth_challenge import TelegramAuthChallenge
 from utils.managers import JWTManager
@@ -595,7 +595,6 @@ async def telegram_register(
 
     # 6. Create user
     from utils.permissions import ROLE_PERMISSIONS
-    from db.models.enums import RoleEnum
 
     user = await User.create(
         session=session,

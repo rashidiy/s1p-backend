@@ -4,7 +4,7 @@ Permission group management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_
 from uuid import UUID
 
 from db import get_session

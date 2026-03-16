@@ -5,7 +5,7 @@ Enhanced call management with outcomes and CRM linking
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_, case, literal
-from typing import Optional, List
+from typing import Optional
 from uuid import UUID
 from datetime import datetime, date
 
@@ -18,7 +18,6 @@ from db.models.deal import Deal
 from db.models.enums import CallOutcomeEnum, CallDirectionEnum, RoleEnum
 from api.v1.schemas.crm import PaginatedResponse
 from utils.permissions import require_permissions, Permissions
-from db.models.enums import RoleEnum
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/calls", tags=["Calls - Enhanced"])

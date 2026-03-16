@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from db import get_session
 from db.models.user import User
 from db.models.task import Task
-from db.models.contact import Contact
 from db.models.enums import TaskStatusEnum, TaskPriorityEnum, RoleEnum
 from api.v1.schemas.crm import (
     TaskCreateRequest,
@@ -21,7 +20,6 @@ from api.v1.schemas.crm import (
     PaginatedResponse
 )
 from utils.permissions import require_permissions, Permissions
-from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
