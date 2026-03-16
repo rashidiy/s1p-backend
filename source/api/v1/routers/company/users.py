@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, or_
 from typing import List, Optional
 from uuid import UUID
 
@@ -166,7 +166,6 @@ async def list_users(
 
     # Search by name or email
     if search:
-        from sqlalchemy import or_
         search_term = f"%{search}%"
         query = query.where(
             or_(
@@ -546,16 +545,26 @@ async def list_invite_tokens(
     total_result = await session.execute(count_query)
     total = total_result.scalar_one()
 
-    # Paginate
+    # Subquery for creator name (avoids N+1 queries)
+    creator_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == InviteToken.created_by)
+        .correlate(InviteToken)
+        .scalar_subquery()
+    )
+
+    # Paginate with creator name subquery
+    query = query.add_columns(creator_name_subquery.label('created_by_name'))
     query = query.order_by(InviteToken.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await session.execute(query)
-    tokens = result.scalars().all()
+    rows = result.all()
 
     # Build response items with computed status and creator name
     items = []
-    for token in tokens:
+    for row in rows:
+        token = row[0]
         # Compute status
         if token.used_at is not None:
             computed_status = "used"
@@ -564,20 +573,13 @@ async def list_invite_tokens(
         else:
             computed_status = "pending"
 
-        # Get creator name
-        created_by_name = None
-        if token.created_by:
-            creator = await User.get(session=session, id=token.created_by, include_deleted=True)
-            if creator:
-                created_by_name = creator.full_name
-
         items.append(InviteTokenListItem(
             id=token.id,
             role=token.role.value if hasattr(token.role, 'value') else token.role,
             first_name=token.first_name,
             last_name=token.last_name,
             phone=token.phone,
-            created_by_name=created_by_name,
+            created_by_name=row.created_by_name,
             expires_at=token.expires_at,
             used_at=token.used_at,
             created_at=token.created_at,

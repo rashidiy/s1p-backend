@@ -4,7 +4,7 @@ Enhanced call management with outcomes and CRM linking
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_, and_, case, literal
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, date
@@ -245,47 +245,54 @@ async def get_call_history(
     count_query = select(func.count()).select_from(query.subquery())
     total = await session.scalar(count_query) or 0
 
-    # Paginate
+    # Subqueries for related names (avoids N+1 queries)
+    contact_name_subquery = (
+        select(
+            case(
+                (Contact.deleted_at.isnot(None), literal("(deleted)")),
+                else_=func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, '')))
+            )
+        )
+        .where(Contact.id == CallEvent.contact_id)
+        .correlate(CallEvent)
+        .scalar_subquery()
+    )
+    lead_title_subquery = (
+        select(Lead.title)
+        .where(and_(Lead.id == CallEvent.lead_id, Lead.deleted_at.is_(None)))
+        .correlate(CallEvent)
+        .scalar_subquery()
+    )
+    deal_title_subquery = (
+        select(Deal.title)
+        .where(and_(Deal.id == CallEvent.deal_id, Deal.deleted_at.is_(None)))
+        .correlate(CallEvent)
+        .scalar_subquery()
+    )
+    operator_name_subquery = (
+        select(func.trim(func.concat(User.first_name, ' ', func.coalesce(User.last_name, ''))))
+        .where(User.id == CallEvent.operator_id)
+        .correlate(CallEvent)
+        .scalar_subquery()
+    )
+
+    # Paginate with name subqueries
+    query = query.add_columns(
+        contact_name_subquery.label('contact_name'),
+        lead_title_subquery.label('lead_title'),
+        deal_title_subquery.label('deal_title'),
+        operator_name_subquery.label('operator_name'),
+    )
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(CallEvent.created_at.desc())
 
     result = await session.execute(query)
-    calls = result.scalars().all()
+    rows = result.all()
 
-    # Enhance with CRM details
+    # Build response
     enhanced_calls = []
-    for call in calls:
-        # Get contact name (handle soft-deleted contacts)
-        contact_name = None
-        if call.contact_id:
-            contact = await Contact.get(session=session, id=call.contact_id, include_deleted=True)
-            if contact:
-                if contact.deleted_at is not None:
-                    contact_name = "(deleted)"
-                else:
-                    contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-
-        # Get lead title
-        lead_title = None
-        if call.lead_id:
-            lead = await Lead.get(session=session, id=call.lead_id)
-            if lead:
-                lead_title = lead.title
-
-        # Get deal title
-        deal_title = None
-        if call.deal_id:
-            deal = await Deal.get(session=session, id=call.deal_id)
-            if deal:
-                deal_title = deal.title
-
-        # Get operator name
-        operator_name = None
-        if call.operator_id:
-            operator = await User.get(session=session, id=call.operator_id)
-            if operator:
-                operator_name = operator.full_name
-
+    for row in rows:
+        call = row[0]
         call_dict = {
             "id": call.id,
             "phone_1": call.phone_1,
@@ -297,13 +304,13 @@ async def get_call_history(
             "disposition_notes": call.disposition_notes,
             "started_at": call.call_start_timestamp,
             "contact_id": call.contact_id,
-            "contact_name": contact_name,
+            "contact_name": row.contact_name,
             "lead_id": call.lead_id,
-            "lead_title": lead_title,
+            "lead_title": row.lead_title,
             "deal_id": call.deal_id,
-            "deal_title": deal_title,
+            "deal_title": row.deal_title,
             "operator_id": call.operator_id,
-            "operator_name": operator_name,
+            "operator_name": row.operator_name,
             "created_at": call.created_at
         }
         enhanced_calls.append(CallWithDetails(**call_dict))
