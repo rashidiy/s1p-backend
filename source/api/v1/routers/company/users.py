@@ -4,7 +4,9 @@ User management endpoints (Company Admin manages operators)
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File as FastAPIFile
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, UploadFile, File as FastAPIFile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, or_
 from typing import Optional
@@ -36,6 +38,8 @@ from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
 from utils.services.invite_token_service import generate_invite_token, hash_invite_token
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -397,8 +401,10 @@ async def deactivate_user(
     response_model=InviteTokenCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("10/minute")
 @require_permissions(Permissions.USERS_CREATE)
 async def invite_telegram(
+    request: Request,
     data: InviteTokenCreateRequest,
     admin: User = User.current(),
     session: AsyncSession = Depends(get_session),

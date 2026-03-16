@@ -7,6 +7,8 @@ from uuid import UUID
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, HTTPException, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +29,8 @@ from api.v1.routers.company.calls.common import next_call_number
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 class WebhookCallData(BaseModel):
@@ -150,6 +154,7 @@ async def _validate_entity_ownership(
 
 
 @router.get("/{token}")
+@limiter.limit("60/minute")
 async def handle_webhook(
     token: str,
     request: Request,

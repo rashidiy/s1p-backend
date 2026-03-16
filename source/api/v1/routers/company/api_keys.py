@@ -6,7 +6,9 @@ Company admins can create, list, and revoke API keys for public API access.
 
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from uuid import UUID
@@ -25,6 +27,8 @@ from utils.api_key_auth import hash_api_key
 
 router = APIRouter(prefix="/api-keys", tags=["API Keys"])
 
+limiter = Limiter(key_func=get_remote_address)
+
 MAX_KEYS_PER_COMPANY = 10
 
 
@@ -34,8 +38,10 @@ def generate_api_key() -> str:
 
 
 @router.post("", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def create_api_key(
+    request: Request,
     data: ApiKeyCreateRequest,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
@@ -99,8 +105,10 @@ async def list_api_keys(
 
 
 @router.delete("/{api_key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def revoke_api_key(
+    request: Request,
     api_key_id: UUID,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
