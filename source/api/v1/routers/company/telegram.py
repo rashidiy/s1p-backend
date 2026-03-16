@@ -6,7 +6,9 @@ V2 adds: POST /setup, GET /setup/status, POST /setup/manual
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
@@ -26,6 +28,8 @@ from api.v1.schemas.telegram import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Existing config endpoints ────────────────────────────────────
@@ -171,8 +175,10 @@ async def delete_telegram_config(
 
 
 @router.post("/test")
+@limiter.limit("5/minute")
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def send_test_message(
+    request: Request,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
@@ -203,8 +209,10 @@ async def send_test_message(
 # ── V2 Setup endpoints ──────────────────────────────────────────
 
 @router.post("/setup", response_model=TelegramSetupStatusResponse)
+@limiter.limit("3/minute")
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def setup_telegram_group(
+    request: Request,
     data: TelegramSetupRequest,
     background_tasks: BackgroundTasks,
     user: User = User.current(),

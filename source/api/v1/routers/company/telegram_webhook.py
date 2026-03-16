@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from fastapi import APIRouter, Request, HTTPException, status, Depends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -27,6 +29,8 @@ from utils.services.invite_token_service import generate_otp, hash_token
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/telegram", tags=["Telegram Webhook"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Bot instance for sending messages ─────────────────────────────────
@@ -88,6 +92,7 @@ async def _check_otp_lockout(user_id: str) -> bool:
 # ── Webhook endpoint ─────────────────────────────────────────────────
 
 @router.post("/{secret}")
+@limiter.limit("120/minute")
 async def telegram_webhook(
     secret: str,
     request: Request,
