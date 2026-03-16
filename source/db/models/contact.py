@@ -24,6 +24,7 @@ class Contact(Base, ObjectManagerMixin):
     __tablename__ = "contacts"
     __table_args__ = (
         Index('idx_contacts_company_id', 'company_id'),
+        Index('idx_contacts_company_active', 'company_id', 'deleted_at'),
         Index('idx_contacts_phone', 'phone'),
         Index('idx_contacts_email', 'email'),
         Index('idx_contacts_assigned_to', 'assigned_to'),

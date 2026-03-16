@@ -27,6 +27,8 @@ class Deal(Base, ObjectManagerMixin):
     __tablename__ = "deals"
     __table_args__ = (
         Index('idx_deals_company_id', 'company_id'),
+        Index('idx_deals_company_active', 'company_id', 'deleted_at'),
+        Index('idx_deals_company_stage', 'company_id', 'stage', 'deleted_at'),
         Index('idx_deals_lead_id', 'lead_id'),
         Index('idx_deals_contact_id', 'contact_id'),
         Index('idx_deals_assigned_to', 'assigned_to'),
