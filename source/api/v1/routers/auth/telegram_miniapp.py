@@ -12,7 +12,7 @@ import json
 import logging
 from urllib.parse import parse_qs
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends

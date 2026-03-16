@@ -25,10 +25,9 @@ from api.v1.schemas.analytics import (
     TeamAnalytics,
     AdminDashboard,
     OperatorPerformance,
-    AnalyticsPeriod
 )
 from utils.services.analytics_service import AnalyticsService
-from utils.services.cache_service import get_cache, CacheService
+from utils.services.cache_service import get_cache
 from utils.permissions import require_permissions, Permissions
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])

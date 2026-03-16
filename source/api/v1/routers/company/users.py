@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, func, select, or_
-from typing import List, Optional
+from sqlalchemy import func, select, or_
+from typing import Optional
 from uuid import UUID
 
 from db import get_session
@@ -33,7 +33,6 @@ from api.v1.schemas.telegram_auth import (
     InviteTokenListResponse,
 )
 from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
-from utils.contract_enforcement import check_user_limit
 from utils.services.invite_token_service import generate_invite_token, hash_invite_token
 
 router = APIRouter(prefix="/users", tags=["User Management"])

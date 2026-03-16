@@ -10,7 +10,6 @@ Optimized for high-load production:
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
-from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from uuid import UUID
 
