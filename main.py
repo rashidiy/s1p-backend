@@ -188,6 +188,22 @@ async def swagger_ui(type: str = Query("owner")):
     )
 
 
+@app.get("/version", include_in_schema=False)
+async def version():
+    """Returns app version and environment info for deployment verification"""
+    import subprocess
+    try:
+        git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+    except Exception:
+        git_hash = "unknown"
+    return {
+        "app": "s1p-backend",
+        "version": "1.0.0",
+        "git": git_hash,
+        "env": os.getenv("ENV", "production"),
+    }
+
+
 @app.get("/health", include_in_schema=False)
 async def health_check():
     """Health check endpoint — verifies DB and Redis connectivity"""
