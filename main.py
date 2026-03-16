@@ -10,6 +10,7 @@ from starlette.responses import Response
 sys.path.append('source')
 
 from fastapi import FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +18,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from api.v1.routers import router as v1
 from api.v1.routers.public import router as public_v1
@@ -56,6 +58,38 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
         status_code=429,
         content={"detail": "Too many requests. Please try again later."},
     )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all for unhandled exceptions — never leak stack traces to client"""
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """Handle DB constraint violations gracefully"""
+    error_msg = str(exc.orig) if exc.orig else str(exc)
+    if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
+        return JSONResponse(status_code=409, content={"detail": "Resource already exists"})
+    if "foreign" in error_msg.lower():
+        return JSONResponse(status_code=400, content={"detail": "Referenced resource not found"})
+    return JSONResponse(status_code=400, content={"detail": "Database constraint violation"})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return user-friendly validation errors"""
+    errors = []
+    for error in exc.errors():
+        field = " → ".join(str(loc) for loc in error["loc"] if loc != "body")
+        errors.append({"field": field, "message": error["msg"]})
+    return JSONResponse(status_code=422, content={"detail": "Validation error", "errors": errors})
 
 app.add_middleware(SecurityHeadersMiddleware)
 
