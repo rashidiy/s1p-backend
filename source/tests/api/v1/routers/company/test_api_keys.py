@@ -78,7 +78,7 @@ class TestCreateApiKey:
             "/api/v1/company/api-keys",
             json={"name": "No Auth Key"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListApiKeys:

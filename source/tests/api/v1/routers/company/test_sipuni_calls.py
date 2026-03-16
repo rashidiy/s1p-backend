@@ -172,7 +172,7 @@ class TestCallExternal:
             f"{BASE}/external",
             json={"phone_1": "+998901234567", "phone_2": "+998937654321"},
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
     @pytest.mark.asyncio
     @patch(MOCK_PROVIDER)

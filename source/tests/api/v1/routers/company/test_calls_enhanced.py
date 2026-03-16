@@ -68,7 +68,7 @@ class TestSetCallOutcome:
             f"/api/v1/company/calls/{test_call_event.id}/outcome",
             json={"outcome": "interested"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestLinkCallToCRM:

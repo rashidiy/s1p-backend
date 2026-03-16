@@ -70,7 +70,7 @@ class TestGetTelegramConfig:
     async def test_get_config_unauthenticated(self, client: AsyncClient):
         """Unauthenticated request fails."""
         response = await client.get(f"{TELEGRAM_PREFIX}/config")
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestCreateTelegramConfig:

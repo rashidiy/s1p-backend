@@ -2,6 +2,7 @@
 Shared field validators for schemas
 """
 
+import json
 import re
 from typing import Dict, Any, List, Optional
 from pydantic import field_validator
@@ -41,7 +42,24 @@ class CustomFieldsValidator:
                 raise ValueError(f'Custom field key "{key[:20]}" must be alphanumeric or underscore only')
             if isinstance(value, str) and len(value) > 10000:
                 raise ValueError(f'Custom field "{key}" value exceeds 10,000 characters')
+            # Limit size of non-string values (dicts, lists) to prevent abuse
+            if isinstance(value, (dict, list)):
+                serialized = json.dumps(value)
+                if len(serialized) > 10000:
+                    raise ValueError(f'Custom field "{key}" value too large (max 10KB)')
+                # Reject deeply nested structures (max 3 levels)
+                if _check_depth(value) > 3:
+                    raise ValueError(f'Custom field "{key}" value is too deeply nested (max 3 levels)')
         return v
+
+
+def _check_depth(obj: Any, current: int = 0) -> int:
+    """Check nesting depth of a dict/list structure."""
+    if isinstance(obj, dict):
+        return max((_check_depth(v, current + 1) for v in obj.values()), default=current)
+    if isinstance(obj, list):
+        return max((_check_depth(v, current + 1) for v in obj), default=current)
+    return current
 
 
 class TagsValidator:

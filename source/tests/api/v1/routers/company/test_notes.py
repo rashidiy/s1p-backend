@@ -69,7 +69,7 @@ class TestCreateNote:
                 "entity_id": str(test_contact.id)
             }
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListNotes:

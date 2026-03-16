@@ -38,7 +38,7 @@ class TestListCalls:
     async def test_list_calls_unauthorized(self, client: AsyncClient):
         """Test listing calls without auth fails."""
         response = await client.get("/api/v1/company/calls")
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestGetCall:

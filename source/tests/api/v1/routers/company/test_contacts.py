@@ -66,7 +66,7 @@ class TestCreateContact:
             "/api/v1/company/contacts",
             json={"first_name": "Test"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListContacts:
