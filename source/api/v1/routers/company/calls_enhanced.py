@@ -28,7 +28,7 @@ router = APIRouter(prefix="/calls", tags=["Calls - Enhanced"])
 class CallOutcomeUpdate(BaseModel):
     """Update call outcome"""
     outcome: str = Field(..., description="Call outcome")
-    disposition_notes: Optional[str] = Field(None, description="Notes about the call")
+    disposition_notes: Optional[str] = Field(None, max_length=5000, description="Notes about the call")
 
 
 class CallLinkRequest(BaseModel):

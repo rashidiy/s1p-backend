@@ -8,11 +8,12 @@ from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, Field
 
 from db.models.enums import DealStageEnum
+from api.v1.schemas.validators import CustomFieldsValidator, TagsValidator
 
 
 # ===== Contact Schemas =====
 
-class ContactBase(BaseModel):
+class ContactBase(CustomFieldsValidator, BaseModel):
     """Base contact schema"""
     first_name: str = Field(..., min_length=1, max_length=255)
     last_name: Optional[str] = Field(None, max_length=255)
@@ -24,12 +25,12 @@ class ContactBase(BaseModel):
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
-class ContactCreateRequest(ContactBase):
+class ContactCreateRequest(TagsValidator, ContactBase):
     """Create contact request"""
     tags: Optional[List[str]] = Field(default_factory=list)
 
 
-class ContactUpdateRequest(BaseModel):
+class ContactUpdateRequest(CustomFieldsValidator, TagsValidator, BaseModel):
     """Update contact request"""
     first_name: Optional[str] = Field(None, min_length=1, max_length=255)
     last_name: Optional[str] = Field(None, max_length=255)
@@ -63,30 +64,30 @@ class ContactResponse(ContactBase):
 
 # ===== Lead Schemas =====
 
-class LeadBase(BaseModel):
+class LeadBase(CustomFieldsValidator, BaseModel):
     """Base lead schema"""
     title: str = Field(..., min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
     source: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     estimated_value: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = Field("USD", max_length=10)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
-class LeadCreateRequest(LeadBase):
+class LeadCreateRequest(TagsValidator, LeadBase):
     """Create lead request"""
     assigned_to: Optional[UUID] = None
     tags: Optional[List[str]] = Field(default_factory=list)
 
 
-class LeadUpdateRequest(BaseModel):
+class LeadUpdateRequest(CustomFieldsValidator, TagsValidator, BaseModel):
     """Update lead request"""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
     source: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     estimated_value: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = Field(None, max_length=10)
     custom_fields: Optional[Dict[str, Any]] = None
@@ -115,7 +116,7 @@ class LeadResponse(LeadBase):
 
 # ===== Deal Schemas =====
 
-class DealBase(BaseModel):
+class DealBase(CustomFieldsValidator, BaseModel):
     """Base deal schema"""
     title: str = Field(..., min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
@@ -124,17 +125,17 @@ class DealBase(BaseModel):
     currency: Optional[str] = Field("USD", max_length=10)
     probability: Optional[int] = Field(0, ge=0, le=100)
     expected_close_date: Optional[date] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
-class DealCreateRequest(DealBase):
+class DealCreateRequest(TagsValidator, DealBase):
     """Create deal request"""
     assigned_to: Optional[UUID] = None
     tags: Optional[List[str]] = Field(default_factory=list)
 
 
-class DealUpdateRequest(BaseModel):
+class DealUpdateRequest(CustomFieldsValidator, TagsValidator, BaseModel):
     """Update deal request"""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     contact_id: Optional[UUID] = None
@@ -145,7 +146,7 @@ class DealUpdateRequest(BaseModel):
     currency: Optional[str] = Field(None, max_length=10)
     probability: Optional[int] = Field(None, ge=0, le=100)
     expected_close_date: Optional[date] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     custom_fields: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
@@ -176,10 +177,10 @@ class DealResponse(DealBase):
 
 # ===== Task Schemas =====
 
-class TaskBase(BaseModel):
+class TaskBase(CustomFieldsValidator, BaseModel):
     """Base task schema"""
     title: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     due_date: Optional[datetime] = None
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
@@ -193,10 +194,10 @@ class TaskCreateRequest(TaskBase):
     assigned_to: Optional[UUID] = None
 
 
-class TaskUpdateRequest(BaseModel):
+class TaskUpdateRequest(CustomFieldsValidator, BaseModel):
     """Update task request"""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     due_date: Optional[datetime] = None
     assigned_to: Optional[UUID] = None
     entity_type: Optional[str] = Field(None, max_length=50)
@@ -227,19 +228,19 @@ class TaskResponse(TaskBase):
 
 class NoteBase(BaseModel):
     """Base note schema"""
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=10000)
 
     # Link to entities (polymorphic)
     entity_type: str = Field(..., max_length=50)  # 'lead', 'contact', 'deal', 'call'
     entity_id: str
 
 
-class NoteCreateRequest(NoteBase):
+class NoteCreateRequest(CustomFieldsValidator, NoteBase):
     """Create note request"""
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
-class NoteUpdateRequest(BaseModel):
+class NoteUpdateRequest(CustomFieldsValidator, BaseModel):
     """Update note request"""
     content: Optional[str] = Field(None, min_length=1)
     custom_fields: Optional[Dict[str, Any]] = None
