@@ -28,7 +28,7 @@ from utils.services.webhook import fire_webhook_event
 router = APIRouter(prefix="/deals", tags=["Deals"])
 
 
-@router.post("", response_model=DealResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DealResponse, status_code=status.HTTP_201_CREATED, response_description="The newly created deal")
 @require_permissions(Permissions.DEALS_WRITE)
 async def create_deal(
     data: DealCreateRequest,
@@ -237,14 +237,19 @@ async def get_pipeline_summary(
     }
 
 
-@router.get("/{deal_id}", response_model=DealResponse)
+@router.get("/{deal_id}", response_model=DealResponse, response_description="Deal details with contact name and weighted value")
 @require_permissions(Permissions.DEALS_READ)
 async def get_deal(
     deal_id: UUID,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get deal details"""
+    """
+    Get deal details
+
+    Returns full deal information with contact name, assignee name, and weighted value.
+    Operators can only view their own assigned deals.
+    """
     deal = await Deal.get_or_404(
         session=session,
         id=deal_id,
@@ -372,7 +377,12 @@ async def delete_deal(
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
-    """Delete a deal"""
+    """
+    Delete a deal
+
+    Soft delete by default. Use hard=true for permanent deletion.
+    Requires DEALS_DELETE permission.
+    """
     deal = await Deal.get_or_404(
         session=session,
         id=deal_id,

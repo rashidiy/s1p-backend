@@ -49,6 +49,9 @@ async def get_my_profile(
 ):
     """
     Get current user's own profile
+
+    Returns the authenticated user's profile including company subdomain.
+    No special permissions required — any authenticated user can access their own profile.
     """
     await session.refresh(user, ["company"])
     user.company_subdomain = user.company.subdomain if user.company else None
@@ -124,7 +127,9 @@ async def delete_avatar(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Remove the current user's avatar.
+    Remove the current user's avatar
+
+    Deletes the uploaded avatar file and resets to default.
     """
     from utils.services.avatar_service import delete_avatar_file
     delete_avatar_file(str(user.id))
@@ -350,6 +355,8 @@ async def activate_user(
 ):
     """
     Activate a suspended user
+
+    Restores access for a previously suspended user. Requires USERS_UPDATE permission.
     """
     user = await User.get_or_404(
         session=session,
@@ -372,7 +379,10 @@ async def deactivate_user(
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Deactivate a user (suspend access)
+    Deactivate a user
+
+    Suspends the user's access. They will not be able to log in until reactivated.
+    You cannot deactivate yourself. Requires USERS_UPDATE permission.
     """
     if user_id == admin.id:
         raise HTTPException(

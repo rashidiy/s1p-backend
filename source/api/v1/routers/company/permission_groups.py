@@ -100,7 +100,10 @@ async def create_permission_group(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Create a custom permission group for the company
+    Create a custom permission group
+
+    Define a reusable set of permissions that can be assigned to users.
+    Group names must be unique within the company. Requires SETTINGS_MANAGE permission.
     """
     # Check name uniqueness within company
     existing = await PermissionGroup.get(

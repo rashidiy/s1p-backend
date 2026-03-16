@@ -174,7 +174,11 @@ async def get_custom_field_definition(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get a single custom field definition."""
+    """
+    Get a single custom field definition
+
+    Returns field name, type, options, and sort order.
+    """
     definition = await CustomFieldDefinition.get_or_404(
         session=session,
         id=definition_id,
@@ -232,7 +236,12 @@ async def delete_custom_field_definition(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Soft delete a custom field definition."""
+    """
+    Delete a custom field definition
+
+    Soft deletes the definition. Existing field values on entities are preserved
+    but no longer visible in the UI. Requires SETTINGS_MANAGE permission.
+    """
     definition = await CustomFieldDefinition.get_or_404(
         session=session,
         id=definition_id,

@@ -25,7 +25,11 @@ async def get_contract_status(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    View own company's contract status with limits, usage, and warnings.
+    Get company contract status
+
+    Returns contract details including seat limits, current usage, expiry date,
+    and any active warnings (expiring soon, payment issues, seat limits reached).
+    Requires CONTRACT_READ permission.
     """
     contract = await get_active_contract(admin.company_id, session)
 

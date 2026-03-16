@@ -33,7 +33,13 @@ async def create_webhook_endpoint(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Create a new outbound webhook endpoint."""
+    """
+    Create a new outbound webhook endpoint
+
+    Register a URL to receive event notifications (e.g. contact.created, deal.stage_changed).
+    Optionally provide a secret for HMAC signature verification.
+    Requires SETTINGS_MANAGE permission.
+    """
     endpoint = await WebhookEndpoint.create(
         session=session,
         company_id=user.company_id,
@@ -53,7 +59,12 @@ async def list_webhook_endpoints(
     page_size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = None,
 ):
-    """List all outbound webhook endpoints for the company."""
+    """
+    List all outbound webhook endpoints
+
+    Returns a paginated list of webhook endpoints for the company.
+    Optionally filter by active/inactive status.
+    """
     conditions = [WebhookEndpoint.company_id == user.company_id]
     if is_active is not None:
         conditions.append(WebhookEndpoint.is_active == is_active)
@@ -83,7 +94,12 @@ async def list_webhook_endpoints(
 @router.get("/events")
 @require_permissions(Permissions.SETTINGS_READ)
 async def list_available_events(user: User = User.current()):
-    """List all available webhook event types."""
+    """
+    List available webhook event types
+
+    Returns all event types that can be subscribed to
+    (e.g. contact.created, lead.created, deal.stage_changed, call.completed).
+    """
     return {"events": VALID_EVENTS}
 
 
@@ -94,7 +110,11 @@ async def get_webhook_endpoint(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get webhook endpoint details."""
+    """
+    Get webhook endpoint details
+
+    Returns the endpoint configuration including subscribed events and active status.
+    """
     endpoint = await WebhookEndpoint.get_or_404(
         session=session,
         id=endpoint_id,
@@ -111,7 +131,12 @@ async def update_webhook_endpoint(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update webhook endpoint configuration."""
+    """
+    Update webhook endpoint configuration
+
+    Modify the URL, subscribed events, secret, or active status.
+    Requires SETTINGS_MANAGE permission.
+    """
     endpoint = await WebhookEndpoint.get_or_404(
         session=session,
         id=endpoint_id,
@@ -133,7 +158,12 @@ async def delete_webhook_endpoint(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Delete a webhook endpoint and all its delivery history."""
+    """
+    Delete a webhook endpoint
+
+    Permanently removes the endpoint and all its delivery history.
+    Requires SETTINGS_MANAGE permission.
+    """
     endpoint = await WebhookEndpoint.get_or_404(
         session=session,
         id=endpoint_id,
@@ -153,7 +183,12 @@ async def list_deliveries(
     page_size: int = Query(20, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    """List delivery log for a webhook endpoint."""
+    """
+    List delivery log for a webhook endpoint
+
+    Returns a paginated history of delivery attempts with status codes and timestamps.
+    Optionally filter by delivery status (success, failed, pending).
+    """
     # Verify endpoint belongs to this company
     endpoint = await WebhookEndpoint.get_or_404(
         session=session,

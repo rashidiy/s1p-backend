@@ -134,7 +134,11 @@ async def get_note(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get note details"""
+    """
+    Get note details
+
+    Returns the note content with creator name.
+    """
     note = await Note.get_or_404(
         session=session,
         id=note_id,

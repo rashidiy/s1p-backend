@@ -40,7 +40,12 @@ async def get_telegram_config(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get company's Telegram bot configuration"""
+    """
+    Get Telegram bot configuration
+
+    Returns the current notification settings, chat ID, and setup status.
+    Returns 404 if Telegram is not configured for this company.
+    """
     config = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -62,7 +67,12 @@ async def create_telegram_config(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Create or update Telegram bot configuration for the company"""
+    """
+    Create Telegram bot configuration
+
+    Sets up Telegram notifications for the company. If a configuration already exists,
+    it will be updated. Provide the chat_id obtained from the bot's /start command.
+    """
     existing = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -96,7 +106,12 @@ async def update_telegram_config(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Update Telegram bot configuration"""
+    """
+    Update Telegram bot configuration
+
+    Modify notification filters, language, recording forwarding, and other settings.
+    Supports partial updates — only provided fields are changed.
+    """
     config = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -147,7 +162,12 @@ async def delete_telegram_config(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Delete Telegram bot configuration and destroy the Telegram group."""
+    """
+    Delete Telegram bot configuration
+
+    Removes the configuration and destroys the associated Telegram group (if created via automated setup).
+    This action cannot be undone. Requires SETTINGS_MANAGE permission.
+    """
     config = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -182,7 +202,12 @@ async def send_test_message(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Send a test notification to verify bot is working"""
+    """
+    Send a test notification
+
+    Sends a test message to the configured Telegram chat to verify the bot is working.
+    Rate limited to 5 requests per minute.
+    """
     config = await TelegramBotConfig.get(
         session=session,
         company_id=user.company_id
@@ -315,7 +340,12 @@ async def get_setup_status(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get current setup status for polling."""
+    """
+    Get Telegram setup status
+
+    Poll this endpoint after starting automated setup to track progress.
+    Returns status (not_started, creating, ready, failed) and invite link when ready.
+    """
     config = await TelegramBotConfig.get(session=session, company_id=user.company_id)
 
     if not config:
