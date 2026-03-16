@@ -400,6 +400,7 @@ async def get_auto_link_suggestions(
     contacts_query = select(Contact).where(
         and_(
             Contact.company_id == user.company_id,
+            Contact.deleted_at.is_(None),
             or_(
                 Contact.phone == phone_number,
                 Contact.phone_2 == phone_number
@@ -427,7 +428,7 @@ async def get_auto_link_suggestions(
 
         # Get leads for this contact
         if contact.id:
-            leads_query = select(Lead).where(Lead.contact_id == contact.id)
+            leads_query = select(Lead).where(Lead.contact_id == contact.id, Lead.deleted_at.is_(None))
             result = await session.execute(leads_query)
             leads = result.scalars().all()
 
@@ -440,7 +441,7 @@ async def get_auto_link_suggestions(
                 })
 
             # Get deals for this contact
-            deals_query = select(Deal).where(Deal.contact_id == contact.id)
+            deals_query = select(Deal).where(Deal.contact_id == contact.id, Deal.deleted_at.is_(None))
             result = await session.execute(deals_query)
             deals = result.scalars().all()
 
