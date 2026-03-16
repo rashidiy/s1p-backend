@@ -35,7 +35,7 @@ class TestCreateApiKey:
             "/api/v1/company/api-keys",
             json={"name": "Test"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
     @pytest.mark.asyncio
     async def test_create_api_key_missing_name(self, client: AsyncClient, auth_headers):

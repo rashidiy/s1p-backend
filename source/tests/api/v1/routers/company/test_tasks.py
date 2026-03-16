@@ -85,7 +85,7 @@ class TestCreateTask:
             "/api/v1/company/tasks",
             json={"title": "Test"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListTasks:

@@ -70,4 +70,4 @@ class TestOwnerProfile:
     async def test_get_current_owner_unauthorized(self, client: AsyncClient):
         """Test getting owner profile without auth fails."""
         response = await client.get("/api/v1/owner/auth/me")
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]

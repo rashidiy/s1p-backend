@@ -79,7 +79,7 @@ class TestCreateCompany:
                 "provider_config": {}
             }
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListCompanies:
@@ -102,7 +102,7 @@ class TestListCompanies:
     async def test_list_companies_unauthorized(self, client: AsyncClient):
         """Test listing companies without auth fails."""
         response = await client.get("/api/v1/owner/companies")
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestGetCompany:

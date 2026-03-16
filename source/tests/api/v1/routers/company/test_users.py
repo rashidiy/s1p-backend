@@ -53,7 +53,7 @@ class TestInviteUser:
                 "role": "company_operator"
             }
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListUsers:

@@ -27,7 +27,7 @@ class TestListPermissionGroups:
     async def test_list_permission_groups_unauthorized(self, client: AsyncClient):
         """Test listing permission groups without auth fails."""
         response = await client.get("/api/v1/company/permission-groups")
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestGetPermissionGroup:

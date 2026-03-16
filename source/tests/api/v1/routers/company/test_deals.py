@@ -71,7 +71,7 @@ class TestCreateDeal:
             "/api/v1/company/deals",
             json={"title": "Test", "value": 1000}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListDeals:

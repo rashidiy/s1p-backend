@@ -67,7 +67,7 @@ class TestCreateWebhookEndpoint:
                 "secret": "a-very-secure-secret-key-123",
             },
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListWebhookEndpoints:

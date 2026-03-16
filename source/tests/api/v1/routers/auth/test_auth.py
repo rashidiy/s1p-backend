@@ -134,7 +134,7 @@ class TestTokenRefresh:
             "/api/v1/auth/refresh",
             json={"refresh_token": "invalid-token"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
     @pytest.mark.asyncio
     async def test_refresh_with_access_token(self, client: AsyncClient, user_token):
@@ -144,4 +144,4 @@ class TestTokenRefresh:
             json={"refresh_token": user_token}
         )
         # Access token should not work as refresh token
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]

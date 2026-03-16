@@ -68,7 +68,7 @@ class TestCreateLead:
             "/api/v1/company/leads",
             json={"title": "Test"}
         )
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code in [401, 403]
 
 
 class TestListLeads:
