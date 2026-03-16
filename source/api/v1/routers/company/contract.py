@@ -44,7 +44,7 @@ async def get_contract_status(
         if any_contract:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No active contract. Contact your administrator."
+                detail="No active contract"
             )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

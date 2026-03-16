@@ -75,7 +75,7 @@ async def call_external(
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
 
 
 @router.post("/number", response_model=CallResponse)
@@ -131,7 +131,7 @@ async def call_number(
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
 
 
 @router.post("/tree", response_model=CallResponse)
@@ -188,7 +188,7 @@ async def call_tree(
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
 
 
 @router.post("/{call_id}/cancel", response_model=CallResponse)
@@ -213,7 +213,7 @@ async def cancel_call(
     if not call_event:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Call #{call_id} not found"
+            detail="Call not found"
         )
 
     raw_provider_id = call_event.provider_call_id.removeprefix("sipuni_")
@@ -233,4 +233,4 @@ async def cancel_call(
         )
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")

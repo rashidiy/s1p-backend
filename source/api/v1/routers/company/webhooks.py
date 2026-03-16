@@ -123,7 +123,7 @@ async def _validate_entity_ownership(
         if result.scalar_one_or_none() is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"operator_id {operator_id} does not belong to this company",
+                detail="Operator does not belong to this company",
             )
 
     if contact_id:
@@ -136,7 +136,7 @@ async def _validate_entity_ownership(
         if result.scalar_one_or_none() is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"contact_id {contact_id} does not belong to this company",
+                detail="Contact does not belong to this company",
             )
 
     if lead_id:
@@ -149,7 +149,7 @@ async def _validate_entity_ownership(
         if result.scalar_one_or_none() is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"lead_id {lead_id} does not belong to this company",
+                detail="Lead does not belong to this company",
             )
 
 
@@ -222,7 +222,7 @@ async def handle_webhook(
             )
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid webhook payload: {str(e)}",
+                detail="Invalid webhook payload",
             )
 
         # Convert to dict, excluding None values and fields we'll set manually

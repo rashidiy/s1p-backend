@@ -49,7 +49,7 @@ async def check_contract_active(company_id, session: AsyncSession) -> None:
     if not contract:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Company contract has expired or been suspended. Contact your administrator."
+            detail="Company contract has expired or been suspended"
         )
 
 
