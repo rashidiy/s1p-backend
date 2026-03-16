@@ -5,10 +5,10 @@ Owner's company management endpoints
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 
 from db import get_session
@@ -268,12 +268,16 @@ async def invite_admin(
 @router.get("", response_model=List[CompanyResponse])
 async def list_companies(
     owner: Owner = Owner.current(),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    search: Optional[str] = Query(None, description="Search by company name or subdomain"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
 ):
     """
     List all companies owned by the current owner
 
     Returns a list of all companies with basic information.
+    Supports search by name/subdomain and pagination.
     """
     user_count_subq = (
         select(func.count(User.id))
@@ -281,16 +285,35 @@ async def list_companies(
         .correlate(Company)
         .scalar_subquery()
     )
-    companies = await Company.get_all(
-        session=session,
-        owner_id=owner.id,
-        order_by=(Company.created_at.desc(),),
-        annotate={"users_count": user_count_subq},
+
+    # Build base query
+    query = select(Company, user_count_subq.label("users_count")).where(
+        Company.owner_id == owner.id,
+        Company.deleted_at.is_(None),
     )
+
+    # Apply search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Company.name.ilike(search_term),
+                Company.subdomain.ilike(search_term),
+            )
+        )
+
+    query = query.order_by(Company.created_at.desc())
+
+    # Apply pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    result_rows = await session.execute(query)
+    companies_with_counts = result_rows.all()
 
     # Add computed fields
     result = []
-    for company, users_count in companies:
+    for company, users_count in companies_with_counts:
         company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{company.webhook_token}"
         company.users_count = users_count
         result.append(company)
