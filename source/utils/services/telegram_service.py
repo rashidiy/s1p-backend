@@ -605,8 +605,8 @@ class TelegramService:
         """
         Create forum topics in an existing supergroup using the Bot API.
 
-        Returns: {"calls": thread_id, "missed": thread_id, ...}
-        Used by manual setup flow when Pyrogram is not available.
+        Returns: {"calls": thread_id, "missed": thread_id, ..., "s1p": thread_id}
+        Hides the default General topic and creates an "S1P" topic for digests/system messages.
         Topics use custom emoji icons (circular icon on the left), not text emoji in the name.
         """
         from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_ICON_EMOJI_ID
@@ -628,6 +628,20 @@ class TelegramService:
 
             result = await bot.create_forum_topic(**kwargs)
             topic_ids[topic_key] = result.message_thread_id
+
+        # Rename General topic to match language
+        general_name = TOPIC_NAMES[locale].get("general")
+        if general_name:
+            try:
+                await bot.edit_general_forum_topic(chat_id=chat_id, name=general_name)
+            except Exception:
+                logger.debug("Could not rename General topic in chat %s", chat_id)
+
+        # Reopen General topic so all members can send messages
+        try:
+            await bot.reopen_general_forum_topic(chat_id=chat_id)
+        except Exception:
+            logger.debug("Could not reopen General topic in chat %s", chat_id)
 
         return topic_ids
 
@@ -661,6 +675,17 @@ class TelegramService:
                 )
             except Exception:
                 logger.debug("Failed to rename topic %s in chat %s", topic_key, chat_id)
+
+        # Rename General topic
+        general_name = TOPIC_NAMES[locale].get("general")
+        if general_name:
+            try:
+                await bot.edit_general_forum_topic(
+                    chat_id=chat_id,
+                    name=general_name,
+                )
+            except Exception:
+                logger.debug("Failed to rename General topic in chat %s", chat_id)
 
     # ── DM notifications ─────────────────────────────────────────
 
