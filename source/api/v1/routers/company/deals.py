@@ -24,7 +24,6 @@ from api.v1.schemas.crm import (
 from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 from utils.services.webhook import fire_webhook_event
-from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/deals", tags=["Deals"])
 
@@ -203,6 +202,7 @@ async def get_pipeline_summary(
     # Get all active deals
     query = select(Deal).where(
         Deal.company_id == user.company_id,
+        Deal.deleted_at.is_(None),
         Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
     )
 

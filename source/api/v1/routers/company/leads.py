@@ -23,7 +23,6 @@ from api.v1.schemas.crm import (
 from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 from utils.services.webhook import fire_webhook_event
-from db.models.enums import RoleEnum
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
