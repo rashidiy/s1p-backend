@@ -643,6 +643,16 @@ class TelegramService:
         except Exception:
             logger.debug("Could not reopen General topic in chat %s", chat_id)
 
+        # Set group photo
+        try:
+            from aiogram.types import FSInputFile
+            logo_path = os.path.join(os.path.dirname(__file__), "..", "..", "static", "s1p_group_logo.png")
+            logo_path = os.path.normpath(logo_path)
+            if os.path.exists(logo_path):
+                await bot.set_chat_photo(chat_id=chat_id, photo=FSInputFile(logo_path))
+        except Exception:
+            logger.debug("Could not set group photo for chat %s", chat_id)
+
         return topic_ids
 
     # ── Forum topic renaming ────────────────────────────────────
