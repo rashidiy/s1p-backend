@@ -427,6 +427,7 @@ async def active_user(db_session: AsyncSession) -> User:
         password_hash=PasswordManager.hash("testpassword123"),
         first_name="Other",
         last_name="User",
+        phone="+9876543211",
         role=RoleEnum.COMPANY_ADMIN,
         permissions=["*"],
         is_active=True,
