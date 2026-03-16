@@ -196,10 +196,11 @@ async def list_users(
     users = result.scalars().all()
 
     return UserListResponse(
-        users=users,
+        items=users,
         total=total,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size if total > 0 else 0
     )
 
 
@@ -606,6 +607,7 @@ async def list_invite_tokens(
         total=total,
         page=page,
         page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size if total > 0 else 0,
     )
 
 

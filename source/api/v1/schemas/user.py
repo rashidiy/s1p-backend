@@ -100,7 +100,8 @@ class UserDetailResponse(UserResponse):
 
 class UserListResponse(BaseModel):
     """Paginated user list"""
-    users: List[UserResponse]
+    items: List[UserResponse]
     total: int
     page: int
     page_size: int
+    total_pages: int

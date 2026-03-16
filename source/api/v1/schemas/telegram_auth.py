@@ -67,6 +67,7 @@ class InviteTokenListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    total_pages: int
 
 
 # ── Login Challenge Schemas ───────────────────────────────────────────

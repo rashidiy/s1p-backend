@@ -68,7 +68,7 @@ class TestListUsers:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "users" in data
+        assert "items" in data
         assert "total" in data
         assert data["total"] >= 1
 
