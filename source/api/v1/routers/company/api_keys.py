@@ -37,7 +37,7 @@ def generate_api_key() -> str:
     return f"s1p_{secrets.token_urlsafe(36)}"
 
 
-@router.post("", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED, response_description="The API key (shown only once)")
 @limiter.limit("10/minute")
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def create_api_key(
@@ -91,7 +91,13 @@ async def list_api_keys(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """List all API keys for the company."""
+    """
+    List all API keys for the company
+
+    Returns all keys (active and revoked) sorted by creation date.
+    The key hash is never returned — only the prefix for identification.
+    Requires SETTINGS_READ permission.
+    """
     keys = await ApiKey.get_all(
         session=session,
         company_id=user.company_id,
@@ -113,7 +119,12 @@ async def revoke_api_key(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Revoke an API key. The key will immediately stop working."""
+    """
+    Revoke an API key
+
+    The key is deactivated immediately and all future requests using it will be rejected.
+    This action cannot be undone. Requires SETTINGS_MANAGE permission.
+    """
     api_key = await ApiKey.get_or_404(
         session=session,
         id=api_key_id,

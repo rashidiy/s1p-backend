@@ -24,7 +24,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
-@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, response_description="The newly created task")
 @require_permissions(Permissions.TASKS_WRITE)
 async def create_task(
     data: TaskCreateRequest,
@@ -204,14 +204,19 @@ async def get_my_tasks_today(
     ]
 
 
-@router.get("/{task_id}", response_model=TaskResponse)
+@router.get("/{task_id}", response_model=TaskResponse, response_description="Task details with assignee name")
 @require_permissions(Permissions.TASKS_READ)
 async def get_task(
     task_id: UUID,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get task details"""
+    """
+    Get task details
+
+    Returns full task information with assignee name.
+    Operators can only view their own assigned tasks.
+    """
     task = await Task.get_or_404(
         session=session,
         id=task_id,
@@ -290,7 +295,12 @@ async def delete_task(
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
-    """Delete a task (Admins only)"""
+    """
+    Delete a task
+
+    Soft delete by default. Use hard=true for permanent deletion.
+    Requires TASKS_DELETE permission (typically admin only).
+    """
     task = await Task.get_or_404(
         session=session,
         id=task_id,

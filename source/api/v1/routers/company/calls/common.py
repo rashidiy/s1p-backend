@@ -108,7 +108,12 @@ async def list_calls(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """List all calls for the company. Operators only see their own calls."""
+    """
+    List all calls
+
+    Returns call events ordered by most recent first.
+    Operators only see their own calls. Admins and Managers see all company calls.
+    """
     filters = {"company_id": user.company_id}
     if user.role == RoleEnum.COMPANY_OPERATOR:
         filters["operator_id"] = user.id
@@ -130,7 +135,12 @@ async def get_call(
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get call details"""
+    """
+    Get call details
+
+    Returns a single call event by its company-scoped ID.
+    Requires CALLS_READ permission.
+    """
     call = await CallEvent.get_or_404(
         session=session,
         id=call_id,

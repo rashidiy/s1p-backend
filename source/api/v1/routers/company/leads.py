@@ -27,7 +27,7 @@ from utils.services.webhook import fire_webhook_event
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
 
-@router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED, response_description="The newly created lead")
 @require_permissions(Permissions.LEADS_WRITE)
 async def create_lead(
     data: LeadCreateRequest,
@@ -208,14 +208,19 @@ async def list_leads(
     )
 
 
-@router.get("/{lead_id}", response_model=LeadResponse)
+@router.get("/{lead_id}", response_model=LeadResponse, response_description="Lead details with contact and assignee names")
 @require_permissions(Permissions.LEADS_READ)
 async def get_lead(
     lead_id: UUID,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get lead details"""
+    """
+    Get lead details
+
+    Returns full lead information including contact name and assignee name.
+    Operators can only view their own assigned leads.
+    """
     lead = await Lead.get_or_404(
         session=session,
         id=lead_id,
@@ -308,7 +313,12 @@ async def delete_lead(
     session: AsyncSession = Depends(get_session),
     hard: bool = Query(False)
 ):
-    """Delete a lead"""
+    """
+    Delete a lead
+
+    Soft delete by default. Use hard=true for permanent deletion.
+    Requires LEADS_DELETE permission.
+    """
     lead = await Lead.get_or_404(
         session=session,
         id=lead_id,

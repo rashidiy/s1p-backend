@@ -32,7 +32,7 @@ from utils.services.webhook import fire_webhook_event
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
 
-@router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED, response_description="The newly created contact")
 @require_permissions(Permissions.CONTACTS_WRITE)
 async def create_contact(
     data: ContactCreateRequest,
@@ -228,7 +228,7 @@ async def list_contacts(
     )
 
 
-@router.get("/{contact_id}", response_model=ContactResponse)
+@router.get("/{contact_id}", response_model=ContactResponse, response_description="Contact details with related counts")
 @require_permissions(Permissions.CONTACTS_READ)
 async def get_contact(
     contact_id: UUID,
