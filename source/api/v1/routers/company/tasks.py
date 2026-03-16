@@ -181,6 +181,7 @@ async def get_my_tasks_today(
     query = select(Task).where(
         and_(
             Task.company_id == user.company_id,
+            Task.deleted_at.is_(None),
             Task.assigned_to == user.id,
             Task.status != TaskStatusEnum.COMPLETED,
             or_(
