@@ -34,7 +34,7 @@ async def get_api_key_company(
     Raises 401 if key is missing/invalid/revoked.
     """
     if not raw_key:
-        raise HTTPException(status_code=401, detail="Missing API key. Provide X-API-Key header.")
+        raise HTTPException(status_code=401, detail="Missing API key")
 
     key_hash = hash_api_key(raw_key)
 
@@ -44,10 +44,10 @@ async def get_api_key_company(
     )
 
     if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key.")
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
     if not api_key.is_active:
-        raise HTTPException(status_code=401, detail="API key has been revoked.")
+        raise HTTPException(status_code=401, detail="API key has been revoked")
 
     # Update last_used_at
     api_key.last_used_at = func.now()

@@ -74,12 +74,12 @@ class JWTManager:
             options, algorithms = {"verify_sub": False}, [config.JWTConfig.ALGORITHM]
             payload = jwt.decode(token, config.JWTConfig.SIGNING_KEY, algorithms, options)
         except ExpiredSignatureError:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired or invalid.")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired or invalid")
         except JWTError:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token.")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
 
         if expected_type and payload.get("type") != expected_type:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token type mismatch.")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token type mismatch")
         return JWTPayload(**payload)
 
     @classmethod

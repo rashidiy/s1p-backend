@@ -28,7 +28,7 @@ class AuthenticationManagerMixin:
                 token = request.cookies.get("access_token")
 
             if not token:
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
             payload = JWTManager.verify(token, TokenType.ACCESS)
 
@@ -40,11 +40,11 @@ class AuthenticationManagerMixin:
             user = await cls.get(id=payload.sub, session=session, relationships=relationships)
 
             if not user:
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found.")
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
             # Check for soft delete (if model has deleted_at attribute)
             if hasattr(user, 'deleted_at') and user.deleted_at is not None:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "Account has been deleted.")
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Account has been deleted")
 
             # Multi-tenant validation: ensure JWT company_id matches user's company_id
             if hasattr(user, 'company_id') and user.company_id:
@@ -54,15 +54,15 @@ class AuthenticationManagerMixin:
                 if jwt_company_id != payload_company_id:
                     raise HTTPException(
                         status.HTTP_403_FORBIDDEN,
-                        "Token company mismatch. Please re-authenticate."
+                        "Token company mismatch"
                     )
 
             if check_for_active:
                 if not user.is_active:
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is inactive.")
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is inactive")
             if check_for_suspended:
                 if user.is_suspended:
-                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended.")
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is suspended")
 
             # Check contract status for company users (skip for owner impersonation)
             is_impersonating = payload.data and payload.data.get("impersonated_by")

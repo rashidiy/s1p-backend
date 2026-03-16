@@ -78,7 +78,7 @@ async def login_owner(
     if await is_locked(data.email):
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
-            detail="Account temporarily locked due to too many failed login attempts. Try again in 15 minutes.",
+            detail="Account temporarily locked due to too many failed login attempts",
         )
 
     owner = await Owner.get(email=data.email, session=session)

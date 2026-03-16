@@ -225,7 +225,7 @@ async def send_test_message(
     if not success:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to send test message. Check bot token and chat_id."
+            detail="Failed to send test message"
         )
 
     return {"success": True, "message": "Test message sent"}

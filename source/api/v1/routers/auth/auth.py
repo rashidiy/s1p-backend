@@ -109,12 +109,12 @@ async def refresh_token(
     """Refresh access token using refresh token"""
     token = data.refresh_token or request.cookies.get("refresh_token")
     if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required")
     payload = JWTManager.verify(token, TokenType.REFRESH)
 
     user = await User.get(id=payload.sub, session=session)
     if not user or user.deleted_at or user.is_suspended or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired or invalid.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired or invalid")
 
     new_access = JWTManager.create(
         sub=payload.sub,

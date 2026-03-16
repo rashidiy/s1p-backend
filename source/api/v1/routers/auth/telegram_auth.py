@@ -245,14 +245,14 @@ async def verify_otp(
     if not challenge.telegram_user_id or not challenge.otp_hash:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP not yet sent. Open the Telegram link first.",
+            detail="OTP not yet sent",
         )
 
     # Max attempts check
     if challenge.attempts >= 3:
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
-            detail="Too many attempts. Request a new code.",
+            detail="Too many attempts",
         )
 
     # Check user-level lockout
@@ -261,7 +261,7 @@ async def verify_otp(
         if is_locked:
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
-                detail=f"Account temporarily locked. Try again in {minutes_left} minutes.",
+                detail=f"Account temporarily locked for {minutes_left} minutes",
             )
 
     # Verify OTP
@@ -277,11 +277,11 @@ async def verify_otp(
         if remaining <= 0:
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
-                detail="Too many attempts. Request a new code.",
+                detail="Too many attempts",
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid code. {remaining} attempts remaining.",
+            detail=f"Invalid code, {remaining} attempts remaining",
         )
 
     # OTP is correct — look up the user
@@ -454,17 +454,17 @@ async def get_register_avatar(
         or challenge.used
         or challenge.expires_at.replace(tzinfo=timezone.utc) < now
     ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found")
 
     telegram_data = challenge.telegram_data or {}
     file_id = telegram_data.get("avatar_file_id")
     if not file_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
 
     # Get file path from Telegram
     bot = get_bot()
     if not bot:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bot unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Telegram bot unavailable")
 
     try:
         file = await bot.get_file(file_id)
@@ -480,7 +480,7 @@ async def get_register_avatar(
                 headers={"Cache-Control": "public, max-age=3600"},
             )
     except Exception:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar unavailable")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
 
 
 # ── Endpoint 8: Complete Registration ─────────────────────────────────

@@ -61,7 +61,7 @@ async def create_api_key(
     if active_count >= MAX_KEYS_PER_COMPANY:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum {MAX_KEYS_PER_COMPANY} active API keys per company.",
+            detail=f"Maximum {MAX_KEYS_PER_COMPANY} active API keys per company",
         )
 
     raw_key = generate_api_key()

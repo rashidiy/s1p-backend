@@ -72,4 +72,4 @@ async def call_ext_to_ext(
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Binotel service error")
