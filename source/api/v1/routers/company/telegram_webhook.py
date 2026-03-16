@@ -55,8 +55,11 @@ async def _check_otp_rate_limit(user_id: str) -> bool:
     client = await _get_redis()
     if not client:
         return False
-    val = await client.get(f"otp_rate:{user_id}")
-    return val is not None
+    try:
+        val = await client.get(f"otp_rate:{user_id}")
+        return val is not None
+    finally:
+        await client.aclose()
 
 
 async def _set_otp_rate_limit(user_id: str) -> None:
@@ -64,7 +67,10 @@ async def _set_otp_rate_limit(user_id: str) -> None:
     client = await _get_redis()
     if not client:
         return
-    await client.setex(f"otp_rate:{user_id}", 60, "1")
+    try:
+        await client.setex(f"otp_rate:{user_id}", 60, "1")
+    finally:
+        await client.aclose()
 
 
 async def _check_otp_lockout(user_id: str) -> bool:
@@ -72,8 +78,11 @@ async def _check_otp_lockout(user_id: str) -> bool:
     client = await _get_redis()
     if not client:
         return False
-    val = await client.get(f"otp_lockout:{user_id}")
-    return val is not None
+    try:
+        val = await client.get(f"otp_lockout:{user_id}")
+        return val is not None
+    finally:
+        await client.aclose()
 
 
 # ── Webhook endpoint ─────────────────────────────────────────────────

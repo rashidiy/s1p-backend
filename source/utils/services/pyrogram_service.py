@@ -168,17 +168,8 @@ async def create_group(
             except Exception:
                 logger.debug("Could not pin forum topics for chat %s", chat_id)
 
-            # 6. Set group photo
-            try:
-                import os
-                logo_path = os.path.join(os.path.dirname(__file__), "..", "..", "static", "s1p_group_logo.png")
-                logo_path = os.path.normpath(logo_path)
-                if os.path.exists(logo_path):
-                    await client.set_chat_photo(chat_id=chat_id, photo=logo_path)
-            except Exception:
-                logger.debug("Could not set group photo for chat %s", chat_id)
-
-            # 7. Generate invite link
+            # 6. Generate invite link
+            # (group photo is set by TelegramService.create_forum_topics via Bot API)
             invite = await generate_invite_link(client, chat_id)
 
             return {

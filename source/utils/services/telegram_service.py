@@ -605,11 +605,11 @@ class TelegramService:
         """
         Create forum topics in an existing supergroup using the Bot API.
 
-        Returns: {"calls": thread_id, "missed": thread_id, ..., "s1p": thread_id}
-        Hides the default General topic and creates an "S1P" topic for digests/system messages.
+        Returns: {"calls": thread_id, "missed": thread_id, ..., "general": 1}
         Topics use custom emoji icons (circular icon on the left), not text emoji in the name.
         """
         from utils.services.telegram_constants import TOPIC_NAMES, TOPIC_ICON_EMOJI_ID
+        import asyncio as _asyncio
 
         bot = get_bot()
         if not bot:
@@ -626,8 +626,13 @@ class TelegramService:
             if icon_emoji_id:
                 kwargs["icon_custom_emoji_id"] = icon_emoji_id
 
-            result = await bot.create_forum_topic(**kwargs)
-            topic_ids[topic_key] = result.message_thread_id
+            try:
+                result = await bot.create_forum_topic(**kwargs)
+                topic_ids[topic_key] = result.message_thread_id
+            except Exception:
+                logger.warning("Failed to create topic %s in chat %s", topic_key, chat_id)
+
+            await _asyncio.sleep(0.3)  # Rate limit safety between topic creation
 
         # Rename General topic to match language
         general_name = TOPIC_NAMES[locale].get("general")
