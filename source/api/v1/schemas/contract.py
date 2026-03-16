@@ -27,7 +27,7 @@ class ContractCreateRequest(BaseModel):
     next_payment_date: Optional[date] = None
     grace_period_days: int = Field(30, ge=0)
     auto_renew: bool = False
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=5000)
     metadata_: Optional[dict] = Field(None, alias="metadata")
 
     class Config:
@@ -64,7 +64,7 @@ class ContractUpdateRequest(BaseModel):
     next_payment_date: Optional[date] = None
     grace_period_days: Optional[int] = Field(None, ge=0)
     auto_renew: Optional[bool] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=5000)
     metadata_: Optional[dict] = Field(None, alias="metadata")
 
     class Config:
