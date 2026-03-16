@@ -1,11 +1,14 @@
+import logging
 import os
 import sys
 import copy
+import time
 
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 sys.path.append('source')
 
@@ -23,12 +26,18 @@ from sqlalchemy.exc import IntegrityError
 from api.v1.routers import router as v1
 from api.v1.routers.public import router as public_v1
 from db import get_session
+from db.base import AsyncDatabaseSession
+
+logger = logging.getLogger("s1p")
 
 # Read allowed CORS origins from env (comma-separated), default to localhost:3000
 _cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 CORS_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
-# Allow all *.localhost:3000 subdomains in development
-CORS_ORIGIN_REGEX = r"^https?://[\w.-]+\.localhost(:\d+)?$"
+# Allow origin regex from env; defaults to *.localhost subdomains for development
+CORS_ORIGIN_REGEX = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https?://[\w.-]+\.localhost(:\d+)?$",
+)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -41,6 +50,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        return response
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log method, path, status code, and duration for every request"""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "%s %s %s %.0fms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
         return response
 
 app = FastAPI(
@@ -91,6 +117,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         errors.append({"field": field, "message": error["msg"]})
     return JSONResponse(status_code=422, content={"detail": "Validation error", "errors": errors})
 
+# Middleware stack (last added = outermost):
+# ProxyHeaders → CORS → SecurityHeaders → RequestLogging → App
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
@@ -101,6 +130,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Subdomain", "X-Forwarded-Host"],
 )
+
+# Trust X-Forwarded-For/Proto from reverse proxy so rate limiter sees real client IP
+_trusted_hosts_raw = os.getenv("TRUSTED_PROXY_HOSTS", "127.0.0.1")
+TRUSTED_HOSTS = [h.strip() for h in _trusted_hosts_raw.split(",") if h.strip()]
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=TRUSTED_HOSTS)
 
 os.makedirs("source/static/media/avatars", exist_ok=True)
 app.mount("/media", StaticFiles(directory="source/static/media"), name="media")
@@ -157,6 +191,37 @@ async def register_telegram_webhook():
 
     except Exception as e:
         print(f"[Telegram] Failed to register webhook: {e}")
+
+
+# ── Graceful shutdown ─────────────────────────────────────────────
+@app.on_event("shutdown")
+async def shutdown():
+    """Close DB engine, Redis, and HTTP client pool on shutdown"""
+    # DB engine
+    try:
+        await AsyncDatabaseSession._engine.dispose()
+        print("[Shutdown] DB engine disposed")
+    except Exception as e:
+        print(f"[Shutdown] DB engine dispose failed: {e}")
+
+    # Cache / Redis
+    try:
+        from utils.services.cache_service import get_cache
+        cache = get_cache()
+        if hasattr(cache, '_cache') and hasattr(cache._cache, 'close'):
+            await cache._cache.close()
+            print("[Shutdown] Redis cache closed")
+    except Exception as e:
+        print(f"[Shutdown] Cache close failed: {e}")
+
+    # HTTP client pool (telephony)
+    try:
+        from utils.services.telephony.http_client import cleanup_http_client
+        await cleanup_http_client()
+        print("[Shutdown] HTTP client pool closed")
+    except Exception as e:
+        print(f"[Shutdown] HTTP client cleanup failed: {e}")
+
 
 PATH_FILTERS = {
     "owner": lambda p: p.startswith("/api/v1/owner"),
