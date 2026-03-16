@@ -26,6 +26,7 @@ class Task(Base, ObjectManagerMixin):
     __tablename__ = "tasks"
     __table_args__ = (
         Index('idx_tasks_company_id', 'company_id'),
+        Index('idx_tasks_company_active', 'company_id', 'deleted_at'),
         Index('idx_tasks_assigned_to', 'assigned_to'),
         Index('idx_tasks_created_by', 'created_by'),
         Index('idx_tasks_status', 'status'),

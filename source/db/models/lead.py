@@ -26,6 +26,8 @@ class Lead(Base, ObjectManagerMixin):
     __tablename__ = "leads"
     __table_args__ = (
         Index('idx_leads_company_id', 'company_id'),
+        Index('idx_leads_company_active', 'company_id', 'deleted_at'),
+        Index('idx_leads_company_status', 'company_id', 'status', 'deleted_at'),
         Index('idx_leads_contact_id', 'contact_id'),
         Index('idx_leads_assigned_to', 'assigned_to'),
         Index('idx_leads_status', 'status'),
