@@ -38,6 +38,9 @@ from utils.permissions import require_permissions, Permissions, ROLE_PERMISSIONS
 from utils.services.invite_token_service import generate_invite_token, hash_invite_token
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+# Separate router for /invite-* routes — must be registered BEFORE router
+# to prevent /{user_id} from catching /invite-tokens and /invite-telegram
+invite_router = APIRouter(prefix="/users", tags=["User Management - Invites"])
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -523,7 +526,7 @@ async def invite_telegram(
     )
 
 
-@router.get("/invite-tokens", response_model=InviteTokenListResponse)
+@invite_router.get("/invite-tokens", response_model=InviteTokenListResponse)
 @require_permissions(Permissions.USERS_READ)
 async def list_invite_tokens(
     admin: User = User.current(),
@@ -611,7 +614,7 @@ async def list_invite_tokens(
     )
 
 
-@router.delete("/invite-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
+@invite_router.delete("/invite-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
 @require_permissions(Permissions.USERS_CREATE)
 async def revoke_invite_token(
     token_id: UUID,

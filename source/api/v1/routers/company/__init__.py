@@ -15,6 +15,7 @@ router.include_router(calls_enhanced.router)  # Enhanced call management (must b
 router.include_router(calls.router)
 router.include_router(webhooks.router)
 router.include_router(recordings.router)
+router.include_router(users.invite_router)  # Must be before users.router — /invite-* before /{user_id}
 router.include_router(users.router)
 router.include_router(analytics.router)
 
