@@ -272,18 +272,23 @@ async def swagger_ui(type: str = Query("owner")):
     )
 
 
+# Compute git hash once at import time (not on every request)
+import subprocess as _subprocess
+try:
+    _GIT_HASH = _subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"], text=True
+    ).strip()
+except Exception:
+    _GIT_HASH = "unknown"
+
+
 @app.get("/version", include_in_schema=False)
 async def version():
     """Returns app version and environment info for deployment verification"""
-    import subprocess
-    try:
-        git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
-    except Exception:
-        git_hash = "unknown"
     return {
         "app": "s1p-backend",
         "version": "1.0.0",
-        "git": git_hash,
+        "git": _GIT_HASH,
         "env": os.getenv("ENV", "production"),
     }
 
