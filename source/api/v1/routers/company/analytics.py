@@ -102,6 +102,7 @@ async def get_my_dashboard(
 
     # Get recent calls (single query with limit)
     recent_calls_query = select(CallEvent).where(
+        CallEvent.company_id == user.company_id,
         CallEvent.operator_id == user.id
     ).order_by(CallEvent.created_at.desc()).limit(5)
 
@@ -121,7 +122,7 @@ async def get_my_dashboard(
 
     # Get recent tasks (single query with limit)
     recent_tasks_query = select(Task).where(
-        and_(Task.assigned_to == user.id, Task.deleted_at.is_(None))
+        and_(Task.company_id == user.company_id, Task.assigned_to == user.id, Task.deleted_at.is_(None))
     ).order_by(Task.created_at.desc()).limit(5)
 
     result = await session.execute(recent_tasks_query)

@@ -167,9 +167,12 @@ async def list_contacts(
     calls_subquery = (
         select(func.count())
         .where(
-            or_(
-                CallEvent.phone_1 == Contact.phone,
-                CallEvent.phone_2 == Contact.phone
+            and_(
+                CallEvent.company_id == Contact.company_id,
+                or_(
+                    CallEvent.phone_1 == Contact.phone,
+                    CallEvent.phone_2 == Contact.phone
+                )
             )
         )
         .correlate(Contact)
@@ -258,9 +261,12 @@ async def get_contact(
     calls_subquery = (
         select(func.count())
         .where(
-            or_(
-                CallEvent.phone_1 == Contact.phone,
-                CallEvent.phone_2 == Contact.phone
+            and_(
+                CallEvent.company_id == Contact.company_id,
+                or_(
+                    CallEvent.phone_1 == Contact.phone,
+                    CallEvent.phone_2 == Contact.phone
+                )
             )
         )
         .correlate(Contact)
@@ -427,7 +433,7 @@ async def get_contact_activity(
     # Get related leads (limited)
     leads_query = (
         select(Lead)
-        .where(and_(Lead.contact_id == contact.id, Lead.deleted_at.is_(None)))
+        .where(and_(Lead.contact_id == contact.id, Lead.company_id == user.company_id, Lead.deleted_at.is_(None)))
         .order_by(Lead.created_at.desc())
         .limit(limit)
     )
@@ -437,7 +443,7 @@ async def get_contact_activity(
     # Get related deals (limited)
     deals_query = (
         select(Deal)
-        .where(and_(Deal.contact_id == contact.id, Deal.deleted_at.is_(None)))
+        .where(and_(Deal.contact_id == contact.id, Deal.company_id == user.company_id, Deal.deleted_at.is_(None)))
         .order_by(Deal.created_at.desc())
         .limit(limit)
     )

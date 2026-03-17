@@ -337,23 +337,24 @@ async def get_call_outcomes_summary(
 
     Returns counts and percentages for each outcome type.
     """
-    query = select(CallEvent).where(CallEvent.company_id == user.company_id)
+    # Build shared filter conditions
+    conditions = [CallEvent.company_id == user.company_id]
 
     # Operators only see their own call stats
     if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(CallEvent.operator_id == user.id)
+        conditions.append(CallEvent.operator_id == user.id)
     elif operator_id:
-        query = query.where(CallEvent.operator_id == operator_id)
+        conditions.append(CallEvent.operator_id == operator_id)
 
     if date_from:
-        query = query.where(func.date(CallEvent.created_at) >= date_from)
+        conditions.append(func.date(CallEvent.created_at) >= date_from)
     if date_to:
-        query = query.where(func.date(CallEvent.created_at) <= date_to)
+        conditions.append(func.date(CallEvent.created_at) <= date_to)
 
-    result = await session.execute(query)
-    calls = result.scalars().all()
+    # Count total calls using SQL
+    total_query = select(func.count()).select_from(CallEvent).where(and_(*conditions))
+    total_calls = await session.scalar(total_query) or 0
 
-    total_calls = len(calls)
     if total_calls == 0:
         return {
             "total_calls": 0,
@@ -362,26 +363,33 @@ async def get_call_outcomes_summary(
             "date_to": date_to
         }
 
-    # Group by outcome
+    # Count by outcome using SQL GROUP BY
+    outcome_query = (
+        select(CallEvent.outcome, func.count().label('count'))
+        .where(and_(*conditions))
+        .where(CallEvent.outcome.isnot(None))
+        .group_by(CallEvent.outcome)
+    )
+    result = await session.execute(outcome_query)
+    outcome_rows = result.all()
+
+    # Build by_outcome dict
+    calls_with_outcome = sum(row.count for row in outcome_rows)
     by_outcome = {}
-    calls_with_outcome = [c for c in calls if c.outcome]
-
-    for outcome in CallOutcomeEnum:
-        count = sum(1 for c in calls_with_outcome if c.outcome == outcome)
-        percentage = (count / len(calls_with_outcome) * 100) if calls_with_outcome else 0
-
-        by_outcome[outcome.value] = {
+    for outcome_value, count in outcome_rows:
+        percentage = (count / calls_with_outcome * 100) if calls_with_outcome else 0
+        by_outcome[outcome_value.value if hasattr(outcome_value, 'value') else outcome_value] = {
             "count": count,
             "percentage": round(percentage, 2)
         }
 
     # Add stats for calls without outcome
-    no_outcome_count = total_calls - len(calls_with_outcome)
+    no_outcome_count = total_calls - calls_with_outcome
     no_outcome_percentage = (no_outcome_count / total_calls * 100) if total_calls else 0
 
     return {
         "total_calls": total_calls,
-        "calls_with_outcome": len(calls_with_outcome),
+        "calls_with_outcome": calls_with_outcome,
         "calls_without_outcome": no_outcome_count,
         "no_outcome_percentage": round(no_outcome_percentage, 2),
         "by_outcome": by_outcome,
@@ -431,7 +439,7 @@ async def get_auto_link_suggestions(
 
         # Get leads for this contact
         if contact.id:
-            leads_query = select(Lead).where(Lead.contact_id == contact.id, Lead.deleted_at.is_(None))
+            leads_query = select(Lead).where(Lead.contact_id == contact.id, Lead.company_id == user.company_id, Lead.deleted_at.is_(None))
             result = await session.execute(leads_query)
             leads = result.scalars().all()
 
@@ -444,7 +452,7 @@ async def get_auto_link_suggestions(
                 })
 
             # Get deals for this contact
-            deals_query = select(Deal).where(Deal.contact_id == contact.id, Deal.deleted_at.is_(None))
+            deals_query = select(Deal).where(Deal.contact_id == contact.id, Deal.company_id == user.company_id, Deal.deleted_at.is_(None))
             result = await session.execute(deals_query)
             deals = result.scalars().all()
 
