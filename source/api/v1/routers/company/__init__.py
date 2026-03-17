@@ -11,8 +11,8 @@ from . import calls, calls_enhanced, webhooks, recordings, users, analytics, con
 router = APIRouter(prefix="/company", tags=["Company Operations"])
 
 # Include sub-routers
+router.include_router(calls_enhanced.router)  # Enhanced call management (must be before calls — /history before /{call_id})
 router.include_router(calls.router)
-router.include_router(calls_enhanced.router)  # Enhanced call management
 router.include_router(webhooks.router)
 router.include_router(recordings.router)
 router.include_router(users.router)
