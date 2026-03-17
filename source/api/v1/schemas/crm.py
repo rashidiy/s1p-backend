@@ -47,11 +47,12 @@ class ContactResponse(ContactBase):
     """Contact response"""
     id: UUID
     company_id: UUID
-    created_by: Optional[UUID]
+    first_name: Optional[str] = None
+    created_by: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
     tags: Optional[List[str]] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     # Related counts
     total_leads: int = 0
@@ -104,7 +105,7 @@ class LeadResponse(LeadBase):
     created_by: Optional[UUID] = None
     tags: Optional[List[str]] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     # Related info
     contact_name: Optional[str] = None
@@ -161,7 +162,7 @@ class DealResponse(DealBase):
     tags: Optional[List[str]] = None
     closed_date: Optional[date] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     win_reason: Optional[str] = None
     loss_reason: Optional[str] = None
@@ -215,7 +216,7 @@ class TaskResponse(TaskBase):
     created_by: Optional[UUID] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     # Related info
     assigned_to_name: Optional[str] = None
@@ -251,9 +252,9 @@ class NoteResponse(NoteBase):
     id: UUID
     company_id: UUID
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    created_by: Optional[UUID]
+    created_by: Optional[UUID] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     # Related info
     created_by_name: Optional[str] = None

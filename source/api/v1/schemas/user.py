@@ -25,7 +25,7 @@ def _validate_permissions(permissions: List[str]) -> List[str]:
 
 class UserBase(BaseModel):
     """Base user schema"""
-    first_name: str = Field(..., min_length=1, max_length=225)
+    first_name: Optional[str] = Field(None, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
 
@@ -65,9 +65,9 @@ class UserResponse(UserBase):
     role: str
     permissions: List[str]
     permission_group_id: Optional[UUID] = None
-    is_active: bool
-    is_suspended: bool
-    language: str
+    is_active: Optional[bool] = True
+    is_suspended: Optional[bool] = False
+    language: Optional[str] = "ru"
     telegram_user_id: Optional[int] = None
     telegram_username: Optional[str] = None
     telegram_first_name: Optional[str] = None

@@ -26,7 +26,7 @@ class BinotelConfigSchema(BaseModel):
 class OwnerBase(BaseModel):
     """Base owner schema"""
     email: EmailStr
-    first_name: str = Field(..., min_length=1, max_length=225)
+    first_name: Optional[str] = Field(None, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
 
@@ -126,7 +126,7 @@ class CompanyResponse(BaseModel):
     webhook_url: Optional[str] = None  # Computed field
     users_count: int = 0
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
