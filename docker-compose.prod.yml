@@ -1,0 +1,18 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Removes dev-only volume mounts and external port exposure for DB/Redis.
+
+services:
+  app:
+    volumes:
+      - app-logs:/app/logs
+      # No source mount — use the baked-in image code
+
+  db:
+    ports: []
+    # PostgreSQL only accessible within the Docker network
+
+  redis:
+    ports: []
+    # Redis only accessible within the Docker network
