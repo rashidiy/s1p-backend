@@ -9,6 +9,7 @@ Keys:
 - locked:{email}        — lockout flag (TTL: 900s / 15 min)
 """
 
+import logging
 import os
 from typing import Optional
 
@@ -17,6 +18,8 @@ try:
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+
+logger = logging.getLogger("s1p.lockout")
 
 MAX_FAILED_ATTEMPTS = 5
 FAILED_WINDOW_TTL = 60       # seconds — window for counting failures
@@ -43,6 +46,10 @@ async def is_locked(email: str) -> bool:
     """Check if the account is currently locked out."""
     client = await _get_redis()
     if client is None:
+        logger.warning(
+            "Redis unavailable — account lockout is disabled. "
+            "Login attempts will not be rate-limited."
+        )
         return False
     val = await client.get(f"locked:{email}")
     return val is not None
@@ -56,6 +63,10 @@ async def record_failed_login(email: str) -> None:
     """
     client = await _get_redis()
     if client is None:
+        logger.warning(
+            "Redis unavailable — failed login attempt not recorded for %s",
+            email,
+        )
         return
 
     key = f"failed_login:{email}"
