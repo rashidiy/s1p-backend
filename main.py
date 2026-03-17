@@ -3,6 +3,7 @@ import os
 import sys
 import copy
 import time
+from contextlib import asynccontextmanager
 
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -88,10 +89,23 @@ elif len(_jwt_key) < 32:
         len(_jwt_key),
     )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan — startup and shutdown logic."""
+    # ── Startup ──
+    await _register_telegram_webhook()
+
+    yield
+
+    # ── Shutdown ──
+    await _shutdown_cleanup()
+
+
 app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
@@ -164,8 +178,7 @@ app.include_router(public_v1)
 
 
 # ── Telegram webhook registration ──────────────────────────────────
-@app.on_event("startup")
-async def register_telegram_webhook():
+async def _register_telegram_webhook():
     """Register the Telegram bot webhook URL on startup."""
     from core.config import TelegramConfig
 
@@ -213,8 +226,7 @@ async def register_telegram_webhook():
 
 
 # ── Graceful shutdown ─────────────────────────────────────────────
-@app.on_event("shutdown")
-async def shutdown():
+async def _shutdown_cleanup():
     """Close DB engine, Redis, and HTTP client pool on shutdown"""
     # DB engine
     try:
