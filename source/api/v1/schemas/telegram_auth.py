@@ -95,15 +95,6 @@ class VerifyOtpRequest(BaseModel):
 
 # ── Registration Schemas ─────────────────────────────────────────────
 
-class RegisterPrefillResponse(BaseModel):
-    """Pre-fill data for registration form from Telegram profile"""
-    telegram_first_name: Optional[str] = None
-    telegram_last_name: Optional[str] = None
-    telegram_username: Optional[str] = None
-    telegram_avatar_file_id: Optional[str] = None
-    invite_phone: Optional[str] = None
-    invite_first_name: Optional[str] = None
-
 
 class TelegramRegisterRequest(BaseModel):
     """User completes registration with invite token"""

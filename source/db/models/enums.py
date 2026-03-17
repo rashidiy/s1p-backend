@@ -140,7 +140,3 @@ class CustomFieldTypeEnum(str, enum.Enum):
     BOOLEAN = "boolean"
 
 
-class ChallengePurposeEnum(str, enum.Enum):
-    """Telegram auth challenge purpose"""
-    LOGIN = "login"
-    REGISTER = "register"

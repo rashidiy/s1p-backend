@@ -63,4 +63,3 @@ tgcrypto-pyrofork>=1.2.8
 # Type Annotations
 annotated-types==0.7.0
 cachetools
-python-telegram-bot

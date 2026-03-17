@@ -274,11 +274,6 @@ class PaginatedResponse(BaseModel):
     total_pages: int
 
 
-class BulkDeleteRequest(BaseModel):
-    """Bulk delete request"""
-    ids: List[UUID] = Field(..., min_items=1, max_items=100)
-    hard: bool = False
-
 
 class ExportRequest(BaseModel):
     """Export request"""
