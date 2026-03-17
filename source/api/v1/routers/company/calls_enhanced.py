@@ -407,10 +407,7 @@ async def get_auto_link_suggestions(
         and_(
             Contact.company_id == user.company_id,
             Contact.deleted_at.is_(None),
-            or_(
-                Contact.phone == phone_number,
-                Contact.phone_2 == phone_number
-            )
+            Contact.phone == phone_number
         )
     )
     result = await session.execute(contacts_query)
