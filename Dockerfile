@@ -20,9 +20,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install Redis client for caching
-RUN pip install --no-cache-dir redis>=5.0.0
-
 
 # Stage 2: Production image
 FROM python:3.12-slim AS production
@@ -59,6 +56,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8000
 
+# Run as non-root user
+RUN adduser --disabled-password --gecos '' appuser
+USER appuser
+
 # Default command
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${WORKERS:-4}"]
