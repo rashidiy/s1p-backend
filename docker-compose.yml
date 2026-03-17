@@ -61,7 +61,7 @@ services:
     networks:
       - s1p-network
     volumes:
-      - .:/app
+      - .:/app          # DEV ONLY: live-reload mount. Remove in production (see docker-compose.prod.yml)
       - app-logs:/app/logs
 
   # ===========================================
@@ -81,7 +81,7 @@ services:
       # Optional: init scripts
       # - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "${POSTGRES_EXTERNAL_PORT:-5433}:5432"
+      - "${POSTGRES_EXTERNAL_PORT:-5433}:5432"   # DEV ONLY: remove in production (see docker-compose.prod.yml)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sip_tools}"]
       interval: 10s
@@ -102,7 +102,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"      # DEV ONLY: remove in production (see docker-compose.prod.yml)
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
