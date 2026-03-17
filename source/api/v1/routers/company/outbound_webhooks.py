@@ -17,8 +17,10 @@ from api.v1.schemas.webhook import (
     WebhookEndpointCreate,
     WebhookEndpointUpdate,
     WebhookEndpointResponse,
+    WebhookEndpointCreateResponse,
     WebhookDeliveryResponse,
     VALID_EVENTS,
+    mask_webhook_secret,
 )
 from api.v1.schemas.crm import PaginatedResponse
 from utils.permissions import require_permissions, Permissions
@@ -26,7 +28,7 @@ from utils.permissions import require_permissions, Permissions
 router = APIRouter(prefix="/outbound-webhooks", tags=["Outbound Webhooks"])
 
 
-@router.post("", response_model=WebhookEndpointResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=WebhookEndpointCreateResponse, status_code=status.HTTP_201_CREATED)
 @require_permissions(Permissions.SETTINGS_MANAGE)
 async def create_webhook_endpoint(
     data: WebhookEndpointCreate,
@@ -38,6 +40,7 @@ async def create_webhook_endpoint(
 
     Register a URL to receive event notifications (e.g. contact.created, deal.stage_changed).
     Optionally provide a secret for HMAC signature verification.
+    The secret is only returned in full on creation — subsequent GETs show a masked version.
     Requires SETTINGS_MANAGE permission.
     """
     endpoint = await WebhookEndpoint.create(
@@ -82,8 +85,14 @@ async def list_webhook_endpoints(
     result = await session.execute(query)
     endpoints = result.scalars().all()
 
+    masked_endpoints = []
+    for ep in endpoints:
+        resp = WebhookEndpointResponse.model_validate(ep)
+        resp.secret = mask_webhook_secret(ep.secret)
+        masked_endpoints.append(resp)
+
     return PaginatedResponse(
-        items=[WebhookEndpointResponse.model_validate(ep) for ep in endpoints],
+        items=masked_endpoints,
         total=total,
         page=page,
         page_size=page_size,
@@ -120,7 +129,9 @@ async def get_webhook_endpoint(
         id=endpoint_id,
         company_id=user.company_id,
     )
-    return endpoint
+    resp = WebhookEndpointResponse.model_validate(endpoint)
+    resp.secret = mask_webhook_secret(endpoint.secret)
+    return resp
 
 
 @router.put("/{endpoint_id}", response_model=WebhookEndpointResponse)
@@ -148,7 +159,9 @@ async def update_webhook_endpoint(
         setattr(endpoint, field, value)
 
     await endpoint.update(session=session)
-    return endpoint
+    resp = WebhookEndpointResponse.model_validate(endpoint)
+    resp.secret = mask_webhook_secret(endpoint.secret)
+    return resp
 
 
 @router.delete("/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)

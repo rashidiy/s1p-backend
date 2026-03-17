@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import text, event
 
 # Add source and project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -51,10 +51,9 @@ def event_loop() -> Generator:
 
 @pytest_asyncio.fixture(scope="function")
 async def async_engine():
-    """Create async engine for tests using the main database."""
-    # Use main database for testing (transactions will be rolled back)
+    """Create async engine for tests using the test database."""
     engine = create_async_engine(
-        MAIN_DATABASE_URL,
+        TEST_DATABASE_URL,
         echo=False
     )
     yield engine
@@ -63,19 +62,29 @@ async def async_engine():
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a database session for tests with transaction rollback."""
-    async_session_factory = async_sessionmaker(
-        bind=async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False
-    )
+    """Create a database session for tests with transaction rollback.
 
-    async with async_session_factory() as session:
-        # Use a savepoint approach for test isolation
+    Uses BEGIN + SAVEPOINT + ROLLBACK for proper test isolation:
+    each test runs inside a transaction that is always rolled back.
+    """
+    async with async_engine.connect() as connection:
+        transaction = await connection.begin()
+        session = AsyncSession(bind=connection, expire_on_commit=False, autoflush=False)
+
+        # Create a savepoint so that session.commit() inside tests
+        # doesn't actually commit — it only releases to the savepoint.
+        nested = await connection.begin_nested()
+
+        @event.listens_for(session.sync_session, "after_transaction_end")
+        def restart_savepoint(session_sync, trans):
+            nonlocal nested
+            if trans.nested and not trans._parent.nested:
+                nested = connection.sync_connection.begin_nested()
+
         yield session
-        # Rollback any uncommitted changes
-        await session.rollback()
+
+        await session.close()
+        await transaction.rollback()
 
 
 @pytest_asyncio.fixture(scope="function")

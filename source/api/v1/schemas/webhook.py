@@ -45,12 +45,25 @@ class WebhookEndpointResponse(BaseModel):
     company_id: UUID
     url: str
     events: List[str]
+    secret: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class WebhookEndpointCreateResponse(WebhookEndpointResponse):
+    """Response for POST — includes the full secret."""
+    secret: str
+
+
+def mask_webhook_secret(secret: str) -> str:
+    """Mask webhook secret, showing only the last 4 characters."""
+    if not secret or len(secret) <= 4:
+        return "****"
+    return "*" * (len(secret) - 4) + secret[-4:]
 
 
 class WebhookDeliveryResponse(BaseModel):

@@ -226,6 +226,13 @@ async def get_call_history(
             )
 
     if operator_id:
+        # Validate operator belongs to the same company
+        operator_user = await User.get(session=session, id=operator_id, company_id=user.company_id)
+        if not operator_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid operator_id"
+            )
         query = query.where(CallEvent.operator_id == operator_id)
     if contact_id:
         query = query.where(CallEvent.contact_id == contact_id)
@@ -344,6 +351,13 @@ async def get_call_outcomes_summary(
     if user.role == RoleEnum.COMPANY_OPERATOR:
         conditions.append(CallEvent.operator_id == user.id)
     elif operator_id:
+        # Validate operator belongs to the same company
+        operator_user = await User.get(session=session, id=operator_id, company_id=user.company_id)
+        if not operator_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid operator_id"
+            )
         conditions.append(CallEvent.operator_id == operator_id)
 
     if date_from:

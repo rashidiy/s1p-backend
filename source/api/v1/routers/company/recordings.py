@@ -2,8 +2,10 @@
 Call recording streaming endpoint
 """
 
+import ipaddress
 import os
 import logging
+import socket
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,6 +30,27 @@ ALLOWED_RECORDING_HOSTS = [
     if h.strip()
 ]
 
+# Default provider hostnames when ALLOWED_RECORDING_HOSTS is unset
+_DEFAULT_RECORDING_HOSTS = [
+    "sipuni.com",
+    "www.sipuni.com",
+    "api.sipuni.com",
+    "binotel.com",
+    "www.binotel.com",
+    "api.binotel.com",
+    "my.binotel.ua",
+]
+
+
+def _is_private_ip(hostname: str) -> bool:
+    """Check if hostname resolves to a private/loopback IP address."""
+    try:
+        addr = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(addr)
+        return ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local
+    except (socket.gaierror, ValueError):
+        return True  # If we can't resolve, block it
+
 
 def _validate_recording_url(url: str) -> None:
     """
@@ -35,7 +58,9 @@ def _validate_recording_url(url: str) -> None:
 
     Rules:
     - Must use https:// scheme
-    - Hostname must be in the ALLOWED_RECORDING_HOSTS whitelist (if configured)
+    - Hostname must be in the ALLOWED_RECORDING_HOSTS whitelist
+      (defaults to known provider hostnames if unset)
+    - Must not resolve to private/loopback IP ranges
     """
     parsed = urlparse(url)
 
@@ -53,8 +78,19 @@ def _validate_recording_url(url: str) -> None:
             detail="Recording URL has no valid hostname",
         )
 
-    # If whitelist is configured, enforce it
-    if ALLOWED_RECORDING_HOSTS and hostname not in ALLOWED_RECORDING_HOSTS:
+    # Check against private/loopback IPs
+    if _is_private_ip(hostname):
+        logger.warning(
+            f"Recording URL hostname '{hostname}' resolves to private/loopback IP"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Recording host not allowed",
+        )
+
+    # Use configured whitelist, or fall back to known provider hosts
+    allowed = ALLOWED_RECORDING_HOSTS or _DEFAULT_RECORDING_HOSTS
+    if hostname not in allowed:
         logger.warning(
             f"Recording URL hostname '{hostname}' not in allowed hosts whitelist"
         )

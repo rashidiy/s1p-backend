@@ -67,10 +67,14 @@ async def get_active_company(user: User, session: AsyncSession) -> Company:
 
 
 async def next_call_number(session: AsyncSession, company_id: PyUUID) -> int:
-    """Return the next company-scoped call number (max + 1)."""
+    """Return the next company-scoped call number (max + 1).
+
+    Uses SELECT FOR UPDATE to prevent concurrent reads from getting the same MAX.
+    """
     result = await session.execute(
         select(func.coalesce(func.max(CallEvent.id), 0) + 1)
         .where(CallEvent.company_id == company_id)
+        .with_for_update()
     )
     return result.scalar_one()
 

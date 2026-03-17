@@ -64,11 +64,6 @@ async def create_contact(
         **data.model_dump(exclude={'tags'})
     )
 
-    # Add tags if provided
-    if data.tags:
-        # TODO: Implement tag association
-        pass
-
     # Fire outbound webhook
     await fire_webhook_event(
         company_id=user.company_id,
@@ -371,11 +366,6 @@ async def update_contact(
 
     await contact.update(session=session)
 
-    # Update tags if provided
-    if data.tags is not None:
-        # TODO: Implement tag association
-        pass
-
     return contact
 
 
@@ -517,6 +507,34 @@ async def bulk_create_contacts(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Maximum 100 contacts per bulk request"
         )
+
+    # Check for duplicate emails within the batch
+    batch_emails = [c.email for c in contacts if c.email]
+    if len(batch_emails) != len(set(batch_emails)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate emails within the batch"
+        )
+
+    # Check for duplicate emails against existing contacts in the company
+    if batch_emails:
+        existing_query = (
+            select(Contact.email)
+            .where(
+                and_(
+                    Contact.company_id == user.company_id,
+                    Contact.deleted_at.is_(None),
+                    Contact.email.in_(batch_emails),
+                )
+            )
+        )
+        result = await session.execute(existing_query)
+        existing_emails = [row[0] for row in result.all()]
+        if existing_emails:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Contacts with these emails already exist: {existing_emails}"
+            )
 
     created_contacts = []
     for contact_data in contacts:

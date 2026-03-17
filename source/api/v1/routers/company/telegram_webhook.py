@@ -289,7 +289,7 @@ async def _handle_login_start(
                 finally:
                     await bot.session.close()
         except Exception:
-            logger.debug("Failed to update avatar during login for user %s", user.id)
+            logger.warning("Failed to update avatar during login for user %s", user.id)
 
     # Send OTP to user
     await _send_message(
@@ -359,7 +359,7 @@ async def _handle_register_start(
                 telegram_data["avatar_file_id"] = photo.file_id
             await bot.session.close()
     except Exception:
-        logger.debug("Could not fetch profile photo for user %s", telegram_user_id)
+        logger.warning("Could not fetch profile photo for user %s", telegram_user_id)
 
     # Update challenge with Telegram data
     challenge.telegram_user_id = telegram_user_id
@@ -663,6 +663,14 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
     action = parts[0]
     param = parts[1] if len(parts) > 1 else ""
 
+    # Validate param as UUID for actions that use it as a DB identifier
+    if action in ("al",) and param:
+        try:
+            from uuid import UUID as _UUID
+            _UUID(param)
+        except ValueError:
+            return
+
     try:
         if action == "mh":
             # Mark handled — edit message to add handler name, remove buttons
@@ -759,7 +767,7 @@ async def _edit_message_handled(chat_id: str, message_id: int, original_text: st
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     except Exception:
-        logger.debug("Could not edit message %s in chat %s", message_id, chat_id)
+        logger.warning("Could not edit message %s in chat %s", message_id, chat_id)
     finally:
         await bot.session.close()
 

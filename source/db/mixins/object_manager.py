@@ -1,3 +1,4 @@
+import logging
 from copy import copy
 from typing import Any
 from datetime import datetime, timezone
@@ -7,6 +8,8 @@ from sqlalchemy import select, and_, exists, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette import status
+
+_om_logger = logging.getLogger(__name__)
 
 
 class ObjectManagerMixin:
@@ -254,6 +257,12 @@ class ObjectManagerMixin:
         Returns:
             Number of records updated
         """
+        if hasattr(cls, 'company_id') and 'company_id' not in filters:
+            _om_logger.warning(
+                "%s.update_by called without company_id filter — potential cross-tenant update",
+                cls.__name__,
+            )
+
         stmt = update(cls).values(**values)
 
         conditions = cls.build_filter_conditions(filters, include_deleted=include_deleted)
@@ -308,6 +317,12 @@ class ObjectManagerMixin:
         Returns:
             Number of records deleted
         """
+        if hasattr(cls, 'company_id') and 'company_id' not in filters:
+            _om_logger.warning(
+                "%s.delete_by called without company_id filter — potential cross-tenant delete",
+                cls.__name__,
+            )
+
         if cls._has_soft_delete() and not hard:
             # Soft delete: update deleted_at
             conditions = cls.build_filter_conditions(filters, include_deleted=False)
