@@ -62,7 +62,7 @@ class CustomFieldDefinitionResponse(BaseModel):
     sort_order: int
     is_required: bool
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

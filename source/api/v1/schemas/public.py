@@ -69,7 +69,7 @@ class CursorPaginatedResponse(BaseModel):
 class PublicContactResponse(BaseModel):
     """Contact in public API"""
     id: UUID
-    first_name: str
+    first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -78,7 +78,7 @@ class PublicContactResponse(BaseModel):
     source: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -96,7 +96,7 @@ class PublicLeadResponse(BaseModel):
     assigned_to: Optional[UUID] = None
     custom_fields: Optional[Dict[str, Any]] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,7 +115,7 @@ class PublicDealResponse(BaseModel):
     assigned_to: Optional[UUID] = None
     custom_fields: Optional[Dict[str, Any]] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -132,6 +132,6 @@ class PublicCallResponse(BaseModel):
     lead_id: Optional[UUID] = None
     deal_id: Optional[UUID] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

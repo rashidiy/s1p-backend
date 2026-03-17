@@ -103,7 +103,7 @@ class ContractResponse(BaseModel):
     company_name: Optional[str] = None
     days_until_expiry: Optional[int] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

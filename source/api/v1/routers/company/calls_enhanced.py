@@ -453,7 +453,7 @@ async def get_auto_link_suggestions(
                     "id": str(deal.id),
                     "title": deal.title,
                     "stage": deal.stage.value if deal.stage else None,
-                    "value": deal.value,
+                    "value": float(deal.amount) if deal.amount else None,
                     "contact_id": str(contact.id)
                 })
 
