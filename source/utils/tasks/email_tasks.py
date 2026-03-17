@@ -16,6 +16,16 @@ from core.config import SMTPConfig
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_email(email: str) -> str:
+    """Mask email address for logging. e.g. 'john@example.com' -> 'j***@example.com'"""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    masked_local = local[0] + "***" if local else "***"
+    return f"{masked_local}@{domain}"
+
+
 # Template engine — loaded once, reused across tasks
 _template_env = Environment(
     loader=FileSystemLoader("source/templates/email"),
@@ -41,7 +51,7 @@ async def send_email(to_email: str, subject: str, html_body: str) -> bool:
     This is the core send function — all other email tasks call this.
     """
     if not SMTPConfig.ENABLED:
-        logger.info(f"[EMAIL-DEV] To: {to_email} | Subject: {subject}")
+        logger.info(f"[EMAIL-DEV] To: {_mask_email(to_email)} | Subject: {subject}")
         logger.debug(f"[EMAIL-DEV] Body preview: {html_body[:200]}...")
         return True
 
@@ -61,11 +71,11 @@ async def send_email(to_email: str, subject: str, html_body: str) -> bool:
             start_tls=SMTPConfig.USE_TLS,
         )
 
-        logger.info(f"Email sent to {to_email}: {subject}")
+        logger.info(f"Email sent to {_mask_email(to_email)}: {subject}")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
+        logger.error(f"Failed to send email to {_mask_email(to_email)}: {e}")
         return False
 
 

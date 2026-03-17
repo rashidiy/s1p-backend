@@ -162,16 +162,14 @@ class TestPublicContacts:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
-        assert "total" in data
-        assert "page" in data
-        assert "page_size" in data
-        assert "total_pages" in data
-        assert data["total"] >= 1
+        assert "data" in data
+        assert "has_more" in data
+        assert isinstance(data["data"], list)
+        assert len(data["data"]) >= 1
 
     @pytest.mark.asyncio
     async def test_contacts_pagination(self, client: AsyncClient, auth_headers, test_contact):
-        """Test offset/limit pagination."""
+        """Test cursor-based pagination."""
         create_resp = await client.post(
             "/api/v1/company/api-keys",
             headers=auth_headers,
@@ -182,12 +180,13 @@ class TestPublicContacts:
         response = await client.get(
             "/api/public/v1/contacts",
             headers={"X-API-Key": api_key},
-            params={"page": 1, "page_size": 10}
+            params={"limit": 10}
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["page"] == 1
-        assert data["page_size"] == 10
+        assert "data" in data
+        assert "has_more" in data
+        assert isinstance(data["data"], list)
 
 
 class TestPublicLeads:
@@ -209,8 +208,9 @@ class TestPublicLeads:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
-        assert data["total"] >= 1
+        assert "data" in data
+        assert "has_more" in data
+        assert len(data["data"]) >= 1
 
 
 class TestPublicDeals:
@@ -232,8 +232,9 @@ class TestPublicDeals:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
-        assert data["total"] >= 1
+        assert "data" in data
+        assert "has_more" in data
+        assert len(data["data"]) >= 1
 
 
 class TestPublicCalls:
@@ -255,7 +256,8 @@ class TestPublicCalls:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "items" in data
+        assert "data" in data
+        assert "has_more" in data
 
 
 class TestPublicApiResponseFormat:
@@ -263,7 +265,7 @@ class TestPublicApiResponseFormat:
 
     @pytest.mark.asyncio
     async def test_all_endpoints_return_paginated_format(self, client: AsyncClient, auth_headers):
-        """Test that all public endpoints return the correct paginated format."""
+        """Test that all public endpoints return the correct cursor-paginated format."""
         create_resp = await client.post(
             "/api/v1/company/api-keys",
             headers=auth_headers,
@@ -279,9 +281,6 @@ class TestPublicApiResponseFormat:
             )
             assert response.status_code == 200
             data = response.json()
-            assert "items" in data, f"Missing 'items' in {endpoint}"
-            assert "total" in data, f"Missing 'total' in {endpoint}"
-            assert "page" in data, f"Missing 'page' in {endpoint}"
-            assert "page_size" in data, f"Missing 'page_size' in {endpoint}"
-            assert "total_pages" in data, f"Missing 'total_pages' in {endpoint}"
-            assert isinstance(data["items"], list), f"'items' not a list in {endpoint}"
+            assert "data" in data, f"Missing 'data' in {endpoint}"
+            assert "has_more" in data, f"Missing 'has_more' in {endpoint}"
+            assert isinstance(data["data"], list), f"'data' not a list in {endpoint}"

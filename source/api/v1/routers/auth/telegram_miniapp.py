@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 from urllib.parse import parse_qs
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 class MiniAppAuthRequest(BaseModel):
     """Mini App auth request — raw initData string from Telegram."""
     init_data: str
-    company_id: str  # Which company to authenticate against
+    company_id: UUID  # Which company to authenticate against
 
 
 class MiniAppAuthResponse(BaseModel):
