@@ -16,7 +16,7 @@ class BaseSchema(BaseModel):
 class TimestampMixin(BaseModel):
     """Mixin for models with timestamps"""
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class UUIDMixin(BaseModel):

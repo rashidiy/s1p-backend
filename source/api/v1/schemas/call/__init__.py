@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, computed_field
 from api.v1.schemas.common.base import BaseSchema, TimestampMixin
-from db.models.enums import CallStatusEnum, CallDirectionEnum, ProviderEnum
+from db.models.enums import CallStatusEnum, CallDirectionEnum, ProviderEnum, CallOutcomeEnum
 
 
 class CallRequest(BaseModel):
@@ -91,6 +91,12 @@ class CallEventResponse(BaseSchema, TimestampMixin):
     call_end_timestamp: Optional[int] = None
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
+    deal_id: Optional[UUID] = None
+    outcome: Optional[CallOutcomeEnum] = None
+    disposition_notes: Optional[str] = None
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
     record_url: Optional[str] = Field(None, exclude=True)
 
     @computed_field
