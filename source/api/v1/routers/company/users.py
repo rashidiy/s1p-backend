@@ -225,28 +225,32 @@ async def get_user(
         company_id=admin.company_id
     )
 
-    # Get user statistics
+    # Get user statistics (always filter by company_id for tenant isolation)
     calls_count = await session.scalar(
         select(func.count()).select_from(CallEvent).where(
-            CallEvent.operator_id == user_id
+            CallEvent.operator_id == user_id,
+            CallEvent.company_id == admin.company_id,
         )
     ) or 0
 
     leads_count = await session.scalar(
         select(func.count()).select_from(Lead).where(
-            Lead.assigned_to == user_id
+            Lead.assigned_to == user_id,
+            Lead.company_id == admin.company_id,
         )
     ) or 0
 
     deals_count = await session.scalar(
         select(func.count()).select_from(Deal).where(
-            Deal.assigned_to == user_id
+            Deal.assigned_to == user_id,
+            Deal.company_id == admin.company_id,
         )
     ) or 0
 
     tasks_count = await session.scalar(
         select(func.count()).select_from(Task).where(
-            Task.assigned_to == user_id
+            Task.assigned_to == user_id,
+            Task.company_id == admin.company_id,
         )
     ) or 0
 
