@@ -84,7 +84,7 @@ class CallEventResponse(BaseSchema, TimestampMixin):
     operator_id: Optional[UUID] = None
     direction: Optional[CallDirectionEnum] = None
     state: Optional[CallStatusEnum] = None
-    attempts: int
+    attempts: Optional[int] = None
     waiting_sec: Optional[int] = None
     billing_sec: Optional[int] = None
     call_start_timestamp: Optional[int] = None
