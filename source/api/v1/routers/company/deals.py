@@ -4,7 +4,7 @@ Deals management endpoints
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, case, literal
+from sqlalchemy import select, func, or_, and_, case, literal
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timezone
@@ -199,33 +199,46 @@ async def get_pipeline_summary(
 
     Returns deal counts and values by stage.
     """
-    # Get all active deals
-    query = select(Deal).where(
-        Deal.company_id == user.company_id,
-        Deal.deleted_at.is_(None),
-        Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
+    # Use SQL aggregation instead of loading all deals
+    stage_query = (
+        select(
+            Deal.stage,
+            func.count().label('count'),
+            func.coalesce(func.sum(Deal.amount), 0).label('total_value'),
+            func.coalesce(func.sum(Deal.amount * Deal.probability / 100), 0).label('weighted_value')
+        )
+        .where(
+            Deal.company_id == user.company_id,
+            Deal.deleted_at.is_(None),
+            Deal.stage.notin_([DealStageEnum.CLOSED_WON, DealStageEnum.CLOSED_LOST])
+        )
     )
 
     # Operators only see their own deals in pipeline
     if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(Deal.assigned_to == user.id)
-    result = await session.execute(query)
-    deals = result.scalars().all()
+        stage_query = stage_query.where(Deal.assigned_to == user.id)
 
-    # Group by stage
+    stage_query = stage_query.group_by(Deal.stage)
+    result = await session.execute(stage_query)
+    stage_rows = result.all()
+
+    # Build summary with all stages (including ones with 0 deals)
     summary = {}
+    total_deals = 0
+    total_value = 0.0
+    weighted_value = 0.0
     for stage in DealStageEnum:
-        stage_deals = [d for d in deals if d.stage == stage]
-        summary[stage.value] = {
-            "count": len(stage_deals),
-            "total_value": sum(float(d.amount or 0) for d in stage_deals),
-            "weighted_value": sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in stage_deals)
-        }
+        summary[stage.value] = {"count": 0, "total_value": 0.0, "weighted_value": 0.0}
 
-    # Overall stats
-    total_deals = len(deals)
-    total_value = sum(float(d.amount or 0) for d in deals)
-    weighted_value = sum(float(d.amount or 0) * (d.probability or 0) / 100 for d in deals)
+    for stage_enum, count, stage_total, stage_weighted in stage_rows:
+        summary[stage_enum.value] = {
+            "count": count,
+            "total_value": float(stage_total),
+            "weighted_value": round(float(stage_weighted), 2)
+        }
+        total_deals += count
+        total_value += float(stage_total)
+        weighted_value += float(stage_weighted)
 
     return {
         "by_stage": summary,
