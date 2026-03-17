@@ -57,7 +57,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Run as non-root user
-RUN adduser --disabled-password --gecos '' appuser
+RUN adduser --disabled-password --gecos '' appuser \
+    && mkdir -p /app/source/static/media/avatars /app/logs \
+    && chown -R appuser:appuser /app
 USER appuser
 
 # Default command

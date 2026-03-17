@@ -424,7 +424,7 @@ async def get_auto_link_suggestions(
     for contact in contacts:
         suggestions["contacts"].append({
             "id": str(contact.id),
-            "name": f"{contact.first_name} {contact.last_name or ''}".strip(),
+            "name": f"{contact.first_name or ''} {contact.last_name or ''}".strip() or "Unknown",
             "email": contact.email,
             "company": contact.company_name
         })
