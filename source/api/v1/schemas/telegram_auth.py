@@ -50,7 +50,7 @@ class InviteTokenListItem(BaseModel):
     role: str
     first_name: str
     last_name: Optional[str] = None
-    phone: str
+    phone: Optional[str] = None
     created_by_name: Optional[str] = None
     expires_at: datetime
     used_at: Optional[datetime] = None
