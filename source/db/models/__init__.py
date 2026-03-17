@@ -28,6 +28,9 @@ from .permission_group import PermissionGroup
 # Telegram
 from .telegram_config import TelegramBotConfig
 
+# Sipuni Setup
+from .sipuni_setup_config import SipuniSetupConfig
+
 # Telegram Auth
 from .invite_token import InviteToken
 from .telegram_auth_challenge import TelegramAuthChallenge
@@ -68,6 +71,8 @@ __all__ = [
     "PermissionGroup",
     # Telegram
     "TelegramBotConfig",
+    # Sipuni Setup
+    "SipuniSetupConfig",
     # Telegram Auth
     "InviteToken",
     "TelegramAuthChallenge",
