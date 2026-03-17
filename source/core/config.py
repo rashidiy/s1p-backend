@@ -1,7 +1,11 @@
+import logging
 import os
+import secrets
 from typing import Any
 
 from dotenv import load_dotenv
+
+_config_logger = logging.getLogger("s1p.config")
 
 load_dotenv()
 
@@ -64,9 +68,21 @@ class PyrogramConfig:
     ENABLED = os.getenv('PYROGRAM_ENABLED', 'false').lower() == 'true'
 
 
+def _get_signed_url_secret() -> str:
+    """Return SIGNED_URL_SECRET or generate a random one (never fall back to JWT key)."""
+    val = os.getenv('SIGNED_URL_SECRET')
+    if val:
+        return val
+    _config_logger.warning(
+        "SIGNED_URL_SECRET is not set. Using a random secret — "
+        "signed URLs will not survive restarts. Set SIGNED_URL_SECRET in production."
+    )
+    return secrets.token_urlsafe(32)
+
+
 class SignedUrlConfig:
     """HMAC-SHA256 signed URL configuration for recording delivery"""
-    SECRET = os.getenv('SIGNED_URL_SECRET', os.getenv('JWT_SIGNING_KEY', 'change-me'))
+    SECRET = _get_signed_url_secret()
     DEFAULT_EXPIRY = int(os.getenv('SIGNED_URL_EXPIRY', '86400'))  # 24 hours
 
 
