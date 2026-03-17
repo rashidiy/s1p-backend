@@ -69,6 +69,25 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         )
         return response
 
+# ── Startup security checks ──────────────────────────────────────
+_INSECURE_JWT_DEFAULTS = {
+    "your-super-secret-jwt-key-min-32-chars-long-change-in-production",
+    "change-me",
+}
+
+_jwt_key = os.getenv("JWT_SIGNING_KEY", "")
+if _jwt_key in _INSECURE_JWT_DEFAULTS:
+    logger.critical(
+        "JWT_SIGNING_KEY is set to a known insecure default. "
+        "Change it immediately in production!"
+    )
+elif len(_jwt_key) < 32:
+    logger.critical(
+        "JWT_SIGNING_KEY is shorter than 32 characters (%d). "
+        "Use a longer key for adequate security.",
+        len(_jwt_key),
+    )
+
 app = FastAPI(
     docs_url=None,
     redoc_url=None,
