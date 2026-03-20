@@ -61,7 +61,7 @@ class SipuniAsyncClient:
 
     async def _call_worker(self, action: str, **kwargs) -> dict:
         """Call the Cloudflare Worker with an action and parameters."""
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
                 WORKER_URL,
                 json={"action": action, **kwargs},
