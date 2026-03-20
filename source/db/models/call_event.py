@@ -51,7 +51,7 @@ class CallEvent(Base, ObjectManagerMixin):
 
     # Provider info
     provider_type = Column(
-        SQLEnum(ProviderEnum, name="provider_enum"),
+        SQLEnum(ProviderEnum, name="provider_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False
     )
     provider_call_id = Column(String(255), nullable=False)  # Sipuni: call_id, Binotel: generalCallID
@@ -69,11 +69,11 @@ class CallEvent(Base, ObjectManagerMixin):
 
     # Call metadata
     direction = Column(
-        SQLEnum(CallDirectionEnum, name="call_direction_enum"),
+        SQLEnum(CallDirectionEnum, name="call_direction_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=True
     )
     state = Column(
-        SQLEnum(CallStatusEnum, name="call_status_enum"),
+        SQLEnum(CallStatusEnum, name="call_status_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=True
     )
     attempts = Column(Integer, default=1)
@@ -86,6 +86,14 @@ class CallEvent(Base, ObjectManagerMixin):
     # Timestamps (Unix timestamps from providers)
     call_start_timestamp = Column(BigInteger)
     call_end_timestamp = Column(BigInteger)
+    call_answer_timestamp = Column(BigInteger)  # When answered (event 3 / event 2)
+
+    # Routing & transfer info (from Sipuni webhook universal fields)
+    scheme_name = Column(String(255))    # treeName — routing scheme name
+    scheme_number = Column(String(100))  # treeNumber — routing scheme ID
+    transfer_from = Column(String(50))   # Who initiated the transfer
+    last_called = Column(String(50))     # Last agent in routing chain
+    is_transfer = Column(Boolean, server_default=text('false'), nullable=False)  # Whether call involved a transfer
 
     # CRM Integration
     contact_id = Column(
@@ -106,7 +114,7 @@ class CallEvent(Base, ObjectManagerMixin):
 
     # Call outcome and disposition
     outcome = Column(
-        SQLEnum(CallOutcomeEnum, name="call_outcome_enum"),
+        SQLEnum(CallOutcomeEnum, name="call_outcome_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=True
     )
     disposition_notes = Column(Text, nullable=True)

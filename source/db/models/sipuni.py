@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from sqlalchemy import Integer, String, UUID, ForeignKey, UniqueConstraint, BigInteger, Uuid, Enum
+from sqlalchemy import Integer, String, UUID, ForeignKey, UniqueConstraint, BigInteger, Uuid, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
@@ -46,7 +46,7 @@ class SipuniCallEvent(Base, ObjectManagerMixin):
     tree_number: Mapped[str] = mapped_column(String(255), nullable=True)
     record_link: Mapped[str] = mapped_column(String(2048), nullable=True)
     timestamp = mapped_column(BigInteger)
-    status: Mapped[str] = mapped_column(Enum(CallStatusEnum))
+    status: Mapped[str] = mapped_column(SQLEnum(CallStatusEnum, name="callstatusenum", create_type=False, values_callable=lambda e: [x.value for x in e]))
 
     sipuni: Mapped['Sipuni'] = relationship("Sipuni", back_populates='call_events')
 

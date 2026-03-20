@@ -46,13 +46,14 @@ class InviteToken(Base, ObjectManagerMixin):
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     role: Mapped[RoleEnum] = mapped_column(
-        SQLEnum(RoleEnum, name="role_enum", create_type=False),
+        SQLEnum(RoleEnum, name="role_enum", create_type=False, values_callable=lambda e: [x.value for x in e]),
         nullable=False,
     )
 
     first_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    sip_extension: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     permissions = Column(
         JSONB,
