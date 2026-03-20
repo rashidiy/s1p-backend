@@ -18,107 +18,27 @@ depends_on = None
 
 def upgrade() -> None:
     # ------------------------------------------------------------------
-    # 1. Create all PostgreSQL enum types
+    # 1. Create all PostgreSQL enum types (raw SQL for async compatibility)
     # ------------------------------------------------------------------
-    provider_enum = postgresql.ENUM(
-        'sipuni', 'binotel',
-        name='provider_enum', create_type=False,
-    )
-    provider_enum.create(op.get_bind(), checkfirst=True)
-
-    role_enum = postgresql.ENUM(
-        'owner', 'company_admin', 'company_manager', 'company_operator',
-        name='role_enum', create_type=False,
-    )
-    role_enum.create(op.get_bind(), checkfirst=True)
-
-    lead_status_enum = postgresql.ENUM(
-        'new', 'contacted', 'qualified', 'converted', 'lost',
-        name='lead_status_enum', create_type=False,
-    )
-    lead_status_enum.create(op.get_bind(), checkfirst=True)
-
-    pipeline_stage_enum = postgresql.ENUM(
-        'new', 'contact_made', 'meeting_scheduled', 'proposal_sent',
-        'negotiation', 'won', 'lost',
-        name='pipeline_stage_enum', create_type=False,
-    )
-    pipeline_stage_enum.create(op.get_bind(), checkfirst=True)
-
-    deal_stage_enum = postgresql.ENUM(
-        'prospecting', 'qualification', 'proposal', 'negotiation',
-        'closed_won', 'closed_lost',
-        name='deal_stage_enum', create_type=False,
-    )
-    deal_stage_enum.create(op.get_bind(), checkfirst=True)
-
-    task_status_enum = postgresql.ENUM(
-        'pending', 'in_progress', 'completed', 'cancelled',
-        name='task_status_enum', create_type=False,
-    )
-    task_status_enum.create(op.get_bind(), checkfirst=True)
-
-    task_priority_enum = postgresql.ENUM(
-        'low', 'medium', 'high', 'urgent',
-        name='task_priority_enum', create_type=False,
-    )
-    task_priority_enum.create(op.get_bind(), checkfirst=True)
-
-    call_direction_enum = postgresql.ENUM(
-        'inbound', 'outbound', 'internal',
-        name='call_direction_enum', create_type=False,
-    )
-    call_direction_enum.create(op.get_bind(), checkfirst=True)
-
-    call_status_enum = postgresql.ENUM(
-        'RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL',
-        'CONGESTION', 'CHANUNAVAIL',
-        name='call_status_enum', create_type=False,
-    )
-    call_status_enum.create(op.get_bind(), checkfirst=True)
-
-    call_outcome_enum = postgresql.ENUM(
-        'interested', 'appointment_scheduled', 'follow_up', 'sale_made',
-        'no_answer', 'left_voicemail', 'busy', 'callback_requested',
-        'information_provided', 'not_interested', 'wrong_number',
-        'do_not_call', 'customer_complaint', 'other',
-        name='call_outcome_enum', create_type=False,
-    )
-    call_outcome_enum.create(op.get_bind(), checkfirst=True)
-
-    contract_status_enum = postgresql.ENUM(
-        'active', 'warning', 'grace_period', 'expired',
-        'suspended', 'cancelled',
-        name='contract_status_enum', create_type=False,
-    )
-    contract_status_enum.create(op.get_bind(), checkfirst=True)
-
-    billing_period_enum = postgresql.ENUM(
-        'monthly', 'yearly',
-        name='billing_period_enum', create_type=False,
-    )
-    billing_period_enum.create(op.get_bind(), checkfirst=True)
-
-    payment_status_enum = postgresql.ENUM(
-        'paid', 'pending', 'overdue', 'failed',
-        name='payment_status_enum', create_type=False,
-    )
-    payment_status_enum.create(op.get_bind(), checkfirst=True)
-
-    custom_field_type_enum = postgresql.ENUM(
-        'text', 'number', 'dropdown', 'date', 'boolean',
-        name='custom_field_type_enum', create_type=False,
-    )
-    custom_field_type_enum.create(op.get_bind(), checkfirst=True)
-
-    # Also create the legacy callstatusenum used by sipuni_call_events
-    # (Enum(CallStatusEnum) without explicit name defaults to the class name)
-    callstatusenum = postgresql.ENUM(
-        'RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL',
-        'CONGESTION', 'CHANUNAVAIL',
-        name='callstatusenum', create_type=False,
-    )
-    callstatusenum.create(op.get_bind(), checkfirst=True)
+    enums = [
+        ("provider_enum", "'sipuni', 'binotel'"),
+        ("role_enum", "'owner', 'company_admin', 'company_manager', 'company_operator'"),
+        ("lead_status_enum", "'new', 'contacted', 'qualified', 'converted', 'lost'"),
+        ("pipeline_stage_enum", "'new', 'contact_made', 'meeting_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'"),
+        ("deal_stage_enum", "'prospecting', 'qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost'"),
+        ("task_status_enum", "'pending', 'in_progress', 'completed', 'cancelled'"),
+        ("task_priority_enum", "'low', 'medium', 'high', 'urgent'"),
+        ("call_direction_enum", "'inbound', 'outbound', 'internal'"),
+        ("call_status_enum", "'RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL'"),
+        ("call_outcome_enum", "'interested', 'appointment_scheduled', 'follow_up', 'sale_made', 'no_answer', 'left_voicemail', 'busy', 'callback_requested', 'information_provided', 'not_interested', 'wrong_number', 'do_not_call', 'customer_complaint', 'other'"),
+        ("contract_status_enum", "'active', 'warning', 'grace_period', 'expired', 'suspended', 'cancelled'"),
+        ("billing_period_enum", "'monthly', 'yearly'"),
+        ("payment_status_enum", "'paid', 'pending', 'overdue', 'failed'"),
+        ("custom_field_type_enum", "'text', 'number', 'dropdown', 'date', 'boolean'"),
+        ("callstatusenum", "'RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL'"),
+    ]
+    for name, values in enums:
+        op.execute(sa.text(f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({values}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;"))
 
     # ------------------------------------------------------------------
     # 2. Create tables (ordered by foreign key dependencies)
