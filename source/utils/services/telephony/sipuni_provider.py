@@ -4,6 +4,7 @@ Sipuni telephony provider implementation
 Optimized for production:
 - Uses shared connection pool
 - Automatic retry on failures
+- Handles all 4 webhook events (call start, hang-up, answer, transfer)
 """
 
 import hashlib
@@ -242,39 +243,123 @@ class SipuniProvider(TelephonyProvider):
         """
         return None
 
+    # ── Webhook handling ──────────────────────────────────────
+
     async def handle_webhook(
         self,
         payload: Dict[str, Any],
         headers: Dict[str, str]
     ) -> Optional[Dict[str, Any]]:
         """
-        Process Sipuni webhook (stream event)
+        Process Sipuni webhook events.
 
-        Returns normalized call data or None if not a call-end event (event=2).
-        Query params arrive as strings, so compare accordingly.
+        Handles all 4 event types:
+          1 = Call start (RINGING)
+          2 = Hang-up (final state)
+          3 = Answer (call_answer_timestamp)
+          4 = Transfer hang-up (transfer info + partial end)
+
+        Returns normalized call data dict with '_event_type' key for handler logic.
+        Returns None for unknown event types.
         """
-        if str(payload.get('event')) != '2':
-            return None
+        event = str(payload.get('event', ''))
 
-        # Query params are strings — cast timestamps to int for BigInteger columns
-        call_start = payload.get('call_start_timestamp')
-        call_end = payload.get('timestamp')
+        if event == '1':
+            return self._handle_call_start(payload)
+        elif event == '2':
+            return self._handle_hangup(payload)
+        elif event == '3':
+            return self._handle_answer(payload)
+        elif event == '4':
+            return self._handle_transfer_hangup(payload)
 
-        # Use callbackId to match the id returned by Sipuni's callback API,
-        # which is what we store as provider_call_id when initiating calls.
-        # Fall back to call_id for inbound calls that have no callbackId.
+        return None
+
+    def _extract_common_fields(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract fields common to all webhook events."""
         provider_id = payload.get('callbackId') or payload.get('call_id', '')
+
+        src_num = payload.get('src_num', '')
+        if self.cabinet_id and src_num.startswith(str(self.cabinet_id)):
+            src_num = src_num[len(str(self.cabinet_id)):]
+
+        dst_num = payload.get('dst_num') or payload.get('pbxdstnum', '')
 
         return {
             "provider_call_id": f"sipuni_{provider_id}",
-            "phone_1": payload.get('src_num'),
-            "phone_2": payload.get('pbxdstnum'),
+            "phone_1": src_num,
+            "phone_2": dst_num,
+            "direction": self._determine_direction(payload),
+            "scheme_name": payload.get('treeName') or None,
+            "scheme_number": payload.get('treeNumber') or None,
+        }
+
+    def _handle_call_start(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Event 1: Call initiated — create record with RINGING state."""
+        data = self._extract_common_fields(payload)
+        timestamp = payload.get('timestamp')
+
+        data.update({
+            "state": "RINGING",
+            "call_start_timestamp": int(timestamp) if timestamp else None,
+            "last_called": payload.get('last_called') or None,
+            "_event_type": "call_started",
+        })
+        return data
+
+    def _handle_hangup(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Event 2: Call ended — set final state, recording, timestamps."""
+        data = self._extract_common_fields(payload)
+
+        call_start = payload.get('call_start_timestamp')
+        call_end = payload.get('timestamp')
+        call_answer = payload.get('call_answer_timestamp')
+
+        data.update({
             "state": payload.get('status'),
             "call_start_timestamp": int(call_start) if call_start else None,
             "call_end_timestamp": int(call_end) if call_end else None,
-            "record_url": payload.get('call_record_link'),
-            "direction": self._determine_direction(payload),
-        }
+            "call_answer_timestamp": int(call_answer) if call_answer and str(call_answer) != '0' else None,
+            "record_url": payload.get('call_record_link') or None,
+            "transfer_from": payload.get('transfer_from') or None,
+            "last_called": payload.get('last_called') or None,
+            "_event_type": "call_ended",
+        })
+        return data
+
+    def _handle_answer(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Event 3: Call answered — record answer timestamp."""
+        data = self._extract_common_fields(payload)
+        timestamp = payload.get('timestamp')
+
+        data.update({
+            "call_answer_timestamp": int(timestamp) if timestamp else None,
+            "last_called": payload.get('last_called') or None,
+            "_event_type": "call_answered",
+        })
+        # Don't set state — let event 2 set the final state
+        return data
+
+    def _handle_transfer_hangup(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Event 4: Transfer hang-up — mark as transfer, record transfer info."""
+        data = self._extract_common_fields(payload)
+
+        call_start = payload.get('call_start_timestamp')
+        call_end = payload.get('timestamp')
+        call_answer = payload.get('call_answer_timestamp')
+
+        data.update({
+            "state": payload.get('status'),
+            "call_start_timestamp": int(call_start) if call_start else None,
+            "call_end_timestamp": int(call_end) if call_end else None,
+            "call_answer_timestamp": int(call_answer) if call_answer and str(call_answer) != '0' else None,
+            "record_url": payload.get('call_record_link') or None,
+            "is_transfer": True,
+            "transfer_from": payload.get('transfer_from') or None,
+            "last_called": payload.get('last_called') or None,
+            "_event_type": "call_transferred",
+        })
+        return data
 
     def _determine_direction(self, payload: Dict[str, Any]) -> str:
         """Determine call direction from src_type/dst_type (1=external, 2=internal)"""

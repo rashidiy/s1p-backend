@@ -11,7 +11,7 @@ from db import get_session
 from db.models.user import User
 from db.models.company import Company
 from db.models.call_event import CallEvent
-from db.models.enums import ProviderEnum
+from db.models.enums import ProviderEnum, RoleEnum
 from api.v1.schemas.call import (
     CallRequest, CallNumberRequest, CallTreeRequest, CallResponse,
 )
@@ -22,7 +22,86 @@ from utils.permissions import require_permissions, Permissions
 from .common import resolve_operator_id, require_provider, next_call_number
 
 
+def _resolve_sip_ext(user: User, request_operator_id: str | None) -> str:
+    """Determine the SIP extension to use for the call.
+
+    Operators always use their assigned extension.
+    Admins/managers use the one they provide in the request.
+    """
+    if user.role == RoleEnum.COMPANY_OPERATOR:
+        if not user.sip_extension:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No SIP extension assigned to your account",
+            )
+        return user.sip_extension
+    if request_operator_id:
+        return request_operator_id
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Operator SIP extension is required",
+    )
+
+
 router = APIRouter(prefix="/calls/sipuni", tags=["Calls - Sipuni"])
+
+
+async def _upsert_call_event(
+    session: AsyncSession,
+    company: Company,
+    provider_call_id: str,
+    phone_1: str,
+    phone_2: str,
+    operator_id,
+    utm_source=None,
+    utm_medium=None,
+    utm_campaign=None,
+) -> int:
+    """Create or update a CallEvent, handling the race with webhook event 1.
+
+    When a call is initiated, Sipuni may fire event 1 (call start) before
+    this endpoint finishes. If the webhook already created the row, we
+    update it with operator_id and UTM data instead of failing with a
+    duplicate key error.
+    """
+    existing = await CallEvent.get(
+        session=session,
+        company_id=company.id,
+        provider_type=company.provider_type,
+        provider_call_id=provider_call_id,
+    )
+    if existing:
+        await CallEvent.update_by(
+            session=session,
+            values={
+                "operator_id": operator_id,
+                "phone_1": phone_1,
+                "phone_2": phone_2,
+                "utm_source": utm_source,
+                "utm_medium": utm_medium,
+                "utm_campaign": utm_campaign,
+            },
+            id=existing.id,
+            company_id=company.id,
+        )
+        return existing.id
+    else:
+        call_num = await next_call_number(session, company.id)
+        await CallEvent.create(
+            session=session,
+            company_id=company.id,
+            id=call_num,
+            provider_type=company.provider_type,
+            provider_call_id=provider_call_id,
+            phone_1=phone_1,
+            phone_2=phone_2,
+            operator_id=operator_id,
+            utm_source=utm_source,
+            utm_medium=utm_medium,
+            utm_campaign=utm_campaign,
+            attempts=1,
+        )
+        return call_num
 
 _sipuni_company = require_provider(ProviderEnum.SIPUNI)
 
@@ -42,40 +121,41 @@ async def call_external(
     through the operator's SIP extension.
     """
     try:
+        sip_ext = _resolve_sip_ext(user, request.operator_id)
+
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
             config=company.provider_config
         )
 
         resolved_operator_id = await resolve_operator_id(
-            request.operator_id, company.id, session
-        ) if request.operator_id else None
+            sip_ext, company.id, session
+        )
         db_operator_id = resolved_operator_id or user.id
 
+        # Override operator_id with resolved SIP extension for the provider call
+        request.operator_id = sip_ext
         result = await provider.make_call(request)
 
         if result.success:
-            call_num = await next_call_number(session, company.id)
-            await CallEvent.create(
+            provider_call_id = f"sipuni_{result.call_id}"
+            call_num = await _upsert_call_event(
                 session=session,
-                company_id=company.id,
-                id=call_num,
-                provider_type=company.provider_type,
-                provider_call_id=f"sipuni_{result.call_id}",
+                company=company,
+                provider_call_id=provider_call_id,
                 phone_1=request.phone_1,
                 phone_2=request.phone_2,
                 operator_id=db_operator_id,
                 utm_source=request.utm_source,
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
-                attempts=1
             )
             return CallResponse(success=True, call_id=call_num)
 
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
 @router.post("/number", response_model=CallResponse)
@@ -93,45 +173,44 @@ async def call_number(
     (or the external number, if reverse=True).
     """
     try:
+        sip_ext = _resolve_sip_ext(user, request.operator_id)
+
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
             config=company.provider_config
         )
 
         resolved_operator_id = await resolve_operator_id(
-            request.operator_id, company.id, session
+            sip_ext, company.id, session
         )
         db_operator_id = resolved_operator_id or user.id
 
         result = await provider.call_number(
             phone=request.phone,
-            sipnumber=request.operator_id,
+            sipnumber=sip_ext,
             reverse=request.reverse,
             antiaon=request.antiaon,
         )
 
         if result.success:
-            call_num = await next_call_number(session, company.id)
-            await CallEvent.create(
+            provider_call_id = f"sipuni_{result.call_id}"
+            call_num = await _upsert_call_event(
                 session=session,
-                company_id=company.id,
-                id=call_num,
-                provider_type=company.provider_type,
-                provider_call_id=f"sipuni_{result.call_id}",
-                phone_1=request.operator_id,
+                company=company,
+                provider_call_id=provider_call_id,
+                phone_1=sip_ext,
                 phone_2=request.phone,
                 operator_id=db_operator_id,
                 utm_source=request.utm_source,
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
-                attempts=1
             )
             return CallResponse(success=True, call_id=call_num)
 
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
 @router.post("/tree", response_model=CallResponse)
@@ -149,46 +228,45 @@ async def call_tree(
     call tree (scheme) before connecting.
     """
     try:
+        sip_ext = _resolve_sip_ext(user, request.operator_id)
+
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
             config=company.provider_config
         )
 
         resolved_operator_id = await resolve_operator_id(
-            request.operator_id, company.id, session
+            sip_ext, company.id, session
         )
         db_operator_id = resolved_operator_id or user.id
 
         result = await provider.call_tree(
             phone=request.phone,
-            sipnumber=request.operator_id,
+            sipnumber=sip_ext,
             tree=request.tree,
             reverse=request.reverse,
             call_attempt_time=request.call_attempt_time,
         )
 
         if result.success:
-            call_num = await next_call_number(session, company.id)
-            await CallEvent.create(
+            provider_call_id = f"sipuni_{result.call_id}"
+            call_num = await _upsert_call_event(
                 session=session,
-                company_id=company.id,
-                id=call_num,
-                provider_type=company.provider_type,
-                provider_call_id=f"sipuni_{result.call_id}",
-                phone_1=request.operator_id,
+                company=company,
+                provider_call_id=provider_call_id,
+                phone_1=sip_ext,
                 phone_2=request.phone,
                 operator_id=db_operator_id,
                 utm_source=request.utm_source,
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
-                attempts=1
             )
             return CallResponse(success=True, call_id=call_num)
 
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
 @router.post("/{call_id}/cancel", response_model=CallResponse)
@@ -233,4 +311,86 @@ async def cancel_call(
         )
 
     except ProviderException as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Sipuni service error")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
+
+
+# ── Sipuni Operators List ─────────────────────────────────────────────
+
+# In-memory cache: {company_id: {"data": [...], "expires": timestamp}}
+_operators_cache: dict = {}
+_CACHE_TTL = 600  # 10 minutes
+
+
+@router.get("/operators")
+@require_permissions(Permissions.CALLS_MAKE)
+async def list_sipuni_operators(
+    company: Company = Depends(_sipuni_company),
+    user: User = User.current(),
+):
+    """
+    List all Sipuni operators (SIP extensions) with their online status.
+
+    Calls Sipuni statistic/operators API and parses the CSV response.
+    Results are cached for 10 minutes per company.
+    """
+    import hashlib
+    import csv
+    import io
+    import time
+    import httpx
+
+    # Check cache
+    cache_key = str(company.id)
+    cached = _operators_cache.get(cache_key)
+    if cached and cached["expires"] > time.time():
+        return cached["data"]
+
+    cabinet_id = (company.provider_config or {}).get("cabinet_id")
+    security_key = (company.provider_config or {}).get("security_key")
+
+    if not cabinet_id or not security_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sipuni credentials not configured",
+        )
+
+    hash_value = hashlib.md5(
+        f"{cabinet_id}+{security_key}".encode()
+    ).hexdigest()
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://sipuni.com/api/statistic/operators",
+                data={"user": cabinet_id, "hash": hash_value},
+            )
+            resp.raise_for_status()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Sipuni service error: {e}",
+        )
+
+    # Parse CSV response: extension;name;status (first row is header)
+    text = resp.text.strip()
+    if not text:
+        return []
+
+    operators = []
+    reader = csv.reader(io.StringIO(text), delimiter=";")
+    header_skipped = False
+    for row in reader:
+        if not header_skipped:
+            header_skipped = True
+            continue
+        if len(row) >= 2:
+            operators.append({
+                "extension": row[0].strip(),
+                "name": row[1].strip() if len(row) > 1 else "",
+                "status": row[2].strip() if len(row) > 2 else "unknown",
+            })
+
+    # Cache result
+    _operators_cache[cache_key] = {"data": operators, "expires": time.time() + _CACHE_TTL}
+
+    return operators

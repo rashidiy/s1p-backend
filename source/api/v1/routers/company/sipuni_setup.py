@@ -32,7 +32,7 @@ router = APIRouter(prefix="/sipuni", tags=["Sipuni Setup"])
 def _get_webhook_url(company: Company) -> str:
     """Build the Sipuni webhook URL for a company."""
     base = AppConfig.BASE_URL.rstrip("/")
-    return f"{base}/api/v1/webhooks/sipuni/{company.webhook_token}"
+    return f"{base}/api/v1/company/webhooks/{company.webhook_token}"
 
 
 def _mask_key(key: str) -> str:

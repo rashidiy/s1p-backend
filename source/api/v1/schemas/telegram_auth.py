@@ -24,6 +24,7 @@ class InviteTokenCreateRequest(BaseModel):
     role: str = Field(default="company_operator")
     permissions: Optional[List[str]] = Field(default=None)
     permission_group_id: Optional[uuid.UUID] = None
+    sip_extension: Optional[str] = Field(None, max_length=20)
 
     @field_validator("permissions")
     @classmethod

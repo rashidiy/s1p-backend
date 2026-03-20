@@ -292,6 +292,8 @@ async def update_user(
         user.last_name = data.last_name
     if data.phone is not None:
         user.phone = data.phone
+    if data.sip_extension is not None:
+        user.sip_extension = data.sip_extension
     if data.is_active is not None:
         user.is_active = data.is_active
     if data.is_suspended is not None:
@@ -515,6 +517,7 @@ async def invite_telegram(
         first_name=data.first_name,
         last_name=data.last_name,
         phone=data.phone,
+        sip_extension=data.sip_extension,
         permissions=data.permissions if data.permissions else ROLE_PERMISSIONS.get(role, []),
         permission_group_id=permission_group_id,
         created_by=admin.id,

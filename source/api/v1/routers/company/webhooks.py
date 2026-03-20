@@ -32,6 +32,12 @@ router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
 limiter = Limiter(key_func=get_remote_address)
 
+# Terminal call states — once set, RINGING should not overwrite
+_TERMINAL_STATES = {
+    CallStatusEnum.ANSWER, CallStatusEnum.BUSY, CallStatusEnum.NOANSWER,
+    CallStatusEnum.CANCEL, CallStatusEnum.CONGESTION, CallStatusEnum.CHANUNAVAIL,
+}
+
 
 class WebhookCallData(BaseModel):
     """
@@ -49,6 +55,7 @@ class WebhookCallData(BaseModel):
     record_url: Optional[str] = None
     call_start_timestamp: Optional[int] = None
     call_end_timestamp: Optional[int] = None
+    call_answer_timestamp: Optional[int] = None
     direction: Optional[str] = None
     attempts: Optional[int] = None
     company_number: Optional[str] = None
@@ -60,6 +67,13 @@ class WebhookCallData(BaseModel):
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
     deal_id: Optional[UUID] = None
+
+    # Sipuni webhook event fields
+    scheme_name: Optional[str] = None
+    scheme_number: Optional[str] = None
+    transfer_from: Optional[str] = None
+    last_called: Optional[str] = None
+    is_transfer: Optional[bool] = None
 
     # Fields that the provider handler may include but are set later by the router
     company_id: Optional[UUID] = None
@@ -213,6 +227,9 @@ async def handle_webhook(
             # Webhook was valid but not a call event we care about
             return {"status": "ignored", "message": "Event type not handled"}
 
+        # Extract _event_type before schema validation (not a DB field)
+        event_type = call_data.pop('_event_type', None)
+
         # Validate normalized data against strict schema (extra='forbid')
         try:
             validated = WebhookCallData(**call_data)
@@ -250,29 +267,46 @@ async def handle_webhook(
         )
 
         if existing_call:
-            # Update existing call event
+            # Don't overwrite phones set by call endpoint with SIP extensions from webhook
+            if existing_call.phone_1 and 'phone_1' in call_data:
+                call_data.pop('phone_1')
+            if existing_call.phone_2 and 'phone_2' in call_data:
+                call_data.pop('phone_2')
+
+            # Guard: don't let earlier events overwrite terminal states with RINGING
+            existing_state = existing_call.state
+            incoming_state = call_data.get('state')
+            if (
+                existing_state in _TERMINAL_STATES
+                and incoming_state
+                and incoming_state == CallStatusEnum.RINGING.value
+            ):
+                call_data.pop('state', None)
+
+            # Update existing call event (company_id for defense-in-depth)
             await CallEvent.update_by(
                 session=session,
                 values=call_data,
-                id=existing_call.id
+                id=existing_call.id,
+                company_id=company.id,
             )
-            # Send Telegram notification for completed/missed calls on update
-            background_tasks.add_task(
-                _send_call_notification, company.id, call_data
+
+            # Fire notifications based on event type
+            _schedule_notifications(
+                background_tasks, session, company.id,
+                call_data, existing_call.id, event_type,
             )
-            # Fire outbound webhook for call events
-            await _fire_call_webhook(session, company.id, call_data, existing_call.id)
             return {"status": "updated", "call_id": existing_call.id}
         else:
             # Assign company-scoped id for new events
             call_data['id'] = await next_call_number(session, company.id)
             call_event = await CallEvent.create(session=session, **call_data)
-            # Send Telegram notification for completed/missed calls
-            background_tasks.add_task(
-                _send_call_notification, company.id, call_data
+
+            # Fire notifications based on event type
+            _schedule_notifications(
+                background_tasks, session, company.id,
+                call_data, call_event.id, event_type,
             )
-            # Fire outbound webhook for call events
-            await _fire_call_webhook(session, company.id, call_data, call_event.id)
             return {"status": "created", "call_id": call_event.id}
 
     except HTTPException:
@@ -283,21 +317,75 @@ async def handle_webhook(
         return {"status": "error", "message": "Internal processing error"}
 
 
-async def _fire_call_webhook(session, company_id, call_data: dict, call_id):
-    """Fire outbound webhook for call.completed or call.missed events."""
+def _schedule_notifications(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession,
+    company_id: UUID,
+    call_data: dict,
+    call_id: int,
+    event_type: Optional[str],
+):
+    """Schedule outbound webhooks and Telegram notifications based on event type."""
+
+    if event_type == "call_started":
+        # Fire call.started outbound webhook, no Telegram (too noisy)
+        background_tasks.add_task(
+            _fire_call_webhook, session, company_id, call_data, call_id,
+            webhook_event="call.started",
+        )
+
+    elif event_type == "call_answered":
+        # No notifications for answer event
+        pass
+
+    elif event_type == "call_transferred":
+        # Fire call.transferred outbound webhook, no Telegram yet
+        background_tasks.add_task(
+            _fire_call_webhook, session, company_id, call_data, call_id,
+            webhook_event="call.transferred",
+        )
+
+    elif event_type == "call_ended":
+        # Final event — fire outbound webhook + Telegram notification
+        background_tasks.add_task(
+            _send_call_notification, company_id, call_data
+        )
+        background_tasks.add_task(
+            _fire_call_webhook, session, company_id, call_data, call_id,
+        )
+
+    else:
+        # Legacy path (Binotel or unknown) — keep existing behavior
+        background_tasks.add_task(
+            _send_call_notification, company_id, call_data
+        )
+        background_tasks.add_task(
+            _fire_call_webhook, session, company_id, call_data, call_id,
+        )
+
+
+async def _fire_call_webhook(
+    session, company_id, call_data: dict, call_id, webhook_event: Optional[str] = None
+):
+    """Fire outbound webhook for call events."""
     state = call_data.get('state')
-    if not state:
+
+    # If explicit webhook_event provided, use it
+    if webhook_event:
+        event_type = webhook_event
+    elif not state:
         return
+    else:
+        is_answered = state == CallStatusEnum.ANSWER or (isinstance(state, str) and state == "ANSWER")
+        is_missed = state in (CallStatusEnum.NOANSWER, CallStatusEnum.BUSY, CallStatusEnum.CANCEL) or (
+            isinstance(state, str) and state in ("NOANSWER", "BUSY", "CANCEL")
+        )
 
-    is_answered = state == CallStatusEnum.ANSWER or (isinstance(state, str) and state == "ANSWER")
-    is_missed = state in (CallStatusEnum.NOANSWER, CallStatusEnum.BUSY, CallStatusEnum.CANCEL) or (
-        isinstance(state, str) and state in ("NOANSWER", "BUSY", "CANCEL")
-    )
+        if not is_answered and not is_missed:
+            return
 
-    if not is_answered and not is_missed:
-        return
+        event_type = "call.completed" if is_answered else "call.missed"
 
-    event_type = "call.completed" if is_answered else "call.missed"
     direction = call_data.get('direction')
     if hasattr(direction, 'value'):
         direction = direction.value
@@ -312,7 +400,9 @@ async def _fire_call_webhook(session, company_id, call_data: dict, call_id):
                 "phone_2": call_data.get('phone_2'),
                 "direction": str(direction) if direction else None,
                 "duration": call_data.get('billing_sec'),
-                "state": state.value if hasattr(state, 'value') else str(state),
+                "state": state.value if hasattr(state, 'value') else str(state) if state else None,
+                "scheme_name": call_data.get('scheme_name'),
+                "is_transfer": call_data.get('is_transfer', False),
             },
             session=session,
         )

@@ -601,6 +601,7 @@ async def telegram_register(
         first_name=final_first_name,
         last_name=final_last_name,
         phone=final_phone,
+        sip_extension=invite.sip_extension,
         company_id=invite.company_id,
         role=invite.role,
         permissions=invite.permissions if invite.permissions else ROLE_PERMISSIONS.get(invite.role, []),

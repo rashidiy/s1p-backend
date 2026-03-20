@@ -35,6 +35,7 @@ class UserUpdateRequest(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=225)
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
+    sip_extension: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
     is_suspended: Optional[bool] = None
     role: Optional[str] = None
@@ -65,6 +66,7 @@ class UserResponse(UserBase):
     role: str
     permissions: List[str]
     permission_group_id: Optional[UUID] = None
+    sip_extension: Optional[str] = None
     is_active: Optional[bool] = True
     is_suspended: Optional[bool] = False
     language: Optional[str] = "ru"
