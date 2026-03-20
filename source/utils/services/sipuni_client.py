@@ -47,17 +47,19 @@ class SipuniAsyncClient:
 
     BASE = "https://sipuni.com"
 
+    BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+    SIMPLE_UA = "S1P-CRM/1.0"
+
     def __init__(self):
+        # Browser UA needed for login (Sipuni requires it for CSRF form)
         self.client = httpx.AsyncClient(
             follow_redirects=True,
             timeout=60,
             http2=False,
-            headers={
-                "User-Agent": "S1P-CRM/1.0",
-            },
+            headers={"User-Agent": self.BROWSER_UA},
         )
 
-    async def _fresh_client(self):
+    async def _fresh_client(self, ua=None):
         """Recreate client with same cookies to avoid stale connections."""
         cookies = dict(self.client.cookies)
         await self.client.aclose()
@@ -66,7 +68,7 @@ class SipuniAsyncClient:
             timeout=60,
             http2=False,
             cookies=cookies,
-            headers={"User-Agent": "S1P-CRM/1.0"},
+            headers={"User-Agent": ua or self.SIMPLE_UA},
         )
 
     async def login(self, email: str, password: str) -> bool:
