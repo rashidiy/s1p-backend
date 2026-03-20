@@ -52,10 +52,21 @@ class SipuniAsyncClient:
             follow_redirects=True,
             timeout=60,
             http2=False,
-            limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
             headers={
                 "User-Agent": "S1P-CRM/1.0",
             },
+        )
+
+    async def _fresh_client(self):
+        """Recreate client with same cookies to avoid stale connections."""
+        cookies = dict(self.client.cookies)
+        await self.client.aclose()
+        self.client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=60,
+            http2=False,
+            cookies=cookies,
+            headers={"User-Agent": "S1P-CRM/1.0"},
         )
 
     async def login(self, email: str, password: str) -> bool:
@@ -82,19 +93,8 @@ class SipuniAsyncClient:
         if "/login" in str(resp.url):
             return False
 
-        # Sipuni serves a heavy JS-loaded page to browser UAs that hangs in Docker.
-        # Recreate client with simple UA and fresh connection after login.
-        cookies = dict(self.client.cookies)
-        await self.client.aclose()
-        self.client = httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=60,
-            http2=False,
-            cookies=cookies,
-            headers={
-                "User-Agent": "S1P-CRM/1.0",
-            },
-        )
+        # Recreate client with fresh connection after login to avoid stale connections.
+        await self._fresh_client()
 
         return True
 
@@ -250,14 +250,17 @@ class SipuniAsyncClient:
         if not creds["user_id"] or not creds["secret_key"]:
             raise CredentialsNotFound("Could not extract API credentials from Sipuni dashboard.")
 
+        await self._fresh_client()
         stream_ok = await self.enable_stream_api()
         if not stream_ok:
             raise ServiceEnableFailed("Failed to enable Stream API (call event webhooks).")
 
+        await self._fresh_client()
         callback_ok = await self.enable_callback()
         if not callback_ok:
             raise ServiceEnableFailed("Failed to enable Callback API (outbound calls).")
 
+        await self._fresh_client()
         webhook_ok = await self.add_webhook(webhook_url)
         if not webhook_ok:
             raise WebhookSetupFailed("Failed to add webhook URL to Sipuni.")
