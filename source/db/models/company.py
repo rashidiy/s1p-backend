@@ -45,7 +45,7 @@ class Company(Base, ObjectManagerMixin):
 
     # Telephony provider
     provider_type = Column(
-        SQLEnum(ProviderEnum, name="provider_enum"),
+        SQLEnum(ProviderEnum, name="provider_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         index=True
     )

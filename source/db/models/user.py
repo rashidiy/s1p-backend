@@ -78,11 +78,12 @@ class User(Base, ObjectManagerMixin, AuthenticationManagerMixin):
     last_name: Mapped[Optional[str]] = mapped_column(String(225))
     email: Mapped[Optional[str]] = mapped_column(String(225), nullable=True, index=True)
     phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    sip_extension: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(225), nullable=True)
 
     # Role & Permissions
     role: Mapped[RoleEnum] = mapped_column(
-        SQLEnum(RoleEnum, name="role_enum"),
+        SQLEnum(RoleEnum, name="role_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=RoleEnum.COMPANY_OPERATOR
     )

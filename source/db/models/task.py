@@ -52,12 +52,12 @@ class Task(Base, ObjectManagerMixin):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     status = Column(
-        SQLEnum(TaskStatusEnum, name="task_status_enum"),
+        SQLEnum(TaskStatusEnum, name="task_status_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=TaskStatusEnum.PENDING
     )
     priority = Column(
-        SQLEnum(TaskPriorityEnum, name="task_priority_enum"),
+        SQLEnum(TaskPriorityEnum, name="task_priority_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=TaskPriorityEnum.MEDIUM
     )

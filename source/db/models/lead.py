@@ -60,12 +60,12 @@ class Lead(Base, ObjectManagerMixin):
     description = Column(Text)
     source = Column(String(100))  # website, referral, call, campaign, social
     status = Column(
-        SQLEnum(LeadStatusEnum, name="lead_status_enum"),
+        SQLEnum(LeadStatusEnum, name="lead_status_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=LeadStatusEnum.NEW
     )
     pipeline_stage = Column(
-        SQLEnum(PipelineStageEnum, name="pipeline_stage_enum"),
+        SQLEnum(PipelineStageEnum, name="pipeline_stage_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=PipelineStageEnum.NEW
     )

@@ -67,7 +67,7 @@ class Deal(Base, ObjectManagerMixin):
     amount = Column(Numeric(15, 2), nullable=False)
     currency = Column(String(10), default="USD")
     stage = Column(
-        SQLEnum(DealStageEnum, name="deal_stage_enum"),
+        SQLEnum(DealStageEnum, name="deal_stage_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=DealStageEnum.PROSPECTING
     )

@@ -7,6 +7,7 @@ import enum
 
 class CallStatusEnum(str, enum.Enum):
     """Call status enumeration"""
+    RINGING = "RINGING"
     ANSWER = "ANSWER"
     BUSY = "BUSY"
     NOANSWER = "NOANSWER"

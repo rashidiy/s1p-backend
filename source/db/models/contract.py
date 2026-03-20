@@ -62,19 +62,19 @@ class Contract(Base, ObjectManagerMixin):
     price = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(3), nullable=False, default="USD")
     billing_period = Column(
-        SQLEnum(BillingPeriodEnum, name="billing_period_enum"),
+        SQLEnum(BillingPeriodEnum, name="billing_period_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=BillingPeriodEnum.MONTHLY
     )
 
     # Status
     status = Column(
-        SQLEnum(ContractStatusEnum, name="contract_status_enum"),
+        SQLEnum(ContractStatusEnum, name="contract_status_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=ContractStatusEnum.ACTIVE
     )
     payment_status = Column(
-        SQLEnum(PaymentStatusEnum, name="payment_status_enum"),
+        SQLEnum(PaymentStatusEnum, name="payment_status_enum", values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=PaymentStatusEnum.PAID
     )
