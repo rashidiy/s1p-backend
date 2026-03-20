@@ -56,22 +56,29 @@ class CompanyCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     subdomain: Optional[str] = Field(None, min_length=1, max_length=100, description="Company subdomain (auto-generated if not provided)")
     provider_type: str = Field(..., description="Provider: sipuni or binotel")
-    provider_config: dict = Field(..., description="Provider-specific configuration (requires cabinet_id and security_key)")
+    provider_config: Optional[dict] = Field(default_factory=dict, description="Provider-specific configuration (optional — can connect later)")
+    sipuni_login: Optional[str] = Field(None, description="Sipuni account email/phone for auto-setup")
+    sipuni_password: Optional[str] = Field(None, description="Sipuni account password for auto-setup")
     settings: Optional[dict] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def validate_provider_config(self):
         provider = self.provider_type.lower()
-        config = self.provider_config
+        config = self.provider_config or {}
 
-        if provider == 'sipuni':
-            validated = SipuniConfigSchema(**config)
-        elif provider == 'binotel':
-            validated = BinotelConfigSchema(**config)
-        else:
+        if provider not in ('sipuni', 'binotel'):
             raise ValueError(f"Invalid provider type: {provider}. Must be 'sipuni' or 'binotel'")
 
-        self.provider_config = validated.model_dump(exclude_none=True)
+        # If provider_config has credentials, validate them
+        if config.get('cabinet_id') or config.get('security_key'):
+            if provider == 'sipuni':
+                validated = SipuniConfigSchema(**config)
+            elif provider == 'binotel':
+                validated = BinotelConfigSchema(**config)
+            self.provider_config = validated.model_dump(exclude_none=True)
+        else:
+            self.provider_config = {}
+
         return self
 
     class Config:
