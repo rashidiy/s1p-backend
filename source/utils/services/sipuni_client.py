@@ -52,6 +52,7 @@ class SipuniAsyncClient:
             follow_redirects=True,
             timeout=60,
             http2=False,
+            limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
             headers={
                 "User-Agent": "S1P-CRM/1.0",
             },
