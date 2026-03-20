@@ -69,7 +69,7 @@ def upgrade() -> None:
         sa.Column('owner_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
         sa.Column('subdomain', sa.String(100), nullable=False),
-        sa.Column('provider_type', sa.Enum('sipuni', 'binotel', name='provider_enum', create_type=False), nullable=False),
+        sa.Column('provider_type', postgresql.ENUM('sipuni', 'binotel', name='provider_enum', create_type=False), nullable=False),
         sa.Column('provider_config', postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'{}'::jsonb"), nullable=False),
         sa.Column('webhook_token', sa.String(64), nullable=True),
         sa.Column('timezone', sa.String(50), nullable=True),
@@ -125,7 +125,7 @@ def upgrade() -> None:
         sa.Column('phone', sa.String(50), nullable=False),
         sa.Column('sip_extension', sa.String(20), nullable=True),
         sa.Column('password_hash', sa.String(225), nullable=True),
-        sa.Column('role', sa.Enum('owner', 'company_admin', 'company_manager', 'company_operator', name='role_enum', create_type=False), nullable=False),
+        sa.Column('role', postgresql.ENUM('owner', 'company_admin', 'company_manager', 'company_operator', name='role_enum', create_type=False), nullable=False),
         sa.Column('permissions', postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'[]'::jsonb"), nullable=False),
         sa.Column('language', sa.String(10), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=True),
@@ -196,8 +196,8 @@ def upgrade() -> None:
         sa.Column('title', sa.String(255), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('source', sa.String(100), nullable=True),
-        sa.Column('status', sa.Enum('new', 'contacted', 'qualified', 'converted', 'lost', name='lead_status_enum', create_type=False), nullable=False),
-        sa.Column('pipeline_stage', sa.Enum('new', 'contact_made', 'meeting_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost', name='pipeline_stage_enum', create_type=False), nullable=False),
+        sa.Column('status', postgresql.ENUM('new', 'contacted', 'qualified', 'converted', 'lost', name='lead_status_enum', create_type=False), nullable=False),
+        sa.Column('pipeline_stage', postgresql.ENUM('new', 'contact_made', 'meeting_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost', name='pipeline_stage_enum', create_type=False), nullable=False),
         sa.Column('estimated_value', sa.Numeric(precision=15, scale=2), nullable=True),
         sa.Column('currency', sa.String(10), nullable=True),
         sa.Column('assigned_to', postgresql.UUID(as_uuid=True), nullable=True),
@@ -232,7 +232,7 @@ def upgrade() -> None:
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('amount', sa.Numeric(precision=15, scale=2), nullable=False),
         sa.Column('currency', sa.String(10), nullable=True),
-        sa.Column('stage', sa.Enum('prospecting', 'qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost', name='deal_stage_enum', create_type=False), nullable=False),
+        sa.Column('stage', postgresql.ENUM('prospecting', 'qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost', name='deal_stage_enum', create_type=False), nullable=False),
         sa.Column('probability', sa.Integer(), nullable=True),
         sa.Column('win_reason', sa.String(), nullable=True),
         sa.Column('loss_reason', sa.String(), nullable=True),
@@ -265,13 +265,13 @@ def upgrade() -> None:
         'call_events',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('company_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('provider_type', sa.Enum('sipuni', 'binotel', name='provider_enum', create_type=False), nullable=False),
+        sa.Column('provider_type', postgresql.ENUM('sipuni', 'binotel', name='provider_enum', create_type=False), nullable=False),
         sa.Column('provider_call_id', sa.String(255), nullable=False),
         sa.Column('phone_1', sa.String(50), nullable=True),
         sa.Column('phone_2', sa.String(50), nullable=True),
         sa.Column('operator_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('direction', sa.Enum('inbound', 'outbound', 'internal', name='call_direction_enum', create_type=False), nullable=True),
-        sa.Column('state', sa.Enum('RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL', name='call_status_enum', create_type=False), nullable=True),
+        sa.Column('direction', postgresql.ENUM('inbound', 'outbound', 'internal', name='call_direction_enum', create_type=False), nullable=True),
+        sa.Column('state', postgresql.ENUM('RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL', name='call_status_enum', create_type=False), nullable=True),
         sa.Column('attempts', sa.Integer(), nullable=True),
         sa.Column('waiting_sec', sa.Integer(), nullable=True),
         sa.Column('billing_sec', sa.Integer(), nullable=True),
@@ -287,13 +287,7 @@ def upgrade() -> None:
         sa.Column('contact_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('lead_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('deal_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('outcome', sa.Enum(
-            'interested', 'appointment_scheduled', 'follow_up', 'sale_made',
-            'no_answer', 'left_voicemail', 'busy', 'callback_requested',
-            'information_provided', 'not_interested', 'wrong_number',
-            'do_not_call', 'customer_complaint', 'other',
-            name='call_outcome_enum', create_type=False,
-        ), nullable=True),
+        sa.Column('outcome', postgresql.ENUM('interested', 'appointment_scheduled', 'follow_up', 'sale_made', 'no_answer', 'left_voicemail', 'busy', 'callback_requested', 'information_provided', 'not_interested', 'wrong_number', 'do_not_call', 'customer_complaint', 'other', name='call_outcome_enum', create_type=False), nullable=True),
         sa.Column('disposition_notes', sa.Text(), nullable=True),
         sa.Column('utm_source', sa.String(255), nullable=True),
         sa.Column('utm_medium', sa.String(255), nullable=True),
@@ -325,8 +319,8 @@ def upgrade() -> None:
         sa.Column('company_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('title', sa.String(255), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('status', sa.Enum('pending', 'in_progress', 'completed', 'cancelled', name='task_status_enum', create_type=False), nullable=False),
-        sa.Column('priority', sa.Enum('low', 'medium', 'high', 'urgent', name='task_priority_enum', create_type=False), nullable=False),
+        sa.Column('status', postgresql.ENUM('pending', 'in_progress', 'completed', 'cancelled', name='task_status_enum', create_type=False), nullable=False),
+        sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'urgent', name='task_priority_enum', create_type=False), nullable=False),
         sa.Column('due_date', sa.DateTime(timezone=True), nullable=True),
         sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('assigned_to', postgresql.UUID(as_uuid=True), nullable=True),
@@ -398,9 +392,9 @@ def upgrade() -> None:
         sa.Column('max_storage_gb', sa.Integer(), nullable=False),
         sa.Column('price', sa.Numeric(precision=12, scale=2), nullable=False),
         sa.Column('currency', sa.String(3), nullable=False),
-        sa.Column('billing_period', sa.Enum('monthly', 'yearly', name='billing_period_enum', create_type=False), nullable=False),
-        sa.Column('status', sa.Enum('active', 'warning', 'grace_period', 'expired', 'suspended', 'cancelled', name='contract_status_enum', create_type=False), nullable=False),
-        sa.Column('payment_status', sa.Enum('paid', 'pending', 'overdue', 'failed', name='payment_status_enum', create_type=False), nullable=False),
+        sa.Column('billing_period', postgresql.ENUM('monthly', 'yearly', name='billing_period_enum', create_type=False), nullable=False),
+        sa.Column('status', postgresql.ENUM('active', 'warning', 'grace_period', 'expired', 'suspended', 'cancelled', name='contract_status_enum', create_type=False), nullable=False),
+        sa.Column('payment_status', postgresql.ENUM('paid', 'pending', 'overdue', 'failed', name='payment_status_enum', create_type=False), nullable=False),
         sa.Column('start_date', sa.Date(), nullable=False),
         sa.Column('end_date', sa.Date(), nullable=False),
         sa.Column('next_payment_date', sa.Date(), nullable=True),
@@ -451,7 +445,7 @@ def upgrade() -> None:
         sa.Column('company_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('entity_type', sa.String(20), nullable=False),
         sa.Column('field_name', sa.String(100), nullable=False),
-        sa.Column('field_type', sa.Enum('text', 'number', 'dropdown', 'date', 'boolean', name='custom_field_type_enum', create_type=False), nullable=False),
+        sa.Column('field_type', postgresql.ENUM('text', 'number', 'dropdown', 'date', 'boolean', name='custom_field_type_enum', create_type=False), nullable=False),
         sa.Column('options', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column('is_required', sa.Boolean(), server_default=sa.text('false'), nullable=False),
         sa.Column('sort_order', sa.Integer(), server_default=sa.text('0'), nullable=False),
@@ -576,7 +570,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('company_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('token_hash', sa.String(64), nullable=False),
-        sa.Column('role', sa.Enum('owner', 'company_admin', 'company_manager', 'company_operator', name='role_enum', create_type=False), nullable=False),
+        sa.Column('role', postgresql.ENUM('owner', 'company_admin', 'company_manager', 'company_operator', name='role_enum', create_type=False), nullable=False),
         sa.Column('first_name', sa.String(225), nullable=True),
         sa.Column('last_name', sa.String(225), nullable=True),
         sa.Column('phone', sa.String(50), nullable=True),
@@ -655,11 +649,7 @@ def upgrade() -> None:
         sa.Column('tree_number', sa.String(255), nullable=True),
         sa.Column('record_link', sa.String(2048), nullable=True),
         sa.Column('timestamp', sa.BigInteger(), nullable=True),
-        sa.Column('status', sa.Enum(
-            'RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL',
-            'CONGESTION', 'CHANUNAVAIL',
-            name='callstatusenum', create_type=False,
-        ), nullable=True),
+        sa.Column('status', postgresql.ENUM('RINGING', 'ANSWER', 'BUSY', 'NOANSWER', 'CANCEL', 'CONGESTION', 'CHANUNAVAIL', name='callstatusenum', create_type=False), nullable=True),
         sa.ForeignKeyConstraint(['sipuni_id'], ['sipuni.id']),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('call_id'),
@@ -697,18 +687,11 @@ def downgrade() -> None:
     # ------------------------------------------------------------------
     # Drop all enum types
     # ------------------------------------------------------------------
-    sa.Enum(name='callstatusenum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='custom_field_type_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='payment_status_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='billing_period_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='contract_status_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='call_outcome_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='call_status_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='call_direction_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='task_priority_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='task_status_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='deal_stage_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='pipeline_stage_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='lead_status_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='role_enum').drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name='provider_enum').drop(op.get_bind(), checkfirst=True)
+    for name in [
+        'callstatusenum', 'custom_field_type_enum', 'payment_status_enum',
+        'billing_period_enum', 'contract_status_enum', 'call_outcome_enum',
+        'call_status_enum', 'call_direction_enum', 'task_priority_enum',
+        'task_status_enum', 'deal_stage_enum', 'pipeline_stage_enum',
+        'lead_status_enum', 'role_enum', 'provider_enum',
+    ]:
+        op.execute(sa.text(f"DROP TYPE IF EXISTS {name};"))
