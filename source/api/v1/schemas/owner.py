@@ -79,6 +79,10 @@ class CompanyCreateRequest(BaseModel):
         else:
             self.provider_config = {}
 
+        # Sipuni login/password must be provided together
+        if bool(self.sipuni_login) != bool(self.sipuni_password):
+            raise ValueError("Both sipuni_login and sipuni_password must be provided together")
+
         return self
 
     class Config:

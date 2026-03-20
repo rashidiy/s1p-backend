@@ -192,8 +192,16 @@ async def create_company(
     await _create_shadow_user(session, owner, company.id)
 
     # If Sipuni login/password provided, trigger auto-setup in background
-    if data.sipuni_login and data.sipuni_password and provider_type == ProviderEnum.sipuni:
+    if data.sipuni_login and data.sipuni_password and provider_type == ProviderEnum.SIPUNI:
         from api.v1.routers.company.sipuni_setup import _run_sipuni_setup
+        from db.models.sipuni_setup_config import SipuniSetupConfig
+        # Create setup tracking row so status endpoint works
+        await SipuniSetupConfig.create(
+            session=session,
+            company_id=company.id,
+            setup_status="setting_up",
+            setup_method="auto",
+        )
         webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
         background_tasks.add_task(
             _run_sipuni_setup,
