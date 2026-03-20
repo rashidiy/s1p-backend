@@ -182,7 +182,7 @@ async def create_company(
         name=data.name,
         subdomain=subdomain,
         owner_id=owner.id,
-        provider_type=provider_type,
+        provider_type=provider_type.value,
         provider_config=data.provider_config,
         webhook_token=webhook_token,
         is_active=True
