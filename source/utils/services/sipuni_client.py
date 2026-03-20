@@ -53,8 +53,7 @@ class SipuniAsyncClient:
             timeout=60,
             http2=False,
             headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "User-Agent": "S1P-CRM/1.0",
             },
         )
 
