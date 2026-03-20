@@ -52,6 +52,11 @@ async def resolve_operator_id(
     if user:
         return user.id
 
+    # Try SIP extension
+    user = await User.get(sip_extension=operator_id, company_id=company_id, session=session)
+    if user:
+        return user.id
+
     return None
 
 
@@ -69,12 +74,17 @@ async def get_active_company(user: User, session: AsyncSession) -> Company:
 async def next_call_number(session: AsyncSession, company_id: PyUUID) -> int:
     """Return the next company-scoped call number (max + 1).
 
-    Uses SELECT FOR UPDATE to prevent concurrent reads from getting the same MAX.
+    Locks matching rows with FOR UPDATE first (via subquery),
+    then aggregates — PostgreSQL forbids FOR UPDATE with aggregates directly.
     """
-    result = await session.execute(
-        select(func.coalesce(func.max(CallEvent.id), 0) + 1)
+    locked_ids = (
+        select(CallEvent.id)
         .where(CallEvent.company_id == company_id)
         .with_for_update()
+        .subquery()
+    )
+    result = await session.execute(
+        select(func.coalesce(func.max(locked_ids.c.id), 0) + 1)
     )
     return result.scalar_one()
 

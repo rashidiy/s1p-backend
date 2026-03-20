@@ -89,6 +89,7 @@ class CallEventResponse(BaseSchema, TimestampMixin):
     billing_sec: Optional[int] = None
     call_start_timestamp: Optional[int] = None
     call_end_timestamp: Optional[int] = None
+    call_answer_timestamp: Optional[int] = None
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
     deal_id: Optional[UUID] = None
@@ -99,10 +100,26 @@ class CallEventResponse(BaseSchema, TimestampMixin):
     utm_campaign: Optional[str] = None
     record_url: Optional[str] = Field(None, exclude=True)
 
+    # Routing & transfer info
+    scheme_name: Optional[str] = None
+    scheme_number: Optional[str] = None
+    transfer_from: Optional[str] = None
+    last_called: Optional[str] = None
+    is_transfer: bool = False
+
     @computed_field
     @property
     def has_recording(self) -> bool:
         return self.record_url is not None
+
+    @computed_field
+    @property
+    def wait_time_sec(self) -> Optional[int]:
+        """Time from call start to answer, in seconds."""
+        if self.call_answer_timestamp and self.call_start_timestamp:
+            diff = self.call_answer_timestamp - self.call_start_timestamp
+            return diff if diff >= 0 else None
+        return None
 
 
 __all__ = [
