@@ -5,7 +5,7 @@ Owner's company management endpoints
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -132,6 +132,7 @@ async def _get_users_count(session: AsyncSession, company_id: UUID) -> int:
 @router.post("", response_model=CompanyDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
     data: CompanyCreateRequest,
+    background_tasks: BackgroundTasks,
     owner: Owner = Owner.current(),
     session: AsyncSession = Depends(get_session),
 ):
@@ -189,6 +190,18 @@ async def create_company(
 
     # Create shadow admin user for owner impersonation
     await _create_shadow_user(session, owner, company.id)
+
+    # If Sipuni login/password provided, trigger auto-setup in background
+    if data.sipuni_login and data.sipuni_password and provider_type == ProviderEnum.sipuni:
+        from api.v1.routers.company.sipuni_setup import _run_sipuni_setup
+        webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
+        background_tasks.add_task(
+            _run_sipuni_setup,
+            company_id=company.id,
+            email=data.sipuni_login,
+            password=data.sipuni_password,
+            webhook_url=webhook_url,
+        )
 
     # Add computed fields
     company.webhook_url = f"{AppConfig.BASE_URL}/api/v1/company/webhooks/{webhook_token}"
