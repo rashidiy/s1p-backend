@@ -82,6 +82,21 @@ class SipuniAsyncClient:
         if "/login" in str(resp.url):
             return False
 
+        # Sipuni keeps the login connection in a bad state (hangs on reuse).
+        # Recreate the client with the same cookies to get a fresh connection.
+        cookies = dict(self.client.cookies)
+        await self.client.aclose()
+        self.client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=60,
+            http2=False,
+            cookies=cookies,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
+        )
+
         return True
 
     async def get_credentials(self) -> dict:
