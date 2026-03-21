@@ -96,8 +96,12 @@ def validate_webhook_ip(request: Request, provider_type: ProviderEnum) -> bool:
     if not WebhookConfig.WEBHOOK_IP_WHITELIST_ENABLED:
         return True
 
-    # Get client IP from request
-    client_ip = request.client.host if request.client else None
+    # Get client IP — check proxy headers first, then direct connection
+    client_ip = (
+        request.headers.get("x-real-ip")
+        or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
     if not client_ip:
         return False
 
