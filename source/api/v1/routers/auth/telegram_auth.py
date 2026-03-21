@@ -633,8 +633,8 @@ async def telegram_register(
     # 8a. Download Telegram avatar if available and not skipped
     if telegram_data.get("avatar_file_id") and not data.skip_avatar:
         try:
-            from utils.services.avatar_service import download_telegram_avatar
-            filename = await download_telegram_avatar(str(user.id), telegram_user_id)
+            from utils.services.avatar_service import download_telegram_avatar_by_file_id
+            filename = await download_telegram_avatar_by_file_id(str(user.id), telegram_data.get("avatar_file_id"))
             if filename:
                 user.avatar = filename
                 await session.commit()
