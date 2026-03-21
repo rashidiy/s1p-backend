@@ -9,7 +9,7 @@ import socket
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
@@ -108,7 +108,7 @@ async def stream_recording(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Stream call recording by call ID.
+    Proxy call recording by call ID.
 
     Requires JWT authentication and CALLS_READ permission.
     The provider URL is never exposed to the client.
@@ -116,7 +116,7 @@ async def stream_recording(
     Security:
     - Only HTTPS recording URLs are allowed
     - Hostname must be in ALLOWED_RECORDING_HOSTS whitelist (if configured)
-    - HTTP redirects are blocked
+    - Redirects allowed (providers may redirect to CDN)
     """
     call = await CallEvent.get(
         session=session,
@@ -134,7 +134,7 @@ async def stream_recording(
 
     http_client = await get_http_client()
 
-    # Allow redirects — Sipuni may redirect to CDN for the actual file
+    # Fetch full recording (files are small, typically <5MB)
     response = await http_client.get(
         call.record_url,
         timeout=300,
@@ -148,22 +148,25 @@ async def stream_recording(
             detail="Recording file not accessible",
         )
 
-    async def stream_chunks():
-        try:
-            async for chunk in response.content.iter_chunked(64 * 1024):
-                yield chunk
-        finally:
-            response.release()
+    # Reject files over 20MB as a safety guard
+    upstream_size = response.headers.get("Content-Length")
+    if upstream_size and int(upstream_size) > 20 * 1024 * 1024:
+        response.release()
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Recording file too large",
+        )
 
-    headers = {
-        "Content-Disposition": f'inline; filename="recording_{call.id}.mp3"',
-    }
-    content_length = response.headers.get("Content-Length")
-    if content_length:
-        headers["Content-Length"] = content_length
+    audio_data = await response.read()
+    response.release()
 
-    return StreamingResponse(
-        stream_chunks(),
-        media_type=response.headers.get("Content-Type", "audio/mpeg"),
-        headers=headers,
+    content_type = response.headers.get("Content-Type", "audio/mpeg")
+
+    return Response(
+        content=audio_data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="recording_{call.id}.mp3"',
+            "Content-Length": str(len(audio_data)),
+        },
     )
