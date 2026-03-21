@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 from typing import Any
 
@@ -89,8 +90,8 @@ class SignedUrlConfig:
 class WebhookConfig:
     """Webhook security configuration"""
     # IP whitelisting for webhook endpoints
-    SIPUNI_ALLOWED_IPS = os.getenv('SIPUNI_ALLOWED_IPS', '').split(',') if os.getenv('SIPUNI_ALLOWED_IPS') else []
-    BINOTEL_ALLOWED_IPS = os.getenv('BINOTEL_ALLOWED_IPS', '').split(',') if os.getenv('BINOTEL_ALLOWED_IPS') else []
+    SIPUNI_ALLOWED_IPS = [ip.strip() for ip in re.split(r'[;,]', os.getenv('SIPUNI_ALLOWED_IPS', '')) if ip.strip()]
+    BINOTEL_ALLOWED_IPS = [ip.strip() for ip in re.split(r'[;,]', os.getenv('BINOTEL_ALLOWED_IPS', '')) if ip.strip()]
 
     # IP whitelisting enabled by default (fail-closed); set to 'false' to disable
     WEBHOOK_IP_WHITELIST_ENABLED = os.getenv('WEBHOOK_IP_WHITELIST_ENABLED', 'true').lower() == 'true'
