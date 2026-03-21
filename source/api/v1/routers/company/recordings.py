@@ -8,7 +8,7 @@ import logging
 import socket
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +104,7 @@ def _validate_recording_url(url: str) -> None:
 @require_permissions(Permissions.CALLS_READ)
 async def stream_recording(
     call_id: int,
+    request: Request,
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
@@ -112,6 +113,7 @@ async def stream_recording(
 
     Requires JWT authentication and CALLS_READ permission.
     The provider URL is never exposed to the client.
+    Supports HTTP Range requests for mobile Safari/Chrome audio playback.
 
     Security:
     - Only HTTPS recording URLs are allowed
@@ -161,12 +163,44 @@ async def stream_recording(
     response.release()
 
     content_type = response.headers.get("Content-Type", "audio/mpeg")
+    total_size = len(audio_data)
+
+    # Handle Range requests (required by mobile Safari/Chrome for audio playback)
+    range_header = request.headers.get("Range")
+    if range_header:
+        range_spec = range_header.strip().replace("bytes=", "")
+        parts = range_spec.split("-")
+        start = int(parts[0]) if parts[0] else 0
+        end = int(parts[1]) if parts[1] else total_size - 1
+        end = min(end, total_size - 1)
+
+        if start >= total_size:
+            return Response(
+                status_code=416,
+                headers={
+                    "Content-Range": f"bytes */{total_size}",
+                },
+            )
+
+        chunk = audio_data[start:end + 1]
+        return Response(
+            content=chunk,
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+                "Content-Length": str(len(chunk)),
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": f'inline; filename="recording_{call.id}.mp3"',
+            },
+        )
 
     return Response(
         content=audio_data,
         media_type=content_type,
         headers={
             "Content-Disposition": f'inline; filename="recording_{call.id}.mp3"',
-            "Content-Length": str(len(audio_data)),
+            "Content-Length": str(total_size),
+            "Accept-Ranges": "bytes",
         },
     )
