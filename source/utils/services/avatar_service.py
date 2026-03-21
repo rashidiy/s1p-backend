@@ -57,6 +57,41 @@ async def download_telegram_avatar(user_id: str, telegram_user_id: int) -> str |
         await bot.session.close()
 
 
+async def download_telegram_avatar_by_file_id(user_id: str, file_id: str) -> str | None:
+    """
+    Download a Telegram avatar using a known file_id (skips get_user_profile_photos).
+
+    Args:
+        user_id: Internal user UUID (used as filename).
+        file_id: Telegram file_id for the avatar photo.
+
+    Returns:
+        Filename (e.g. '{user_id}.jpg') on success, None on failure.
+    """
+    if not file_id or not TelegramConfig.BOT_TOKEN:
+        return None
+
+    bot = Bot(token=TelegramConfig.BOT_TOKEN)
+    try:
+        file = await bot.get_file(file_id)
+        file_url = f"https://api.telegram.org/file/bot{TelegramConfig.BOT_TOKEN}/{file.file_path}"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(file_url)
+            resp.raise_for_status()
+
+            filename = f"{user_id}.jpg"
+            filepath = AVATARS_DIR / filename
+            filepath.write_bytes(resp.content)
+
+            return filename
+    except Exception:
+        logger.exception("Failed to download Telegram avatar by file_id for user %s", user_id)
+        return None
+    finally:
+        await bot.session.close()
+
+
 def save_uploaded_avatar(user_id: str, file_bytes: bytes) -> str:
     """
     Save an uploaded avatar file to disk.
