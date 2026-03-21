@@ -134,23 +134,12 @@ async def stream_recording(
 
     http_client = await get_http_client()
 
-    # Block redirects: allow_redirects=False prevents SSRF via open redirects
+    # Allow redirects — Sipuni may redirect to CDN for the actual file
     response = await http_client.get(
         call.record_url,
         timeout=300,
-        allow_redirects=False,
+        allow_redirects=True,
     )
-
-    # Reject redirects (3xx responses)
-    if 300 <= response.status < 400:
-        response.release()
-        logger.warning(
-            f"Recording URL returned redirect ({response.status}) for call {call_id}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Recording URL returned a redirect, which is not allowed",
-        )
 
     if response.status != 200:
         response.release()
@@ -167,7 +156,7 @@ async def stream_recording(
             response.release()
 
     headers = {
-        "Content-Disposition": f'attachment; filename="recording_{call.id}.mp3"',
+        "Content-Disposition": f'inline; filename="recording_{call.id}.mp3"',
     }
     content_length = response.headers.get("Content-Length")
     if content_length:
