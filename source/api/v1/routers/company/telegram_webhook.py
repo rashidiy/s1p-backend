@@ -31,11 +31,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks/telegram", tags=["Telegram Webhook"])
 
 
+import re
+
+# Phone validation pattern: optional +, 7-15 digits
+_PHONE_RE = re.compile(r'^\+?\d{7,15}$')
+
+
 def _esc_md(text: str) -> str:
-    """Escape special chars for MarkdownV2."""
-    for ch in r'_*[]()~`>#+-=|{}.!':
-        text = text.replace(ch, f'\\{ch}')
-    return text
+    """Escape special chars for MarkdownV2. Re-uses logic from telegram_i18n._esc."""
+    from utils.services.telegram_i18n import _esc
+    return _esc(text)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -708,12 +713,16 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
     action = parts[0]
     param = parts[1] if len(parts) > 1 else ""
 
-    # Validate param as UUID for actions that use it as a DB identifier
-    if action in ("al",) and param:
+    # Validate param format based on action
+    if action in ("al", "mh", "cb") and param:
         try:
             from uuid import UUID as _UUID
             _UUID(param)
         except ValueError:
+            return
+    if action == "cc" and param:
+        if not _PHONE_RE.match(param):
+            await _answer_callback(callback_query_id, "Invalid phone number")
             return
 
     try:
@@ -749,7 +758,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
 
         elif action == "cb":
             # Callback — show phone number (Phase 1, no telephony integration)
-            await _answer_callback(callback_query_id, f"Call: {param}")
+            await _answer_callback(callback_query_id, f"📞 Callback")
 
         elif action == "cc":
             # Create contact from phone
