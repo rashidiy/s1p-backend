@@ -177,7 +177,7 @@ async def _handle_message(message: dict, session: AsyncSession):
                 )
 
         elif text.startswith("/help"):
-            await _handle_help_command(chat_id)
+            await _handle_help_command(chat_id, session)
 
         elif text.startswith("/register"):
             await _handle_register(chat_id, telegram_user_id, session)
@@ -449,18 +449,62 @@ async def _handle_register(
 
 # ── Help command ─────────────────────────────────────────────────────
 
-async def _handle_help_command(chat_id: int):
-    """Show available bot commands."""
-    await _send_message(
-        chat_id,
-        "📋 *S1P CRM Bot*\n\n"
-        "/today — 📊 Today's stats\n"
-        "/search — 🔍 Search contacts\n"
-        "/myleads — 📝 My leads\n"
-        "/help — ❓ This message\n\n"
-        "💡 Use the *CRM* menu button to open the Mini App\\.",
-        parse_mode="MarkdownV2",
-    )
+async def _handle_help_command(chat_id: int, session: AsyncSession):
+    """Show available bot commands in the company's language."""
+    config = await _get_config_by_chat(chat_id, session)
+    lang = config.language if config and config.language else "ru"
+
+    help_messages = {
+        "ru": (
+            "📋 *S1P CRM*\n\n"
+            "/today — 📊 Статистика за сегодня\n"
+            "/search — 🔍 Поиск контактов\n"
+            "/myleads — 📝 Мои лиды\n"
+            "/help — ❓ Это сообщение"
+        ),
+        "en": (
+            "📋 *S1P CRM*\n\n"
+            "/today — 📊 Today's stats\n"
+            "/search — 🔍 Search contacts\n"
+            "/myleads — 📝 My leads\n"
+            "/help — ❓ This message"
+        ),
+        "uz": (
+            "📋 *S1P CRM*\n\n"
+            "/today — 📊 Bugungi statistika\n"
+            "/search — 🔍 Kontakt qidirish\n"
+            "/myleads — 📝 Mening lidlarim\n"
+            "/help — ❓ Ushbu xabar"
+        ),
+    }
+
+    # Add Mini App inline button if FRONTEND_URL is set
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    import os
+    keyboard = None
+    frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+    if frontend_url and frontend_url.startswith("https://"):
+        miniapp_labels = {"ru": "📱 Открыть CRM", "en": "📱 Open CRM", "uz": "📱 CRM ochish"}
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=miniapp_labels.get(lang, miniapp_labels["ru"]),
+                web_app=WebAppInfo(url=f"{frontend_url}/miniapp"),
+            )
+        ]])
+
+    bot = _get_bot()
+    if bot:
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=help_messages.get(lang, help_messages["ru"]),
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard,
+            )
+        except Exception:
+            logger.exception("Failed to send help message to chat %s", chat_id)
+        finally:
+            await bot.session.close()
 
 
 # ── Send message helper ──────────────────────────────────────────────
@@ -537,7 +581,7 @@ async def _handle_today_command(chat_id: int, session: AsyncSession):
             deals_lost=0,
             lang=lang,
         )
-        await _send_message(chat_id, text)
+        await _send_message(chat_id, text, parse_mode="MarkdownV2")
 
     except Exception:
         logger.exception("Error in /today command for chat %s", chat_id)
