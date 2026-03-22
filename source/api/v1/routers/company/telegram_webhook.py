@@ -150,7 +150,10 @@ async def telegram_webhook(
 async def _handle_message(message: dict, session: AsyncSession):
     """Route incoming messages to the appropriate handler."""
     text = message.get("text", "")
-    chat_id = message.get("chat", {}).get("id")
+    chat = message.get("chat", {})
+    chat_id = chat.get("id")
+    chat_type = chat.get("type", "")  # "private", "group", "supergroup"
+    is_private = chat_type == "private"
     from_user = message.get("from", {})
     telegram_user_id = from_user.get("id")
 
@@ -182,7 +185,7 @@ async def _handle_message(message: dict, session: AsyncSession):
                 )
 
         elif text.startswith("/help"):
-            await _handle_help_command(chat_id, session)
+            await _handle_help_command(chat_id, session, is_private)
 
         elif text.startswith("/register"):
             await _handle_register(chat_id, telegram_user_id, session)
@@ -454,7 +457,7 @@ async def _handle_register(
 
 # ── Help command ─────────────────────────────────────────────────────
 
-async def _handle_help_command(chat_id: int, session: AsyncSession):
+async def _handle_help_command(chat_id: int, session: AsyncSession, is_private: bool = False):
     """Show available bot commands in the company's language."""
     config = await _get_config_by_chat(chat_id, session)
     lang = config.language if config and config.language else "ru"
@@ -483,19 +486,20 @@ async def _handle_help_command(chat_id: int, session: AsyncSession):
         ),
     }
 
-    # Add Mini App button — use URL button (works in groups), not web_app (DM only)
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    # Mini App button only in DMs (web_app buttons work in private chats)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
     import os
     keyboard = None
-    frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
-    if frontend_url and frontend_url.startswith("https://"):
-        miniapp_labels = {"ru": "📱 Открыть CRM", "en": "📱 Open CRM", "uz": "📱 CRM ochish"}
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text=miniapp_labels.get(lang, miniapp_labels["ru"]),
-                url=f"{frontend_url}/miniapp",
-            )
-        ]])
+    if is_private:
+        frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+        if frontend_url and frontend_url.startswith("https://"):
+            miniapp_labels = {"ru": "📱 Открыть CRM", "en": "📱 Open CRM", "uz": "📱 CRM ochish"}
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=miniapp_labels.get(lang, miniapp_labels["ru"]),
+                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp"),
+                )
+            ]])
 
     await _send_message(
         chat_id,
