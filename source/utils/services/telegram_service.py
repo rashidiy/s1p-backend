@@ -431,9 +431,10 @@ class TelegramService:
 
             await TelegramService._send(bot, config, text, "new_lead", keyboard)
 
-            # DM notifications
+            # DM notifications — scoped to lead assignee
             await TelegramService._send_dm_notifications(
                 config, "new_lead", text, session,
+                operator_id=lead.assigned_to,
             )
         except Exception:
             logger.exception("Failed to send lead notification for company %s", company_id)
@@ -583,6 +584,7 @@ class TelegramService:
         new_stage: str,
         amount: Optional[float] = None,
         assigned_to_name: Optional[str] = None,
+        assigned_to_id: Optional[UUID] = None,
     ):
         """Send notification for deal stage change."""
         try:
@@ -616,9 +618,10 @@ class TelegramService:
 
             await TelegramService._send(bot, config, text, "deal_stage_change", keyboard)
 
-            # DM notifications
+            # DM notifications — scoped to deal assignee
             await TelegramService._send_dm_notifications(
                 config, "deal_stage_change", text, session,
+                operator_id=assigned_to_id,
             )
         except Exception:
             logger.exception("Failed to send deal_stage_change notification for company %s", company_id)
@@ -818,8 +821,8 @@ class TelegramService:
                 if not prefs.get(pref_key, False):
                     continue
 
-                # If event is operator-specific, only DM that operator
-                if operator_id and pref_key in ("my_calls",) and user.id != operator_id:
+                # If operator_id provided, only DM that specific user (scoped notifications)
+                if operator_id and user.id != operator_id:
                     continue
 
                 try:
