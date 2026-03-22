@@ -199,15 +199,70 @@ async def _register_telegram_webhook():
         bot = Bot(token=TelegramConfig.BOT_TOKEN)
         await bot.set_webhook(url=webhook_url)
 
-        # Register bot commands
-        commands = [
+        # Register bot commands — English (default)
+        from aiogram.types import BotCommandScopeDefault
+        commands_en = [
             BotCommand(command="today", description="📊 Today's statistics"),
             BotCommand(command="search", description="🔍 Search contacts"),
             BotCommand(command="myleads", description="📝 My assigned leads"),
             BotCommand(command="help", description="❓ Available commands"),
             BotCommand(command="start", description="🚀 Start the bot"),
         ]
-        await bot.set_my_commands(commands)
+        await bot.set_my_commands(commands_en)
+
+        # Russian commands
+        commands_ru = [
+            BotCommand(command="today", description="📊 Статистика за сегодня"),
+            BotCommand(command="search", description="🔍 Поиск контактов"),
+            BotCommand(command="myleads", description="📝 Мои лиды"),
+            BotCommand(command="help", description="❓ Команды"),
+            BotCommand(command="start", description="🚀 Запуск бота"),
+        ]
+        try:
+            await bot.set_my_commands(commands_ru, scope=BotCommandScopeDefault(), language_code="ru")
+        except Exception:
+            pass
+
+        # Uzbek commands
+        commands_uz = [
+            BotCommand(command="today", description="📊 Bugungi statistika"),
+            BotCommand(command="search", description="🔍 Kontakt qidirish"),
+            BotCommand(command="myleads", description="📝 Mening lidlarim"),
+            BotCommand(command="help", description="❓ Buyruqlar"),
+            BotCommand(command="start", description="🚀 Botni ishga tushirish"),
+        ]
+        try:
+            await bot.set_my_commands(commands_uz, scope=BotCommandScopeDefault(), language_code="uz")
+        except Exception:
+            pass
+
+        # Bot description — shown in "What can this bot do?"
+        try:
+            await bot.set_my_description(
+                description="S1P CRM — manage calls, contacts, leads, and deals right from Telegram. Get real-time notifications, search your CRM, and open the Mini App for full access."
+            )
+            await bot.set_my_description(
+                description="S1P CRM — управляйте звонками, контактами, лидами и сделками прямо в Telegram. Мгновенные уведомления, поиск по CRM и полный доступ через мини-приложение.",
+                language_code="ru",
+            )
+            await bot.set_my_description(
+                description="S1P CRM — qo'ng'iroqlar, kontaktlar, lidlar va bitimlarni to'g'ridan-to'g'ri Telegram orqali boshqaring. Tezkor bildirishnomalar, CRM qidirish va mini ilova.",
+                language_code="uz",
+            )
+            # Short description — shown in bot profile and inline search
+            await bot.set_my_short_description(
+                description="CRM for call centers — calls, leads, deals in Telegram"
+            )
+            await bot.set_my_short_description(
+                description="CRM для колл-центров — звонки, лиды, сделки в Telegram",
+                language_code="ru",
+            )
+            await bot.set_my_short_description(
+                description="Qo'ng'iroq markazlari uchun CRM — Telegramda",
+                language_code="uz",
+            )
+        except Exception:
+            pass  # Description is optional
 
         # Set Mini App as menu button
         try:
