@@ -674,9 +674,11 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
 
     try:
         if action == "mh":
-            # Mark handled — edit message to add handler name, remove buttons
+            # Mark handled — react + edit message to add handler name, remove buttons
             from utils.services.telegram_i18n import handled_text
+            from utils.services.telegram_service import TelegramService
             suffix = handled_text(user_display, lang)
+            await TelegramService.react_to_message(chat_id, message_id, "✅")
             await _edit_message_handled(chat_id, message_id, message.get("text", ""), suffix)
             await _answer_callback(callback_query_id, suffix)
 
@@ -694,6 +696,8 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
                 lead.assigned_to = crm_user.id
                 await session.commit()
                 msg = lead_assigned_text(crm_user.full_name, lang)
+                from utils.services.telegram_service import TelegramService
+                await TelegramService.react_to_message(chat_id, message_id, "👤")
                 await _answer_callback(callback_query_id, msg)
                 logger.info("Lead %s assigned to %s via Telegram", param, crm_user.id)
             else:

@@ -82,7 +82,7 @@ async def create_group(
 
     Returns: {
         "group_chat_id": int,
-        "topic_ids": {"calls": int, "missed": int, "leads": int, "deals": int, "general": int},
+        "topic_ids": {"calls": int, "leads": int, "deals": int, "general": int},
         "invite_link": str,
         "group_name": str,
     }
@@ -157,7 +157,7 @@ async def create_group(
             # Order: Лиды, Пропущенные, Сделки, Звонки (left to right after General)
             try:
                 from pyrogram.raw.functions.channels.reorder_pinned_forum_topics import ReorderPinnedForumTopics
-                ordered_ids = [topic_ids[k] for k in ["leads", "missed", "deals", "calls"] if k in topic_ids]
+                ordered_ids = [topic_ids[k] for k in ["leads", "deals", "calls"] if k in topic_ids]
                 await client.invoke(
                     ReorderPinnedForumTopics(
                         channel=await client.resolve_peer(chat_id),

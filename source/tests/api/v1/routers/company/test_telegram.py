@@ -185,7 +185,7 @@ class TestUpdateTelegramConfig:
     ):
         """Changing language triggers topic rename (when topics exist)."""
         # Give config topics and a group_chat_id so the rename path triggers
-        telegram_config.topic_ids = {"calls": 10, "missed": 11}
+        telegram_config.topic_ids = {"calls": 10, "leads": 12}
         telegram_config.group_chat_id = -1001234567890
         await db_session.flush()
 
@@ -319,7 +319,7 @@ class TestManualSetup:
     @patch(
         "utils.services.telegram_service.TelegramService.create_forum_topics",
         new_callable=AsyncMock,
-        return_value={"calls": 10, "missed": 11, "leads": 12, "deals": 13, "general": 1},
+        return_value={"calls": 10, "leads": 12, "deals": 13, "general": 1},
     )
     async def test_manual_setup_success(self, mock_topics, client: AsyncClient, auth_headers):
         """Manual setup creates config with topics."""

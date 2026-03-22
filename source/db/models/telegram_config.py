@@ -13,14 +13,16 @@ from db.base import Base
 from db.mixins.object_manager import ObjectManagerMixin
 
 
-# Topic name → event type mapping
+# Topic name → event type mapping (V3: missed calls go to "calls" topic)
 TOPIC_EVENT_MAP = {
     "calls": "call_completed",
-    "missed": "call_missed",
     "leads": "new_lead",
     "deals": "deal_stage_change",
     "general": None,
 }
+
+# Events that route to the "calls" topic (both completed and missed)
+CALLS_TOPIC_EVENTS = {"call_completed", "call_missed"}
 
 
 class TelegramBotConfig(Base, ObjectManagerMixin):
@@ -55,7 +57,7 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
 
     # V2: supergroup with forum topics
     group_chat_id = Column(BIGINT, nullable=True)
-    topic_ids = Column(JSONB, nullable=True)  # {"calls": 123, "missed": 124, "leads": 125, "deals": 126, "general": 1}
+    topic_ids = Column(JSONB, nullable=True)  # {"calls": 123, "leads": 125, "deals": 126, "general": 1}
     invite_link = Column(String(255), nullable=True)
     setup_status = Column(String(20), server_default=text("'not_started'"), nullable=False)  # not_started|creating|ready|failed|manual
     setup_error = Column(Text, nullable=True)
@@ -116,9 +118,17 @@ class TelegramBotConfig(Base, ObjectManagerMixin):
         """Get the message_thread_id for routing a notification to the right topic.
         Returns None if no topics configured or for General topic (thread_id=1).
         Telegram routes to General implicitly when no thread_id is specified.
+
+        V3: Both call_completed and call_missed route to the "calls" topic.
         """
         if not self.topic_ids:
             return None
+
+        # Both call types go to "calls" topic
+        if event_type in CALLS_TOPIC_EVENTS:
+            thread_id = self.topic_ids.get("calls")
+            return thread_id if thread_id and thread_id != 1 else None
+
         # Map event_type → topic name
         for topic_name, mapped_event in TOPIC_EVENT_MAP.items():
             if mapped_event == event_type:
