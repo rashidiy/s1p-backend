@@ -167,12 +167,17 @@ async def _handle_message(message: dict, session: AsyncSession):
             elif payload.startswith("reg_"):
                 await _handle_register_start(chat_id, telegram_user_id, from_user, payload, session)
             else:
-                # Default /start — welcome message
+                # Default /start — welcome message (detect language from group config)
+                config = await _get_config_by_chat(chat_id, session)
+                lang = config.language if config and config.language else "ru"
+                start_messages = {
+                    "ru": f"👋 *S1P CRM*\n\nChat ID: `{chat_id}`\n\nВведите /help для списка команд\\.",
+                    "en": f"👋 *S1P CRM*\n\nChat ID: `{chat_id}`\n\nUse /help to see available commands\\.",
+                    "uz": f"👋 *S1P CRM*\n\nChat ID: `{chat_id}`\n\nBuyruqlar ro'yxati uchun /help kiriting\\.",
+                }
                 await _send_message(
                     chat_id,
-                    f"👋 *S1P CRM*\n\n"
-                    f"Your Chat ID: `{chat_id}`\n\n"
-                    f"Use /help to see available commands\\.",
+                    start_messages.get(lang, start_messages["ru"]),
                     parse_mode="MarkdownV2",
                 )
 
@@ -478,8 +483,8 @@ async def _handle_help_command(chat_id: int, session: AsyncSession):
         ),
     }
 
-    # Add Mini App inline button if FRONTEND_URL is set
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    # Add Mini App button — use URL button (works in groups), not web_app (DM only)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     import os
     keyboard = None
     frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
@@ -488,35 +493,33 @@ async def _handle_help_command(chat_id: int, session: AsyncSession):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
                 text=miniapp_labels.get(lang, miniapp_labels["ru"]),
-                web_app=WebAppInfo(url=f"{frontend_url}/miniapp"),
+                url=f"{frontend_url}/miniapp",
             )
         ]])
 
-    bot = _get_bot()
-    if bot:
-        try:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=help_messages.get(lang, help_messages["ru"]),
-                parse_mode="MarkdownV2",
-                reply_markup=keyboard,
-            )
-        except Exception:
-            logger.exception("Failed to send help message to chat %s", chat_id)
-        finally:
-            await bot.session.close()
+    await _send_message(
+        chat_id,
+        help_messages.get(lang, help_messages["ru"]),
+        parse_mode="MarkdownV2",
+        keyboard=keyboard,
+    )
 
 
 # ── Send message helper ──────────────────────────────────────────────
 
-async def _send_message(chat_id: int, text: str, parse_mode: str | None = None) -> None:
+async def _send_message(chat_id: int, text: str, parse_mode: str | None = None, keyboard=None) -> None:
     """Send a message to a Telegram chat."""
     bot = _get_bot()
     if not bot:
         return
 
     try:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+        kwargs = {"chat_id": chat_id, "text": text}
+        if parse_mode:
+            kwargs["parse_mode"] = parse_mode
+        if keyboard:
+            kwargs["reply_markup"] = keyboard
+        await bot.send_message(**kwargs)
     except Exception:
         logger.exception("Failed to send Telegram message to chat %s", chat_id)
     finally:
