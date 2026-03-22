@@ -223,6 +223,7 @@ async def miniapp_companies(
         .where(
             User.telegram_user_id == telegram_user_id,
             User.is_active.is_(True),
+            User.is_suspended.is_(False),
             User.deleted_at.is_(None),
             Company.is_active.is_(True),
         )

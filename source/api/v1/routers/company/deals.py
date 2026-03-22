@@ -362,7 +362,7 @@ async def update_deal(
             _notify_deal_stage_change,
             user.company_id, deal.id, deal.title,
             old_stage.value if old_stage else "", deal.stage.value,
-            float(deal.amount) if deal.amount else None, assigned_name
+            float(deal.amount) if deal.amount else None, assigned_name, deal.assigned_to
         )
 
         # Fire outbound webhook for stage change
@@ -518,7 +518,7 @@ async def mark_deal_lost(
     return deal
 
 
-async def _notify_deal_stage_change(company_id, deal_id, deal_title, old_stage, new_stage, amount, assigned_name):
+async def _notify_deal_stage_change(company_id, deal_id, deal_title, old_stage, new_stage, amount, assigned_name, assigned_to_id=None):
     """Background task: send Telegram notification for deal stage change."""
     import logging
     from db.base import AsyncDatabaseSession
@@ -535,6 +535,7 @@ async def _notify_deal_stage_change(company_id, deal_id, deal_title, old_stage, 
                 new_stage=new_stage,
                 amount=amount,
                 assigned_to_name=assigned_name,
+                assigned_to_id=assigned_to_id,
             )
     except Exception as e:
         logging.getLogger(__name__).error(f"Telegram deal_stage notification failed: {e}", exc_info=True)
