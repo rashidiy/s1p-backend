@@ -4,25 +4,22 @@ Telegram V2 constants — topic names, emoji prefixes, stage translations per lo
 Centralized here so telegram_i18n.py and telegram_service.py stay DRY.
 """
 
-# Forum topic names per locale
+# Forum topic names per locale (V3: 3 topics instead of 5)
 TOPIC_NAMES = {
     "ru": {
         "calls": "Звонки",
-        "missed": "Пропущенные",
         "leads": "Лиды",
         "deals": "Сделки",
         "general": "Общее",
     },
     "en": {
         "calls": "Calls",
-        "missed": "Missed",
         "leads": "Leads",
         "deals": "Deals",
         "general": "General",
     },
     "uz": {
         "calls": "Qo'ng'iroqlar",
-        "missed": "O'tkazib yuborilgan",
         "leads": "Lidlar",
         "deals": "Bitimlar",
         "general": "Umumiy",
@@ -34,7 +31,6 @@ TOPIC_NAMES = {
 # Retrieved via Bot API getForumTopicIconStickers.
 TOPIC_ICON_EMOJI_ID = {
     "calls": "5409357944619802453",     # 📱
-    "missed": "5379748062124056162",    # ❗️
     "leads": "5373251851074415873",     # 📝
     "deals": "5350452584119279096",     # 💰
 }
@@ -69,9 +65,9 @@ STAGE_NAMES = {
 
 # Call direction labels per locale
 DIRECTION_LABELS = {
-    "ru": {"inbound": "Входящий", "outbound": "Исходящий", "unknown": "Неизвестный"},
-    "en": {"inbound": "Inbound", "outbound": "Outbound", "unknown": "Unknown"},
-    "uz": {"inbound": "Kiruvchi", "outbound": "Chiquvchi", "unknown": "Noma'lum"},
+    "ru": {"inbound": "входящий", "outbound": "исходящий", "unknown": ""},
+    "en": {"inbound": "inbound", "outbound": "outbound", "unknown": ""},
+    "uz": {"inbound": "kiruvchi", "outbound": "chiquvchi", "unknown": ""},
 }
 
 # Lead source labels per locale
@@ -81,37 +77,37 @@ SOURCE_LABELS = {
     "uz": "Manba",
 }
 
-# Inline button labels per locale
+# Inline button labels per locale (with emoji for visual polish)
 BUTTON_LABELS = {
     "ru": {
-        "assign_lead": "Назначить лид",
-        "mark_handled": "Обработано",
-        "open_crm": "Открыть в CRM",
-        "callback": "Перезвонить",
-        "create_contact": "Создать контакт",
-        "open_lead": "Открыть лид",
-        "open_deal": "Открыть сделку",
-        "listen_recording": "\U0001F3B5 Запись",
+        "mark_handled": "✅ Обработано",
+        "assign_lead": "👤 Назначить лид",
+        "open_crm": "📋 CRM",
+        "callback": "📞 Перезвонить",
+        "create_contact": "➕ Контакт",
+        "open_lead": "📝 Лид",
+        "open_deal": "💼 Сделка",
+        "listen_recording": "🎵 Запись",
     },
     "en": {
-        "assign_lead": "Assign Lead",
-        "mark_handled": "Mark Handled",
-        "open_crm": "Open in CRM",
-        "callback": "Callback",
-        "create_contact": "Create Contact",
-        "open_lead": "Open Lead",
-        "open_deal": "Open Deal",
-        "listen_recording": "\U0001F3B5 Recording",
+        "mark_handled": "✅ Handled",
+        "assign_lead": "👤 Assign Lead",
+        "open_crm": "📋 CRM",
+        "callback": "📞 Callback",
+        "create_contact": "➕ Contact",
+        "open_lead": "📝 Lead",
+        "open_deal": "💼 Deal",
+        "listen_recording": "🎵 Recording",
     },
     "uz": {
-        "assign_lead": "Lid tayinlash",
-        "mark_handled": "Bajarildi",
-        "open_crm": "CRM da ochish",
-        "callback": "Qayta qo'ng'iroq",
-        "create_contact": "Kontakt yaratish",
-        "open_lead": "Lidni ochish",
-        "open_deal": "Bitimni ochish",
-        "listen_recording": "\U0001F3B5 Yozuv",
+        "mark_handled": "✅ Bajarildi",
+        "assign_lead": "👤 Lid tayinlash",
+        "open_crm": "📋 CRM",
+        "callback": "📞 Qayta qo'ng'iroq",
+        "create_contact": "➕ Kontakt",
+        "open_lead": "📝 Lid",
+        "open_deal": "💼 Bitim",
+        "listen_recording": "🎵 Yozuv",
     },
 }
 

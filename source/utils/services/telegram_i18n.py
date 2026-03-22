@@ -1,8 +1,11 @@
 """
 Telegram V2 i18n — notification message templates in ru/en/uz.
 
-Each function takes a data dict and locale, returns MarkdownV2-escaped text.
+Each function takes data and locale, returns MarkdownV2-escaped text.
 All special chars are escaped for Telegram's MarkdownV2 parser.
+
+Design: compact, scannable, emoji-rich. Managers glance at their phone
+and need to understand the situation in 1 second.
 """
 
 from utils.services.telegram_constants import (
@@ -22,45 +25,32 @@ def _esc(text: str) -> str:
 
 
 def _duration(seconds: int, lang: str) -> str:
-    """Format duration as human-readable string."""
+    """Format duration as compact string."""
     m, s = divmod(seconds, 60)
-    if lang == "ru":
-        return f"{m}мин {s}с" if m else f"{s}с"
-    elif lang == "uz":
-        return f"{m}daq {s}s" if m else f"{s}s"
-    return f"{m}m {s}s" if m else f"{s}s"
+    if m:
+        return f"{m}:{s:02d}"
+    return f"0:{s:02d}"
+
+
+def _phone_link(phone: str) -> str:
+    """Format phone as tappable tel: link in MarkdownV2."""
+    clean = phone.strip()
+    return f"[`{_esc(clean)}`](tel:{clean})"
 
 
 # ── Call completed ────────────────────────────────────────────────
+# Compact format: Contact → Operator, then details on one line
 
-_CALL_COMPLETED = {
-    "ru": {
-        "title": "{direction} звонок завершён",
-        "caller": "Звонящий",
-        "phone": "Телефон",
-        "duration": "Длительность",
-        "operator": "Оператор",
-        "contact": "Контакт",
-        "recording": "Запись",
-    },
-    "en": {
-        "title": "{direction} Call Completed",
-        "caller": "Caller",
-        "phone": "Phone",
-        "duration": "Duration",
-        "operator": "Operator",
-        "contact": "Contact",
-        "recording": "Recording",
-    },
-    "uz": {
-        "title": "{direction} qo'ng'iroq yakunlandi",
-        "caller": "Qo'ng'iroqchi",
-        "phone": "Telefon",
-        "duration": "Davomiylik",
-        "operator": "Operator",
-        "contact": "Kontakt",
-        "recording": "Yozuv",
-    },
+_CALL_COMPLETED_TITLE = {
+    "ru": "📞 Звонок",
+    "en": "📞 Call",
+    "uz": "📞 Qo'ng'iroq",
+}
+
+_CALL_COMPLETED_UNKNOWN = {
+    "ru": "Неизвестный",
+    "en": "Unknown",
+    "uz": "Noma'lum",
 }
 
 
@@ -74,22 +64,26 @@ def call_completed_message(
     recording_url: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 message for a completed call notification."""
+    """Build compact MarkdownV2 message for a completed call."""
     locale = get_locale(lang)
-    t = _CALL_COMPLETED[locale]
-    dir_label = DIRECTION_LABELS[locale].get(direction, direction)
+    dir_label = DIRECTION_LABELS[locale].get(direction, "")
+    dur = _duration(duration_sec, locale)
 
-    lines = [
-        f"*{_esc(t['title'].format(direction=dir_label))}*",
-        "",
-        f"{_esc(t['caller'])}: {_esc(caller_display)}",
-        f"{_esc(t['phone'])}: {_esc(phone)}",
-        f"{_esc(t['duration'])}: {_esc(_duration(duration_sec, locale))}",
-    ]
+    # Line 1: Contact → Operator (or just contact if no operator)
+    caller = _esc(contact_name or caller_display)
     if operator_name:
-        lines.append(f"{_esc(t['operator'])}: {_esc(operator_name)}")
-    if contact_name:
-        lines.append(f"{_esc(t['contact'])}: {_esc(contact_name)}")
+        line1 = f"*{_esc(_CALL_COMPLETED_TITLE[locale])}*  {caller}  →  {_esc(operator_name)}"
+    else:
+        line1 = f"*{_esc(_CALL_COMPLETED_TITLE[locale])}*  {caller}"
+
+    # Line 2: phone · duration · direction
+    parts = [_phone_link(phone), _esc(dur)]
+    if dir_label:
+        parts.append(_esc(dir_label))
+    line2 = " · ".join(parts)
+
+    lines = [line1, line2]
+
     if recording_url:
         btn = BUTTON_LABELS[locale]["listen_recording"]
         lines.append(f"\n[{_esc(btn)}]({recording_url})")
@@ -98,26 +92,12 @@ def call_completed_message(
 
 
 # ── Missed call ───────────────────────────────────────────────────
+# Urgent style: 🚨 prefix, short and action-first
 
-_MISSED_CALL = {
-    "ru": {
-        "title": "ПРОПУЩЕННЫЙ ЗВОНОК",
-        "from": "От",
-        "phone": "Телефон",
-        "contact": "Контакт",
-    },
-    "en": {
-        "title": "MISSED CALL",
-        "from": "From",
-        "phone": "Phone",
-        "contact": "Contact",
-    },
-    "uz": {
-        "title": "O'TKAZIB YUBORILGAN QO'NG'IROQ",
-        "from": "Dan",
-        "phone": "Telefon",
-        "contact": "Kontakt",
-    },
+_MISSED_TITLE = {
+    "ru": "🚨 Пропущен",
+    "en": "🚨 Missed",
+    "uz": "🚨 O'tkazib yuborildi",
 }
 
 
@@ -127,46 +107,23 @@ def missed_call_message(
     contact_name: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 message for a missed call notification."""
+    """Build compact MarkdownV2 message for a missed call."""
     locale = get_locale(lang)
-    t = _MISSED_CALL[locale]
 
-    lines = [
-        f"*{_esc(t['title'])}*",
-        "",
-        f"{_esc(t['from'])}: {_esc(caller_display)}",
-        f"{_esc(t['phone'])}: {_esc(phone)}",
-    ]
+    line1 = f"*{_esc(_MISSED_TITLE[locale])}*"
+    parts = [_phone_link(phone)]
     if contact_name:
-        lines.append(f"{_esc(t['contact'])}: {_esc(contact_name)}")
+        parts.insert(0, _esc(contact_name))
 
-    return "\n".join(lines)
+    return f"{line1}  {' · '.join(parts)}"
 
 
 # ── New lead ──────────────────────────────────────────────────────
 
-_NEW_LEAD = {
-    "ru": {
-        "title": "Новый лид",
-        "lead_title": "Название",
-        "source": "Источник",
-        "value": "Оценка",
-        "contact": "Контакт",
-    },
-    "en": {
-        "title": "New Lead Created",
-        "lead_title": "Title",
-        "source": "Source",
-        "value": "Value",
-        "contact": "Contact",
-    },
-    "uz": {
-        "title": "Yangi lid yaratildi",
-        "lead_title": "Sarlavha",
-        "source": "Manba",
-        "value": "Qiymat",
-        "contact": "Kontakt",
-    },
+_NEW_LEAD_TITLE = {
+    "ru": "📝 Новый лид",
+    "en": "📝 New Lead",
+    "uz": "📝 Yangi lid",
 }
 
 
@@ -178,49 +135,32 @@ def new_lead_message(
     contact_name: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 message for a new lead notification."""
+    """Build compact MarkdownV2 message for a new lead."""
     locale = get_locale(lang)
-    t = _NEW_LEAD[locale]
 
-    lines = [
-        f"*{_esc(t['title'])}*",
-        "",
-        f"{_esc(t['lead_title'])}: {_esc(lead_title)}",
-    ]
-    if source:
-        lines.append(f"{_esc(t['source'])}: {_esc(source)}")
-    if estimated_value:
-        lines.append(f"{_esc(t['value'])}: {_esc(f'{estimated_value:,.0f} {currency}')}")
+    line1 = f"*{_esc(_NEW_LEAD_TITLE[locale])}*  {_esc(lead_title)}"
+
+    details = []
     if contact_name:
-        lines.append(f"{_esc(t['contact'])}: {_esc(contact_name)}")
+        details.append(_esc(contact_name))
+    if source:
+        details.append(_esc(source))
+    if estimated_value:
+        details.append(_esc(f"{estimated_value:,.0f} {currency}"))
+
+    lines = [line1]
+    if details:
+        lines.append(" · ".join(details))
 
     return "\n".join(lines)
 
 
 # ── Deal stage change ────────────────────────────────────────────
 
-_DEAL_STAGE = {
-    "ru": {
-        "title": "Смена стадии сделки",
-        "deal": "Сделка",
-        "stage": "Стадия",
-        "amount": "Сумма",
-        "assigned_to": "Ответственный",
-    },
-    "en": {
-        "title": "Deal Stage Changed",
-        "deal": "Deal",
-        "stage": "Stage",
-        "amount": "Amount",
-        "assigned_to": "Assigned to",
-    },
-    "uz": {
-        "title": "Bitim bosqichi o'zgardi",
-        "deal": "Bitim",
-        "stage": "Bosqich",
-        "amount": "Summa",
-        "assigned_to": "Mas'ul",
-    },
+_DEAL_TITLE = {
+    "ru": "💼 Сделка",
+    "en": "💼 Deal",
+    "uz": "💼 Bitim",
 }
 
 
@@ -232,24 +172,25 @@ def deal_stage_message(
     assigned_to_name: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 message for a deal stage change notification."""
+    """Build compact MarkdownV2 message for a deal stage change."""
     locale = get_locale(lang)
-    t = _DEAL_STAGE[locale]
     stages = STAGE_NAMES[locale]
 
     old_name = stages.get(old_stage, old_stage)
     new_name = stages.get(new_stage, new_stage)
 
-    lines = [
-        f"*{_esc(t['title'])}*",
-        "",
-        f"{_esc(t['deal'])}: {_esc(deal_title)}",
-        f"{_esc(t['stage'])}: {_esc(old_name)} → {_esc(new_name)}",
-    ]
+    line1 = f"*{_esc(_DEAL_TITLE[locale])}*  {_esc(deal_title)}"
+    line2 = f"{_esc(old_name)} → {_esc(new_name)}"
+
+    details = []
     if amount:
-        lines.append(f"{_esc(t['amount'])}: {_esc(f'{amount:,.0f}')}")
+        details.append(_esc(f"{amount:,.0f}"))
     if assigned_to_name:
-        lines.append(f"{_esc(t['assigned_to'])}: {_esc(assigned_to_name)}")
+        details.append(_esc(assigned_to_name))
+
+    lines = [line1, line2]
+    if details:
+        lines.append(" · ".join(details))
 
     return "\n".join(lines)
 
@@ -257,21 +198,21 @@ def deal_stage_message(
 # ── Callback responses ───────────────────────────────────────────
 
 _HANDLED = {
-    "ru": "Обработано {name}",
-    "en": "Handled by {name}",
-    "uz": "{name} tomonidan bajarildi",
+    "ru": "✅ {name}",
+    "en": "✅ {name}",
+    "uz": "✅ {name}",
 }
 
 _LEAD_ASSIGNED = {
-    "ru": "Лид назначен → {name}",
-    "en": "Lead assigned → {name}",
-    "uz": "Lid tayinlandi → {name}",
+    "ru": "👤 Лид → {name}",
+    "en": "👤 Lead → {name}",
+    "uz": "👤 Lid → {name}",
 }
 
 _CONTACT_CREATED = {
-    "ru": "Контакт создан: {phone}",
-    "en": "Contact created: {phone}",
-    "uz": "Kontakt yaratildi: {phone}",
+    "ru": "➕ Контакт: {phone}",
+    "en": "➕ Contact: {phone}",
+    "uz": "➕ Kontakt: {phone}",
 }
 
 _LINK_TELEGRAM = {
@@ -305,31 +246,31 @@ def link_telegram_text(lang: str = "ru") -> str:
 
 _DIGEST = {
     "ru": {
-        "title": "Дневной отчёт — {date}",
-        "total_calls": "Всего звонков",
-        "missed": "Пропущено",
-        "avg_duration": "Ср. длительность",
-        "new_leads": "Новые лиды",
-        "deals_won": "Выигранные сделки",
-        "deals_lost": "Проигранные сделки",
+        "title": "📊 Итоги дня — {date}",
+        "calls": "📞 Звонки",
+        "missed": "🚨 Пропущено",
+        "duration": "⏱ Среднее",
+        "leads": "📝 Лиды",
+        "won": "🏆 Выиграно",
+        "lost": "❌ Проиграно",
     },
     "en": {
-        "title": "Daily Digest — {date}",
-        "total_calls": "Total calls",
-        "missed": "Missed",
-        "avg_duration": "Avg duration",
-        "new_leads": "New leads",
-        "deals_won": "Deals won",
-        "deals_lost": "Deals lost",
+        "title": "📊 Daily Summary — {date}",
+        "calls": "📞 Calls",
+        "missed": "🚨 Missed",
+        "duration": "⏱ Avg",
+        "leads": "📝 Leads",
+        "won": "🏆 Won",
+        "lost": "❌ Lost",
     },
     "uz": {
-        "title": "Kunlik hisobot — {date}",
-        "total_calls": "Jami qo'ng'iroqlar",
-        "missed": "O'tkazib yuborilgan",
-        "avg_duration": "O'rt. davomiylik",
-        "new_leads": "Yangi lidlar",
-        "deals_won": "Yutilgan bitimlar",
-        "deals_lost": "Yo'qotilgan bitimlar",
+        "title": "📊 Kun yakuni — {date}",
+        "calls": "📞 Qo'ng'iroqlar",
+        "missed": "🚨 O'tkazilgan",
+        "duration": "⏱ O'rtacha",
+        "leads": "📝 Lidlar",
+        "won": "🏆 Yutilgan",
+        "lost": "❌ Yo'qotilgan",
     },
 }
 
@@ -344,20 +285,21 @@ def daily_digest_message(
     deals_lost: int,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 message for the daily digest."""
+    """Build compact MarkdownV2 message for the daily digest."""
     locale = get_locale(lang)
     t = _DIGEST[locale]
+    dur = _duration(avg_duration_sec, locale)
 
     lines = [
         f"*{_esc(t['title'].format(date=date))}*",
         "",
-        f"{_esc(t['total_calls'])}: {total_calls}",
-        f"{_esc(t['missed'])}: {missed_calls}",
-        f"{_esc(t['avg_duration'])}: {_esc(_duration(avg_duration_sec, locale))}",
-        f"{_esc(t['new_leads'])}: {new_leads}",
-        f"{_esc(t['deals_won'])}: {deals_won}",
-        f"{_esc(t['deals_lost'])}: {deals_lost}",
+        f"{t['calls']}  `{total_calls}`    {t['missed']}  `{missed_calls}`",
+        f"{t['duration']}  `{_esc(dur)}`",
+        f"{t['leads']}  `{new_leads}`",
     ]
+
+    if deals_won or deals_lost:
+        lines.append(f"{t['won']}  `{deals_won}`    {t['lost']}  `{deals_lost}`")
 
     return "\n".join(lines)
 
@@ -386,15 +328,15 @@ _NO_DATA = {
 }
 
 _SEARCH_HEADER = {
-    "ru": "Результаты поиска: {query}",
-    "en": "Search results: {query}",
-    "uz": "Qidiruv natijalari: {query}",
+    "ru": "🔍 {query}",
+    "en": "🔍 {query}",
+    "uz": "🔍 {query}",
 }
 
 _MY_LEADS_HEADER = {
-    "ru": "Мои лиды",
-    "en": "My Leads",
-    "uz": "Mening lidlarim",
+    "ru": "📝 Мои лиды",
+    "en": "📝 My Leads",
+    "uz": "📝 Mening lidlarim",
 }
 
 

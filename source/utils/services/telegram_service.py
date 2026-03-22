@@ -18,7 +18,7 @@ from uuid import UUID
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -308,18 +308,30 @@ class TelegramService:
             )
 
             call_id = call_event.id
+            phone = call_event.phone_1 or ""
+
             rows = [
                 [
-                    InlineKeyboardButton(text=btn["assign_lead"], callback_data=f"al:{call_id}"),
+                    InlineKeyboardButton(text=btn["listen_recording"], callback_data=f"cb:{call_id}") if not contact_name else None,
                     InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
                 ],
             ]
+            # Clean up None values from first row
+            rows[0] = [b for b in rows[0] if b is not None]
+
+            row2 = []
+            if not contact_name and phone:
+                # Unknown caller — offer to create contact
+                row2.append(InlineKeyboardButton(text=btn["create_contact"], callback_data=f"cc:{phone[:50]}"))
+            row2.append(InlineKeyboardButton(text=btn["assign_lead"], callback_data=f"al:{call_id}"))
+            rows.append(row2)
+
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
                 rows.append([crm_btn])
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
-            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=call_event.phone_1)
+            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=phone)
         except Exception:
             logger.exception("Failed to send call notification for company %s", company_id)
 
@@ -355,13 +367,23 @@ class TelegramService:
             )
 
             call_id = call_event.id
-            row = [InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}")]
+            phone = call_event.phone_1 or ""
+
+            row1 = [
+                InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}"),
+                InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
+            ]
+            rows = [row1]
+
+            if not contact_name and phone:
+                rows.append([InlineKeyboardButton(text=btn["create_contact"], callback_data=f"cc:{phone[:50]}")])
+
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
-                row.append(crm_btn)
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[row])
+                rows.append([crm_btn])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
-            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=call_event.phone_1)
+            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=phone)
         except Exception:
             logger.exception("Failed to send missed call notification for company %s", company_id)
 
@@ -618,7 +640,7 @@ class TelegramService:
         locale = lang if lang in TOPIC_NAMES else "ru"
         topic_ids = {"general": 1}  # General is always thread_id=1
 
-        for topic_key in ["calls", "missed", "leads", "deals"]:
+        for topic_key in ["calls", "leads", "deals"]:
             name = TOPIC_NAMES[locale][topic_key]
             icon_emoji_id = TOPIC_ICON_EMOJI_ID.get(topic_key)
 
@@ -676,7 +698,7 @@ class TelegramService:
 
         locale = lang if lang in TOPIC_NAMES else "ru"
 
-        for topic_key in ["calls", "missed", "leads", "deals"]:
+        for topic_key in ["calls", "leads", "deals"]:
             thread_id = topic_ids.get(topic_key)
             if not thread_id:
                 continue
@@ -701,6 +723,27 @@ class TelegramService:
                 )
             except Exception:
                 logger.debug("Failed to rename General topic in chat %s", chat_id)
+
+    # ── Bot reactions ───────────────────────────────────────────
+
+    @staticmethod
+    async def react_to_message(
+        chat_id: str | int,
+        message_id: int,
+        emoji: str = "✅",
+    ) -> None:
+        """Add a reaction to a message. Fire-and-forget."""
+        bot = get_bot()
+        if not bot:
+            return
+        try:
+            await bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=message_id,
+                reaction=[ReactionTypeEmoji(emoji=emoji)],
+            )
+        except Exception:
+            logger.debug("Failed to react to message %s in chat %s", message_id, chat_id)
 
     # ── DM notifications ─────────────────────────────────────────
 
