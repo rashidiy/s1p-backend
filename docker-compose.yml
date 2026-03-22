@@ -25,6 +25,7 @@ services:
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       # Application
       BASE_URL: ${BASE_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       # Webhook Security
       WEBHOOK_IP_WHITELIST_ENABLED: ${WEBHOOK_IP_WHITELIST_ENABLED:-true}
       SIPUNI_ALLOWED_IPS: ${SIPUNI_ALLOWED_IPS:-}
