@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks/telegram", tags=["Telegram Webhook"])
 
+
+def _esc_md(text: str) -> str:
+    """Escape special chars for MarkdownV2."""
+    for ch in r'_*[]()~`>#+-=|{}.!':
+        text = text.replace(ch, f'\\{ch}')
+    return text
+
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -155,14 +162,17 @@ async def _handle_message(message: dict, session: AsyncSession):
             elif payload.startswith("reg_"):
                 await _handle_register_start(chat_id, telegram_user_id, from_user, payload, session)
             else:
-                # Default /start — show Chat ID
+                # Default /start — welcome message
                 await _send_message(
                     chat_id,
-                    f"S1P CRM Bot connected!\n\n"
-                    f"Your Chat ID: {chat_id}\n\n"
-                    f"Copy this Chat ID and paste it in Settings > Telegram "
-                    f"in the CRM to start receiving notifications."
+                    f"👋 *S1P CRM*\n\n"
+                    f"Your Chat ID: `{chat_id}`\n\n"
+                    f"Use /help to see available commands\\.",
+                    parse_mode="MarkdownV2",
                 )
+
+        elif text.startswith("/help"):
+            await _handle_help_command(chat_id)
 
         elif text.startswith("/register"):
             await _handle_register(chat_id, telegram_user_id, session)
@@ -291,11 +301,28 @@ async def _handle_login_start(
         except Exception:
             logger.warning("Failed to update avatar during login for user %s", user.id)
 
-    # Send OTP to user (monospace format for tap-to-copy)
+    # Send OTP to user (monospace format for tap-to-copy, i18n)
+    otp_messages = {
+        "ru": f"🔐 Код входа:\n\n`{otp}`\n\nНажмите на код, чтобы скопировать\\. Действует 5 минут\\.",
+        "en": f"🔐 Login code:\n\n`{otp}`\n\nTap the code to copy\\. Expires in 5 minutes\\.",
+        "uz": f"🔐 Kirish kodi:\n\n`{otp}`\n\nKodni nusxalash uchun bosing\\. 5 daqiqa amal qiladi\\.",
+    }
+    # Try to get company language
+    lang = "en"
+    if challenge.company_id:
+        config = await session.execute(
+            select(TelegramBotConfig).where(
+                TelegramBotConfig.company_id == challenge.company_id,
+                TelegramBotConfig.deleted_at.is_(None),
+            )
+        )
+        tg_config = config.scalar_one_or_none()
+        if tg_config and tg_config.language:
+            lang = tg_config.language
+
     await _send_message(
         chat_id,
-        f"Your login code:\n\n`{otp}`\n\n"
-        f"Tap the code to copy\\. Expires in 5 minutes\\.",
+        otp_messages.get(lang, otp_messages["en"]),
         parse_mode="MarkdownV2",
     )
 
@@ -374,8 +401,9 @@ async def _handle_register_start(
 
     await _send_message(
         chat_id,
-        f"Telegram connected!\n\n"
-        f"Return to the {company_name} registration page to complete signup."
+        f"✅ Telegram connected\\!\n\n"
+        f"Return to the *{_esc_md(company_name)}* registration page to complete signup\\.",
+        parse_mode="MarkdownV2",
     )
 
 
@@ -411,6 +439,22 @@ async def _handle_register(
         chat_id,
         f"To complete registration, open this link and enter your invite code:\n\n"
         f"{reg_url}"
+    )
+
+
+# ── Help command ─────────────────────────────────────────────────────
+
+async def _handle_help_command(chat_id: int):
+    """Show available bot commands."""
+    await _send_message(
+        chat_id,
+        "📋 *S1P CRM Bot*\n\n"
+        "/today — 📊 Today's stats\n"
+        "/search — 🔍 Search contacts\n"
+        "/myleads — 📝 My leads\n"
+        "/help — ❓ This message\n\n"
+        "💡 Use the *CRM* menu button to open the Mini App\\.",
+        parse_mode="MarkdownV2",
     )
 
 
