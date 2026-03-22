@@ -332,6 +332,12 @@ class TelegramService:
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=phone)
+
+            # DM notifications for the operator
+            await TelegramService._send_dm_notifications(
+                config, "call_completed", text, session,
+                operator_id=call_event.operator_id,
+            )
         except Exception:
             logger.exception("Failed to send call notification for company %s", company_id)
 
@@ -384,6 +390,11 @@ class TelegramService:
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=phone)
+
+            # DM notifications
+            await TelegramService._send_dm_notifications(
+                config, "call_missed", text, session,
+            )
         except Exception:
             logger.exception("Failed to send missed call notification for company %s", company_id)
 
@@ -419,6 +430,11 @@ class TelegramService:
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[lead_btn]]) if lead_btn else None
 
             await TelegramService._send(bot, config, text, "new_lead", keyboard)
+
+            # DM notifications
+            await TelegramService._send_dm_notifications(
+                config, "new_lead", text, session,
+            )
         except Exception:
             logger.exception("Failed to send lead notification for company %s", company_id)
 
@@ -599,6 +615,11 @@ class TelegramService:
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "deal_stage_change", keyboard)
+
+            # DM notifications
+            await TelegramService._send_dm_notifications(
+                config, "deal_stage_change", text, session,
+            )
         except Exception:
             logger.exception("Failed to send deal_stage_change notification for company %s", company_id)
 

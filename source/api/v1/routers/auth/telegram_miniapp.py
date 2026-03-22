@@ -42,6 +42,18 @@ class MiniAppAuthResponse(BaseModel):
     last_name: str | None = None
 
 
+class MiniAppCompaniesRequest(BaseModel):
+    """Request to list companies a Telegram user belongs to."""
+    init_data: str
+
+
+class MiniAppCompanyItem(BaseModel):
+    """Company info for Mini App company picker."""
+    id: str
+    name: str
+    role: str | None = None
+
+
 def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
     """
     Validate Telegram Mini App initData using HMAC-SHA256.
@@ -168,3 +180,60 @@ async def miniapp_auth(
         first_name=user.first_name,
         last_name=user.last_name,
     )
+
+
+@router.post("/telegram/miniapp/companies", response_model=list[MiniAppCompanyItem])
+async def miniapp_companies(
+    data: MiniAppCompaniesRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    List companies a Telegram user belongs to.
+
+    Validates initData HMAC → finds all companies for this telegram_user_id.
+    Used by the Mini App company picker when no company_id is provided.
+    """
+    if not TelegramConfig.BOT_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telegram bot not configured",
+        )
+
+    tg_user = _validate_init_data(data.init_data, TelegramConfig.BOT_TOKEN)
+    if not tg_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid initData",
+        )
+
+    telegram_user_id = tg_user.get("id")
+    if not telegram_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No user ID in initData",
+        )
+
+    # Find all active users with this telegram_user_id across companies
+    from sqlalchemy import select as sa_select
+    from db.models.company import Company
+
+    result = await session.execute(
+        sa_select(User.company_id, User.role, Company.name)
+        .join(Company, User.company_id == Company.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            Company.is_active.is_(True),
+        )
+    )
+    rows = result.all()
+
+    return [
+        MiniAppCompanyItem(
+            id=str(row.company_id),
+            name=row.name,
+            role=row.role.value if row.role else None,
+        )
+        for row in rows
+    ]
