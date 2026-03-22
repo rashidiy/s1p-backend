@@ -201,16 +201,31 @@ async def _register_telegram_webhook():
 
         # Register bot commands
         commands = [
-            BotCommand(command="today", description="Today's statistics"),
-            BotCommand(command="search", description="Search contacts"),
-            BotCommand(command="myleads", description="My assigned leads"),
-            BotCommand(command="start", description="Start the bot"),
+            BotCommand(command="today", description="📊 Today's statistics"),
+            BotCommand(command="search", description="🔍 Search contacts"),
+            BotCommand(command="myleads", description="📝 My assigned leads"),
+            BotCommand(command="help", description="❓ Available commands"),
+            BotCommand(command="start", description="🚀 Start the bot"),
         ]
         await bot.set_my_commands(commands)
 
+        # Set Mini App as menu button
+        try:
+            from aiogram.types import MenuButtonWebApp, WebAppInfo
+            frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+            if frontend_url and frontend_url.startswith("https://"):
+                await bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(
+                        text="📋 CRM",
+                        web_app=WebAppInfo(url=f"{frontend_url}/miniapp"),
+                    )
+                )
+        except Exception:
+            pass  # Menu button is optional — skip if it fails
+
         info = await bot.get_webhook_info()
         await bot.session.close()
-        print(f"[Telegram] Webhook registered: {info.url}, commands set")
+        print(f"[Telegram] Webhook registered: {info.url}, commands + menu button set")
 
         # Start daily digest scheduler
         try:
