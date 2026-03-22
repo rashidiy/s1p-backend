@@ -34,8 +34,11 @@ def _duration(seconds: int, lang: str) -> str:
 
 def _phone_link(phone: str) -> str:
     """Format phone as tappable tel: link in MarkdownV2."""
+    import re
     clean = phone.strip()
-    return f"[`{_esc(clean)}`](tel:{clean})"
+    # Sanitize for tel: URI — only allow digits, +, -, spaces
+    safe_tel = re.sub(r'[^+\d\- ]', '', clean)
+    return f"[`{_esc(clean)}`](tel:{safe_tel})"
 
 
 # ── Call completed ────────────────────────────────────────────────
