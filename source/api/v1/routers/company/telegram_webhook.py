@@ -291,11 +291,12 @@ async def _handle_login_start(
         except Exception:
             logger.warning("Failed to update avatar during login for user %s", user.id)
 
-    # Send OTP to user
+    # Send OTP to user (monospace format for tap-to-copy)
     await _send_message(
         chat_id,
-        f"Your login code: {otp}\n\n"
-        f"This code expires in 5 minutes. Enter it on the login page."
+        f"Your login code:\n\n`{otp}`\n\n"
+        f"Tap the code to copy\\. Expires in 5 minutes\\.",
+        parse_mode="MarkdownV2",
     )
 
 
@@ -415,14 +416,14 @@ async def _handle_register(
 
 # ── Send message helper ──────────────────────────────────────────────
 
-async def _send_message(chat_id: int, text: str) -> None:
-    """Send a plain text message to a Telegram chat."""
+async def _send_message(chat_id: int, text: str, parse_mode: str | None = None) -> None:
+    """Send a message to a Telegram chat."""
     bot = _get_bot()
     if not bot:
         return
 
     try:
-        await bot.send_message(chat_id=chat_id, text=text)
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
     except Exception:
         logger.exception("Failed to send Telegram message to chat %s", chat_id)
     finally:
