@@ -252,7 +252,8 @@ async def get_call_history(
     total = await session.scalar(count_query) or 0
 
     # Subqueries for related names (avoids N+1 queries)
-    contact_name_subquery = (
+    # Contact name: first try FK (contact_id), then fallback to phone match
+    contact_name_by_id = (
         select(
             case(
                 (Contact.deleted_at.isnot(None), literal("(deleted)")),
@@ -263,6 +264,20 @@ async def get_call_history(
         .correlate(CallEvent)
         .scalar_subquery()
     )
+    contact_name_by_phone = (
+        select(
+            func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, '')))
+        )
+        .where(
+            Contact.phone == CallEvent.phone_1,
+            Contact.company_id == user.company_id,
+            Contact.deleted_at.is_(None),
+        )
+        .correlate(CallEvent)
+        .limit(1)
+        .scalar_subquery()
+    )
+    contact_name_subquery = func.coalesce(contact_name_by_id, contact_name_by_phone)
     lead_title_subquery = (
         select(Lead.title)
         .where(and_(Lead.id == CallEvent.lead_id, Lead.deleted_at.is_(None)))
