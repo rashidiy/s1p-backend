@@ -66,7 +66,7 @@ class ProfileUpdateRequest(BaseModel):
     def validate_telegram_dm_prefs(cls, v):
         if v is None:
             return v
-        allowed_keys = {"my_calls", "my_leads", "assigned_to_me", "quiet_hours_start", "quiet_hours_end"}
+        allowed_keys = {"my_calls", "my_leads", "assigned_to_me", "quiet_hours_enabled", "quiet_hours_start", "quiet_hours_end"}
         invalid_keys = set(v.keys()) - allowed_keys
         if invalid_keys:
             raise ValueError(f"Invalid keys: {invalid_keys}. Allowed: {sorted(allowed_keys)}")
