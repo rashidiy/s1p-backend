@@ -132,7 +132,7 @@ async def get_my_dashboard(
             contact_name = c_first or c_last
         recent_calls.append({
             "id": call.id,
-            "phone": call.phone_2 or call.phone_1,
+            "phone": call.phone_1 or call.phone_2,
             "direction": call.direction.value if call.direction else None,
             "duration": call.billing_sec,
             "started_at": call.created_at.isoformat() if call.created_at else None,
