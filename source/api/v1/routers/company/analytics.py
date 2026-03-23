@@ -17,8 +17,10 @@ from datetime import date, datetime, timedelta, timezone
 from db import get_session
 from db.models.user import User
 from db.models.call_event import CallEvent
+from db.models.contact import Contact
+from db.models.lead import Lead
 from db.models.task import Task
-from db.models.enums import RoleEnum, TaskStatusEnum
+from db.models.enums import RoleEnum, TaskStatusEnum, CallStatusEnum
 from api.v1.schemas.analytics import (
     OperatorAnalytics,
     OperatorDashboard,
@@ -100,24 +102,110 @@ async def get_my_dashboard(
         )
     ) or 0
 
-    # Get recent calls (single query with limit)
-    recent_calls_query = select(CallEvent).where(
-        CallEvent.company_id == user.company_id,
-        CallEvent.operator_id == user.id
-    ).order_by(CallEvent.created_at.desc()).limit(5)
+    # Get recent calls (single query with limit) — enriched with contact_name
+    recent_calls_query = (
+        select(CallEvent, Contact.first_name, Contact.last_name)
+        .outerjoin(Contact, and_(
+            Contact.phone == CallEvent.phone_1,
+            Contact.company_id == CallEvent.company_id,
+            Contact.deleted_at.is_(None),
+        ))
+        .where(
+            CallEvent.company_id == user.company_id,
+            CallEvent.operator_id == user.id,
+        )
+        .order_by(CallEvent.created_at.desc())
+        .limit(5)
+    )
 
     result = await session.execute(recent_calls_query)
-    recent_calls_objs = result.scalars().all()
+    recent_calls_rows = result.all()
 
-    recent_calls = [
-        {
+    recent_calls = []
+    for row in recent_calls_rows:
+        call = row[0]
+        c_first, c_last = row[1], row[2]
+        contact_name = None
+        if c_first and c_last:
+            contact_name = f"{c_first} {c_last}"
+        elif c_first or c_last:
+            contact_name = c_first or c_last
+        recent_calls.append({
             "id": call.id,
             "phone": call.phone_2 or call.phone_1,
             "direction": call.direction.value if call.direction else None,
             "duration": call.billing_sec,
-            "started_at": call.created_at.isoformat() if call.created_at else None
+            "started_at": call.created_at.isoformat() if call.created_at else None,
+            "contact_name": contact_name,
+        })
+
+    # Get missed calls to return (today, NOANSWER/CANCEL, operator's calls)
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    missed_calls_query = (
+        select(CallEvent, Contact.first_name, Contact.last_name, Contact.id.label("cid"))
+        .outerjoin(Contact, and_(
+            Contact.phone == CallEvent.phone_1,
+            Contact.company_id == CallEvent.company_id,
+            Contact.deleted_at.is_(None),
+        ))
+        .where(
+            CallEvent.company_id == user.company_id,
+            CallEvent.operator_id == user.id,
+            CallEvent.state.in_([CallStatusEnum.NOANSWER, CallStatusEnum.CANCEL]),
+            CallEvent.created_at >= today_start,
+        )
+        .order_by(CallEvent.created_at.desc())
+        .limit(20)
+    )
+
+    result = await session.execute(missed_calls_query)
+    missed_rows = result.all()
+
+    missed_calls_to_return = []
+    for row in missed_rows:
+        call = row[0]
+        c_first, c_last, contact_id = row[1], row[2], row[3]
+        contact_name = None
+        if c_first and c_last:
+            contact_name = f"{c_first} {c_last}"
+        elif c_first or c_last:
+            contact_name = c_first or c_last
+        missed_calls_to_return.append({
+            "id": call.id,
+            "phone": call.phone_1,
+            "contact_name": contact_name,
+            "contact_id": str(contact_id) if contact_id else None,
+            "created_at": call.created_at.isoformat() if call.created_at else None,
+        })
+
+    # Get new leads assigned to this operator
+    new_leads_query = (
+        select(Lead)
+        .where(
+            Lead.company_id == user.company_id,
+            Lead.assigned_to == user.id,
+            Lead.status == "new",
+            Lead.deleted_at.is_(None),
+        )
+        .order_by(Lead.created_at.desc())
+        .limit(20)
+    )
+
+    result = await session.execute(new_leads_query)
+    new_leads_objs = result.scalars().all()
+
+    new_leads = [
+        {
+            "id": str(lead.id),
+            "title": lead.title,
+            "source": lead.source,
+            "estimated_value": float(lead.estimated_value) if lead.estimated_value else None,
+            "contact_name": None,  # Could be enriched via contact_id if needed
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
         }
-        for call in recent_calls_objs
+        for lead in new_leads_objs
     ]
 
     # Get recent tasks (single query with limit)
@@ -146,7 +234,9 @@ async def get_my_dashboard(
         pending_leads=today.leads.new_leads,
         active_deals=this_month.deals.total_deals - this_month.deals.won - this_month.deals.lost,
         recent_calls=recent_calls,
-        recent_tasks=recent_tasks
+        recent_tasks=recent_tasks,
+        missed_calls_to_return=missed_calls_to_return,
+        new_leads=new_leads,
     )
 
     # Cache for 1 minute
