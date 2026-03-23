@@ -337,6 +337,8 @@ class TelegramService:
             await TelegramService._send_dm_notifications(
                 config, "call_completed", text, session,
                 operator_id=call_event.operator_id,
+                call_id=call_id,
+                contact_id=call_event.contact_id,
             )
         except Exception:
             logger.exception("Failed to send call notification for company %s", company_id)
@@ -394,6 +396,8 @@ class TelegramService:
             # DM notifications
             await TelegramService._send_dm_notifications(
                 config, "call_missed", text, session,
+                call_id=call_id,
+                contact_id=call_event.contact_id,
             )
         except Exception:
             logger.exception("Failed to send missed call notification for company %s", company_id)
@@ -435,6 +439,7 @@ class TelegramService:
             await TelegramService._send_dm_notifications(
                 config, "new_lead", text, session,
                 operator_id=lead.assigned_to,
+                lead_id=lead.id,
             )
         except Exception:
             logger.exception("Failed to send lead notification for company %s", company_id)
@@ -622,6 +627,7 @@ class TelegramService:
             await TelegramService._send_dm_notifications(
                 config, "deal_stage_change", text, session,
                 operator_id=assigned_to_id,
+                deal_id=deal_id,
             )
         except Exception:
             logger.exception("Failed to send deal_stage_change notification for company %s", company_id)
@@ -772,18 +778,88 @@ class TelegramService:
     # ── DM notifications ─────────────────────────────────────────
 
     @staticmethod
+    def _is_quiet_hours(prefs: dict) -> bool:
+        """Check if current UTC hour falls within user's quiet hours range."""
+        start = prefs.get("quiet_hours_start")
+        end = prefs.get("quiet_hours_end")
+        if start is None or end is None:
+            return False
+        from datetime import datetime as _dt, timezone as _tz
+        current_hour = _dt.now(_tz.utc).hour
+        if start <= end:
+            # Simple range, e.g. 9-17
+            return start <= current_hour < end
+        else:
+            # Wrap-around, e.g. 22-07 means quiet from 22:00 to 06:59
+            return current_hour >= start or current_hour < end
+
+    @staticmethod
+    def _build_dm_keyboard(
+        event_type: str,
+        call_id=None,
+        contact_id=None,
+        lead_id=None,
+        deal_id=None,
+    ) -> InlineKeyboardMarkup | None:
+        """Build inline keyboard for DM notifications."""
+        from aiogram.types import WebAppInfo
+
+        frontend_url = AppConfig.FRONTEND_URL.rstrip("/")
+        use_webapp = frontend_url.startswith("https://")
+
+        rows = []
+
+        if event_type in ("call_completed", "call_missed"):
+            if use_webapp and contact_id:
+                rows.append([InlineKeyboardButton(
+                    text="Open Contact",
+                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=contact&id={contact_id}"),
+                )])
+            if use_webapp:
+                rows.append([InlineKeyboardButton(
+                    text="Open CRM",
+                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=calls"),
+                )])
+            if call_id:
+                rows.append([InlineKeyboardButton(
+                    text="Handled",
+                    callback_data=f"mh:{call_id}",
+                )])
+
+        elif event_type == "new_lead" and lead_id:
+            if use_webapp:
+                rows.append([InlineKeyboardButton(
+                    text="View Lead",
+                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=lead&id={lead_id}"),
+                )])
+
+        elif event_type == "deal_stage_change" and deal_id:
+            if use_webapp:
+                rows.append([InlineKeyboardButton(
+                    text="View Deal",
+                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=deal&id={deal_id}"),
+                )])
+
+        return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+    @staticmethod
     async def _send_dm_notifications(
         config: TelegramConfig,
         event_type: str,
         text: str,
         session: AsyncSession,
         operator_id: Optional[UUID] = None,
+        call_id=None,
+        contact_id=None,
+        lead_id=None,
+        deal_id=None,
     ) -> None:
         """
         Send DM notifications to operators who have DM prefs enabled.
 
         Fire-and-forget, rate limited to 1 DM per event per user.
         Only sends if config.dm_notifications is True.
+        Respects quiet hours from user's telegram_dm_prefs.
         """
         if not config.dm_notifications:
             return
@@ -802,6 +878,15 @@ class TelegramService:
         pref_key = pref_map.get(event_type)
         if not pref_key:
             return
+
+        # Build inline keyboard for DM
+        keyboard = TelegramService._build_dm_keyboard(
+            event_type,
+            call_id=call_id,
+            contact_id=contact_id,
+            lead_id=lead_id,
+            deal_id=deal_id,
+        )
 
         try:
             # Find users with DM prefs enabled for this event type
@@ -825,12 +910,19 @@ class TelegramService:
                 if operator_id and user.id != operator_id:
                     continue
 
+                # Check quiet hours
+                if TelegramService._is_quiet_hours(prefs):
+                    continue
+
                 try:
-                    await bot.send_message(
-                        chat_id=user.telegram_user_id,
-                        text=text,
-                        parse_mode=ParseMode.MARKDOWN_V2,
-                    )
+                    kwargs = {
+                        "chat_id": user.telegram_user_id,
+                        "text": text,
+                        "parse_mode": ParseMode.MARKDOWN_V2,
+                    }
+                    if keyboard:
+                        kwargs["reply_markup"] = keyboard
+                    await bot.send_message(**kwargs)
                 except Exception:
                     logger.debug("Failed to send DM to user %s", user.id)
 
