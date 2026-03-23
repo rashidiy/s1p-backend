@@ -136,6 +136,11 @@ async def telegram_webhook(
     if callback_query:
         await _handle_callback_query(callback_query, session)
 
+    # Handle inline queries (contact search)
+    inline_query = data.get("inline_query")
+    if inline_query:
+        await _handle_inline_query(inline_query, session)
+
     # Handle messages (commands)
     message = data.get("message")
     if message:
@@ -687,6 +692,150 @@ async def _handle_myleads_command(chat_id: int, telegram_user_id: int, session: 
         lines.append(f"• {title} [{status_val}]")
 
     await _send_message(chat_id, "\n".join(lines))
+
+
+# ── Inline query handler ──────────────────────────────────────────────
+
+async def _handle_inline_query(inline_query: dict, session: AsyncSession):
+    """
+    Handle Telegram inline queries — search contacts by name or phone.
+
+    Only returns contacts (not leads/deals) for security.
+    Multi-tenant: always filters by company_id.
+    """
+    from db.models.contact import Contact
+    from sqlalchemy import or_
+
+    query_text = (inline_query.get("query") or "").strip()
+    inline_query_id = inline_query.get("id")
+    from_user = inline_query.get("from", {})
+    telegram_user_id = from_user.get("id")
+
+    if not inline_query_id or not telegram_user_id:
+        return
+
+    # Don't search on short queries to avoid noise
+    if len(query_text) < 2:
+        await _answer_inline_query(inline_query_id, [])
+        return
+
+    try:
+        # Find CRM user by telegram_user_id (search across all companies)
+        result = await session.execute(
+            select(User).where(
+                User.telegram_user_id == telegram_user_id,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+            )
+        )
+        user = result.scalars().first()
+
+        if not user or not user.company_id:
+            await _answer_inline_query(inline_query_id, [])
+            return
+
+        # Search contacts by name or phone (case-insensitive, multi-tenant)
+        search_term = f"%{query_text}%"
+        contacts_result = await session.execute(
+            select(Contact)
+            .where(
+                Contact.company_id == user.company_id,
+                Contact.deleted_at.is_(None),
+                or_(
+                    Contact.first_name.ilike(search_term),
+                    Contact.last_name.ilike(search_term),
+                    Contact.phone.ilike(search_term),
+                ),
+            )
+            .limit(10)
+        )
+        contacts = contacts_result.scalars().all()
+
+        # Build inline query results
+        results = []
+        frontend_url = AppConfig.FRONTEND_URL.rstrip("/")
+        use_webapp = frontend_url.startswith("https://")
+
+        for contact in contacts:
+            name = f"{contact.first_name or ''} {contact.last_name or ''}".strip() or "Unknown"
+            phone = contact.phone or ""
+            contact_id = str(contact.id)
+
+            article = {
+                "type": "article",
+                "id": contact_id,
+                "title": name,
+                "description": phone,
+                "input_message_content": {
+                    "message_text": f"{name} {phone}".strip(),
+                },
+            }
+
+            # Add web_app button if HTTPS frontend available
+            if use_webapp:
+                article["reply_markup"] = {
+                    "inline_keyboard": [[{
+                        "text": "Open in CRM",
+                        "web_app": {"url": f"{frontend_url}/miniapp?view=contact&id={contact_id}"},
+                    }]]
+                }
+
+            results.append(article)
+
+        await _answer_inline_query(inline_query_id, results)
+
+    except Exception:
+        logger.exception("Error handling inline query from user %s", telegram_user_id)
+        await _answer_inline_query(inline_query_id, [])
+
+
+async def _answer_inline_query(inline_query_id: str, results: list) -> None:
+    """Answer a Telegram inline query."""
+    bot = _get_bot()
+    if not bot:
+        return
+
+    try:
+        import json
+        from aiogram.types import (
+            InlineQueryResultArticle,
+            InputTextMessageContent,
+            InlineKeyboardMarkup,
+            InlineKeyboardButton,
+            WebAppInfo,
+        )
+
+        result_objects = []
+        for r in results:
+            kwargs = {
+                "id": r["id"],
+                "title": r["title"],
+                "description": r.get("description"),
+                "input_message_content": InputTextMessageContent(
+                    message_text=r["input_message_content"]["message_text"],
+                ),
+            }
+            if "reply_markup" in r:
+                btn_data = r["reply_markup"]["inline_keyboard"][0][0]
+                kwargs["reply_markup"] = InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text=btn_data["text"],
+                            web_app=WebAppInfo(url=btn_data["web_app"]["url"]),
+                        )
+                    ]]
+                )
+            result_objects.append(InlineQueryResultArticle(**kwargs))
+
+        await bot.answer_inline_query(
+            inline_query_id=inline_query_id,
+            results=result_objects,
+            cache_time=10,
+        )
+    except Exception:
+        logger.exception("Failed to answer inline query %s", inline_query_id)
+    finally:
+        await bot.session.close()
 
 
 # ── Callback query handlers (V2 — shortened prefixes) ────────────────
