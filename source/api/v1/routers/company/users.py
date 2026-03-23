@@ -80,6 +80,8 @@ async def update_my_profile(
         user.phone = data.phone
     if data.language is not None:
         user.language = data.language
+    if data.telegram_dm_prefs is not None:
+        user.telegram_dm_prefs = data.telegram_dm_prefs
 
     await user.update(session=session)
     return user

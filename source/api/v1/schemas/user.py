@@ -2,7 +2,7 @@
 User management schemas
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -56,6 +56,25 @@ class ProfileUpdateRequest(BaseModel):
     last_name: Optional[str] = Field(None, max_length=225)
     phone: Optional[str] = Field(None, max_length=50)
     language: Optional[str] = Field(None, max_length=10)
+    telegram_dm_prefs: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Telegram DM notification preferences: my_calls, my_leads, assigned_to_me (bool), quiet_hours_start/end (int 0-23)",
+    )
+
+    @field_validator("telegram_dm_prefs")
+    @classmethod
+    def validate_telegram_dm_prefs(cls, v):
+        if v is None:
+            return v
+        allowed_keys = {"my_calls", "my_leads", "assigned_to_me", "quiet_hours_start", "quiet_hours_end"}
+        invalid_keys = set(v.keys()) - allowed_keys
+        if invalid_keys:
+            raise ValueError(f"Invalid keys: {invalid_keys}. Allowed: {sorted(allowed_keys)}")
+        for key in ("quiet_hours_start", "quiet_hours_end"):
+            if key in v and v[key] is not None:
+                if not isinstance(v[key], int) or not (0 <= v[key] <= 23):
+                    raise ValueError(f"{key} must be an integer between 0 and 23")
+        return v
 
 
 class UserResponse(UserBase):
@@ -74,6 +93,7 @@ class UserResponse(UserBase):
     telegram_username: Optional[str] = None
     telegram_first_name: Optional[str] = None
     telegram_last_name: Optional[str] = None
+    telegram_dm_prefs: Optional[Dict[str, Any]] = None
     avatar: Optional[str] = None
     avatar_url: Optional[str] = None
     created_at: datetime
