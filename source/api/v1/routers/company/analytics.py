@@ -106,7 +106,7 @@ async def get_my_dashboard(
     recent_calls_query = (
         select(CallEvent, Contact.first_name, Contact.last_name)
         .outerjoin(Contact, and_(
-            Contact.phone == CallEvent.phone_1,
+            Contact.phone == CallEvent.phone_2,
             Contact.company_id == CallEvent.company_id,
             Contact.deleted_at.is_(None),
         ))
@@ -132,7 +132,7 @@ async def get_my_dashboard(
             contact_name = c_first or c_last
         recent_calls.append({
             "id": call.id,
-            "phone": call.phone_1 or call.phone_2,
+            "phone": call.phone_2 or call.phone_1,
             "direction": call.direction.value if call.direction else None,
             "duration": call.billing_sec,
             "started_at": call.created_at.isoformat() if call.created_at else None,
@@ -146,7 +146,7 @@ async def get_my_dashboard(
     missed_calls_query = (
         select(CallEvent, Contact.first_name, Contact.last_name, Contact.id.label("cid"))
         .outerjoin(Contact, and_(
-            Contact.phone == CallEvent.phone_1,
+            Contact.phone == CallEvent.phone_2,
             Contact.company_id == CallEvent.company_id,
             Contact.deleted_at.is_(None),
         ))
@@ -174,7 +174,7 @@ async def get_my_dashboard(
             contact_name = c_first or c_last
         missed_calls_to_return.append({
             "id": call.id,
-            "phone": call.phone_1,
+            "phone": call.phone_2 or call.phone_1,
             "contact_name": contact_name,
             "contact_id": str(contact_id) if contact_id else None,
             "created_at": call.created_at.isoformat() if call.created_at else None,

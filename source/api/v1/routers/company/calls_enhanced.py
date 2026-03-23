@@ -269,7 +269,7 @@ async def get_call_history(
             func.trim(func.concat(Contact.first_name, ' ', func.coalesce(Contact.last_name, '')))
         )
         .where(
-            Contact.phone == CallEvent.phone_1,
+            Contact.phone == CallEvent.phone_2,
             Contact.company_id == user.company_id,
             Contact.deleted_at.is_(None),
         )
