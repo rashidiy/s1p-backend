@@ -85,6 +85,10 @@ class OperatorDashboard(BaseModel):
     recent_calls: List[Dict[str, Any]] = []
     recent_tasks: List[Dict[str, Any]] = []
 
+    # Mini app extras
+    missed_calls_to_return: List[Dict[str, Any]] = []
+    new_leads: List[Dict[str, Any]] = []
+
 
 # ===== Admin Analytics (Team Performance) =====
 
