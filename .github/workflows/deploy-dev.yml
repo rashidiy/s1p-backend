@@ -1,0 +1,72 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: deploy-dev-backend
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sip_tools_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: sip_tools_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SIGNING_KEY: test-secret-key-for-ci-minimum-32-chars-long
+          JWT_ALGORITHM: HS256
+          BASE_URL: http://localhost:8000
+          FRONTEND_URL: http://localhost:3000
+        run: python -m pytest source/tests/ -v --tb=short
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: s1p.uz
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: /root/projects/deploy.sh backend
