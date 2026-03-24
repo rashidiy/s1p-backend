@@ -309,26 +309,39 @@ class TelegramService:
 
             call_id = call_event.id
             phone = call_event.phone_1 or ""
+            company_id_str = str(company_id)
 
-            rows = [
-                [
-                    InlineKeyboardButton(text=btn["listen_recording"], callback_data=f"cb:{call_id}") if not contact_name else None,
-                    InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
-                ],
+            from utils.services.startapp_service import build_miniapp_url
+
+            row1 = [
+                InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
             ]
-            # Clean up None values from first row
-            rows[0] = [b for b in rows[0] if b is not None]
+            rows = [row1]
 
             row2 = []
             if not contact_name and phone:
-                # Unknown caller — offer to create contact
-                row2.append(InlineKeyboardButton(text=btn["create_contact"], callback_data=f"cc:{phone[:50]}"))
-            row2.append(InlineKeyboardButton(text=btn["assign_lead"], callback_data=f"al:{call_id}"))
+                row2.append(InlineKeyboardButton(
+                    text=btn["create_contact"],
+                    url=build_miniapp_url("new_contact", phone, company_id_str),
+                ))
+            row2.append(InlineKeyboardButton(
+                text=btn["assign_lead"],
+                url=build_miniapp_url("new_lead", phone, company_id_str),
+            ))
             rows.append(row2)
 
+            # Navigation row: Mini App + CRM
+            nav_row = [
+                InlineKeyboardButton(
+                    text="📱 Mini App",
+                    url=build_miniapp_url("call_detail", str(call_id), company_id_str),
+                ),
+            ]
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
-                rows.append([crm_btn])
+                nav_row.append(crm_btn)
+            rows.append(nav_row)
+
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=phone)
@@ -376,22 +389,54 @@ class TelegramService:
 
             call_id = call_event.id
             phone = call_event.phone_1 or ""
+            company_id_str = str(company_id)
 
-            row1 = [
-                InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{call_id}"),
-                InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
+            from utils.services.startapp_service import build_miniapp_url
+
+            rows = [
+                [
+                    InlineKeyboardButton(
+                        text=btn["callback"],
+                        url=build_miniapp_url("call", phone, company_id_str),
+                    ),
+                    InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
+                ],
             ]
-            rows = [row1]
 
+            row2 = []
             if not contact_name and phone:
-                rows.append([InlineKeyboardButton(text=btn["create_contact"], callback_data=f"cc:{phone[:50]}")])
+                row2.append(InlineKeyboardButton(
+                    text=btn["create_contact"],
+                    url=build_miniapp_url("new_contact", phone, company_id_str),
+                ))
+            rows.append(row2) if row2 else None
 
+            # Navigation row: Mini App + CRM
+            nav_row = [
+                InlineKeyboardButton(
+                    text="📱 Mini App",
+                    url=build_miniapp_url("call_detail", str(call_id), company_id_str),
+                ),
+            ]
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
-                rows.append([crm_btn])
-            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+                nav_row.append(crm_btn)
+            rows.append(nav_row)
 
-            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=phone)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[r for r in rows if r])
+
+            msg_id = await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=phone)
+
+            # Save telegram message_id for escalation replies
+            if msg_id and call_event.id:
+                from db.models.call_event import CallEvent
+                await session.execute(
+                    CallEvent.__table__.update()
+                    .where(CallEvent.id == call_event.id)
+                    .where(CallEvent.company_id == company_id)
+                    .values(telegram_message_id=msg_id)
+                )
+                await session.commit()
 
             # DM notifications
             await TelegramService._send_dm_notifications(

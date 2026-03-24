@@ -119,6 +119,14 @@ class CallEvent(Base, ObjectManagerMixin):
     )
     disposition_notes = Column(Text, nullable=True)
 
+    # Callback tracking for missed inbound calls
+    needs_callback = Column(Boolean, server_default=text('false'), nullable=False)
+    callback_at = Column(DateTime(timezone=True), nullable=True)  # When callback was made
+    callback_call_id = Column(Integer, ForeignKey("call_events.id", ondelete="SET NULL"), nullable=True)
+
+    # Telegram message tracking (for escalation replies)
+    telegram_message_id = Column(Integer, nullable=True)
+
     # UTM tracking for marketing attribution
     utm_source = Column(String(255))
     utm_medium = Column(String(255))

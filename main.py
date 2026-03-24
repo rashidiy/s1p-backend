@@ -291,6 +291,14 @@ async def _register_telegram_webhook():
         except Exception as e:
             print(f"[Telegram] Failed to start digest scheduler: {e}")
 
+        # Start missed call escalation scheduler
+        try:
+            from utils.tasks.missed_call_escalation import escalation_scheduler
+            asyncio.create_task(escalation_scheduler())
+            print("[Telegram] Missed call escalation scheduler started")
+        except Exception as e:
+            print(f"[Telegram] Failed to start escalation scheduler: {e}")
+
     except Exception as e:
         print(f"[Telegram] Failed to register webhook: {e}")
 
