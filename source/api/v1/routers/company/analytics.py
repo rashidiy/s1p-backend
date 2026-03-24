@@ -79,15 +79,16 @@ async def get_my_dashboard(
     if cached:
         return OperatorDashboard(**cached)
 
-    # Get analytics for different periods (4 optimized SQL queries each)
+    # Get analytics for different periods — company-wide (operator_id may be NULL
+    # for inbound calls where SIP extension isn't mapped to a user)
     today = await AnalyticsService.get_operator_analytics(
-        session, user.company_id, user.id, "today"
+        session, user.company_id, None, "today"
     )
     this_week = await AnalyticsService.get_operator_analytics(
-        session, user.company_id, user.id, "week"
+        session, user.company_id, None, "week"
     )
     this_month = await AnalyticsService.get_operator_analytics(
-        session, user.company_id, user.id, "month"
+        session, user.company_id, None, "month"
     )
 
     # Get quick stats (single query)
@@ -103,16 +104,16 @@ async def get_my_dashboard(
     ) or 0
 
     # Get recent calls (single query with limit) — enriched with contact_name
+    # Company-wide (not filtered by operator — operator_id often NULL for inbound)
     recent_calls_query = (
         select(CallEvent, Contact.first_name, Contact.last_name)
         .outerjoin(Contact, and_(
-            Contact.phone == CallEvent.phone_2,
+            Contact.phone == CallEvent.phone_1,
             Contact.company_id == CallEvent.company_id,
             Contact.deleted_at.is_(None),
         ))
         .where(
             CallEvent.company_id == user.company_id,
-            CallEvent.operator_id == user.id,
         )
         .order_by(CallEvent.created_at.desc())
         .limit(5)
