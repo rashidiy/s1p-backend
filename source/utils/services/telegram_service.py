@@ -475,8 +475,19 @@ class TelegramService:
                 lang=lang,
             )
 
-            lead_btn = _url_button(btn["open_lead"], f"/leads/{lead.id}")
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[lead_btn]]) if lead_btn else None
+            from utils.services.startapp_service import build_miniapp_url
+            company_id_str = str(company_id)
+
+            nav_row = [
+                InlineKeyboardButton(
+                    text=btn["open_lead"],
+                    url=build_miniapp_url("lead_detail", str(lead.id), company_id_str),
+                ),
+            ]
+            crm_btn = _url_button(btn["open_crm"], f"/leads/{lead.id}")
+            if crm_btn:
+                nav_row.append(crm_btn)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
             await TelegramService._send(bot, config, text, "new_lead", keyboard)
 
@@ -659,11 +670,19 @@ class TelegramService:
                 lang=lang,
             )
 
-            rows = []
-            deal_btn = _url_button(btn["open_deal"], f"/deals/{deal_id}")
-            if deal_btn:
-                rows.append([deal_btn])
-            rows.append([InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")])
+            from utils.services.startapp_service import build_miniapp_url
+            company_id_str = str(company_id)
+
+            rows = [
+                [InlineKeyboardButton(
+                    text=btn["open_deal"],
+                    url=build_miniapp_url("deal_detail", str(deal_id), company_id_str),
+                )],
+                [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")],
+            ]
+            crm_btn = _url_button(btn["open_crm"], f"/deals/{deal_id}")
+            if crm_btn:
+                rows[0].append(crm_btn)
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "deal_stage_change", keyboard)
