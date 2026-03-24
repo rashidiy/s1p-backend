@@ -203,8 +203,14 @@ async def handle_webhook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid webhook token"
         )
+
+    # Cache scalar values — ORM objects expire after session.rollback()
+    company_id = company.id
+    provider_type = company.provider_type
+    provider_config = company.provider_config
+
     # Validate source IP against provider whitelist
-    if not validate_webhook_ip(request, company.provider_type):
+    if not validate_webhook_ip(request, provider_type):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: IP not whitelisted for this provider"
@@ -213,8 +219,8 @@ async def handle_webhook(
     try:
         # Create provider instance
         provider = ProviderFactory.create(
-            provider_type=company.provider_type.value,
-            config=company.provider_config
+            provider_type=provider_type.value,
+            config=provider_config
         )
 
         # Validate webhook authentication
@@ -240,7 +246,7 @@ async def handle_webhook(
             validated = WebhookCallData(**call_data)
         except Exception as e:
             logger.warning(
-                f"Webhook payload validation failed for company {company.id}: {e}"
+                f"Webhook payload validation failed for company {company_id}: {e}"
             )
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -251,13 +257,13 @@ async def handle_webhook(
         call_data = validated.model_dump(exclude_none=True)
 
         # Add company_id to call data
-        call_data['company_id'] = company.id
-        call_data['provider_type'] = company.provider_type
+        call_data['company_id'] = company_id
+        call_data['provider_type'] = provider_type
 
         # Validate entity ownership before creating/updating
         await _validate_entity_ownership(
             session=session,
-            company_id=company.id,
+            company_id=company_id,
             operator_id=call_data.get('operator_id'),
             contact_id=call_data.get('contact_id'),
             lead_id=call_data.get('lead_id'),
@@ -266,18 +272,18 @@ async def handle_webhook(
         # Check if call event already exists (for updates)
         existing_call = await CallEvent.get(
             session=session,
-            company_id=company.id,
-            provider_type=company.provider_type,
+            company_id=company_id,
+            provider_type=provider_type,
             provider_call_id=call_data['provider_call_id']
         )
 
         if existing_call:
             return await _update_existing_call(
-                session, background_tasks, company, existing_call, call_data, event_type,
+                session, background_tasks, company_id, existing_call, call_data, event_type,
             )
         else:
             # Assign company-scoped id for new events
-            call_data['id'] = await next_call_number(session, company.id)
+            call_data['id'] = await next_call_number(session, company_id)
             try:
                 call_event = await CallEvent.create(session=session, **call_data)
             except IntegrityError:
@@ -286,21 +292,21 @@ async def handle_webhook(
                 await session.rollback()
                 existing_call = await CallEvent.get(
                     session=session,
-                    company_id=company.id,
-                    provider_type=company.provider_type,
+                    company_id=company_id,
+                    provider_type=provider_type,
                     provider_call_id=call_data['provider_call_id']
                 )
                 if existing_call:
                     return await _update_existing_call(
-                        session, background_tasks, company, existing_call, call_data, event_type,
+                        session, background_tasks, company_id, existing_call, call_data, event_type,
                     )
                 # Re-try with a fresh id if the conflict was on PK only
-                call_data['id'] = await next_call_number(session, company.id)
+                call_data['id'] = await next_call_number(session, company_id)
                 call_event = await CallEvent.create(session=session, **call_data)
 
             # Fire notifications based on event type
             _schedule_notifications(
-                background_tasks, session, company.id,
+                background_tasks, session, company_id,
                 call_data, call_event.id, event_type,
             )
             return {"status": "created", "call_id": call_event.id}
@@ -309,27 +315,32 @@ async def handle_webhook(
         raise
     except Exception as e:
         # Log the error but return 200 to prevent provider retries
-        logger.error(f"Webhook processing error for company {company.id}: {str(e)}", exc_info=True)
+        logger.error(f"Webhook processing error for company {company_id}: {str(e)}", exc_info=True)
         return {"status": "error", "message": "Internal processing error"}
 
 
 async def _update_existing_call(
     session: AsyncSession,
     background_tasks: BackgroundTasks,
-    company: Company,
+    company_id: UUID,
     existing_call: CallEvent,
     call_data: dict,
     event_type: Optional[str],
 ):
     """Update an existing call event with new webhook data."""
+    # Cache scalar values before any DB ops that might expire the object
+    existing_call_id = existing_call.id
+    existing_phone_1 = existing_call.phone_1
+    existing_phone_2 = existing_call.phone_2
+    existing_state = existing_call.state
+
     # Don't overwrite phones set by call endpoint with SIP extensions from webhook
-    if existing_call.phone_1 and 'phone_1' in call_data:
+    if existing_phone_1 and 'phone_1' in call_data:
         call_data.pop('phone_1')
-    if existing_call.phone_2 and 'phone_2' in call_data:
+    if existing_phone_2 and 'phone_2' in call_data:
         call_data.pop('phone_2')
 
     # Guard: don't let earlier events overwrite terminal states with RINGING
-    existing_state = existing_call.state
     incoming_state = call_data.get('state')
     if (
         existing_state in _TERMINAL_STATES
@@ -342,16 +353,16 @@ async def _update_existing_call(
     await CallEvent.update_by(
         session=session,
         values=call_data,
-        id=existing_call.id,
-        company_id=company.id,
+        id=existing_call_id,
+        company_id=company_id,
     )
 
     # Fire notifications based on event type
     _schedule_notifications(
-        background_tasks, session, company.id,
-        call_data, existing_call.id, event_type,
+        background_tasks, session, company_id,
+        call_data, existing_call_id, event_type,
     )
-    return {"status": "updated", "call_id": existing_call.id}
+    return {"status": "updated", "call_id": existing_call_id}
 
 
 def _schedule_notifications(
