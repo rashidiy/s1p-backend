@@ -25,7 +25,6 @@ from db.models.lead import Lead
 from db.models.enums import ProviderEnum, CallStatusEnum
 from utils.services.telephony import ProviderFactory
 from utils.services.webhook import fire_webhook_event
-from api.v1.routers.company.calls.common import next_call_number
 
 logger = logging.getLogger(__name__)
 
@@ -282,12 +281,12 @@ async def handle_webhook(
                 session, background_tasks, company_id, existing_call, call_data, event_type,
             )
         else:
-            # Assign company-scoped id for new events
-            call_data['id'] = await next_call_number(session, company_id)
+            # Let PostgreSQL sequence auto-generate the id
             try:
                 call_event = await CallEvent.create(session=session, **call_data)
             except IntegrityError:
-                # Race condition: another concurrent webhook inserted first.
+                # Race condition: another concurrent webhook for the same call
+                # inserted first (unique constraint on company+provider+call_id).
                 # Rollback the failed INSERT, re-fetch, and update instead.
                 await session.rollback()
                 existing_call = await CallEvent.get(
@@ -300,9 +299,8 @@ async def handle_webhook(
                     return await _update_existing_call(
                         session, background_tasks, company_id, existing_call, call_data, event_type,
                     )
-                # Re-try with a fresh id if the conflict was on PK only
-                call_data['id'] = await next_call_number(session, company_id)
-                call_event = await CallEvent.create(session=session, **call_data)
+                # If still not found, re-raise — something unexpected happened
+                raise
 
             # Fire notifications based on event type
             _schedule_notifications(

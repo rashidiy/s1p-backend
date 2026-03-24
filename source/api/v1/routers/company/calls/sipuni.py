@@ -19,7 +19,7 @@ from utils.services.telephony import ProviderFactory
 from utils.services.telephony.base import ProviderException
 from utils.permissions import require_permissions, Permissions
 
-from .common import resolve_operator_id, require_provider, next_call_number
+from .common import resolve_operator_id, require_provider
 
 
 def _resolve_sip_ext(user: User, request_operator_id: str | None) -> str:
@@ -86,11 +86,9 @@ async def _upsert_call_event(
         )
         return existing.id
     else:
-        call_num = await next_call_number(session, company.id)
-        await CallEvent.create(
+        call_event = await CallEvent.create(
             session=session,
             company_id=company.id,
-            id=call_num,
             provider_type=company.provider_type,
             provider_call_id=provider_call_id,
             phone_1=phone_1,
@@ -101,7 +99,7 @@ async def _upsert_call_event(
             utm_campaign=utm_campaign,
             attempts=1,
         )
-        return call_num
+        return call_event.id
 
 _sipuni_company = require_provider(ProviderEnum.SIPUNI)
 
