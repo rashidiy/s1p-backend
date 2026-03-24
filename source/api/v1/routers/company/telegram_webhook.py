@@ -455,8 +455,8 @@ async def _handle_register(
 
     await _send_message(
         chat_id,
-        f"To complete registration, open this link and enter your invite code:\n\n"
-        f"{reg_url}"
+        f"To complete registration, open this link and enter your invite code:\n\n`{reg_url}`\n\nTap to copy\\.",
+        parse_mode="MarkdownV2",
     )
 
 
