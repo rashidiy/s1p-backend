@@ -130,29 +130,32 @@ async def get_my_dashboard(
             contact_name = f"{c_first} {c_last}"
         elif c_first or c_last:
             contact_name = c_first or c_last
+        # Inbound: show phone_1 (caller), Outbound: show phone_2 (callee)
+        is_inbound = call.direction and call.direction.value == 'inbound'
+        display_phone = (call.phone_1 or call.phone_2) if is_inbound else (call.phone_2 or call.phone_1)
         recent_calls.append({
             "id": call.id,
-            "phone": call.phone_2 or call.phone_1,
+            "phone": display_phone,
             "direction": call.direction.value if call.direction else None,
+            "state": call.state.value if call.state else None,
             "duration": call.billing_sec,
             "started_at": call.created_at.isoformat() if call.created_at else None,
             "contact_name": contact_name,
         })
 
-    # Get missed calls to return (today, NOANSWER/CANCEL, operator's calls)
+    # Get missed calls to return (today, NOANSWER/CANCEL — include unassigned)
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     missed_calls_query = (
         select(CallEvent, Contact.first_name, Contact.last_name, Contact.id.label("cid"))
         .outerjoin(Contact, and_(
-            Contact.phone == CallEvent.phone_2,
+            Contact.phone == CallEvent.phone_1,
             Contact.company_id == CallEvent.company_id,
             Contact.deleted_at.is_(None),
         ))
         .where(
             CallEvent.company_id == user.company_id,
-            CallEvent.operator_id == user.id,
             CallEvent.state.in_([CallStatusEnum.NOANSWER, CallStatusEnum.CANCEL]),
             CallEvent.created_at >= today_start,
         )
@@ -172,9 +175,10 @@ async def get_my_dashboard(
             contact_name = f"{c_first} {c_last}"
         elif c_first or c_last:
             contact_name = c_first or c_last
+        # Missed calls are always inbound — show phone_1 (caller)
         missed_calls_to_return.append({
             "id": call.id,
-            "phone": call.phone_2 or call.phone_1,
+            "phone": call.phone_1 or call.phone_2,
             "contact_name": contact_name,
             "contact_id": str(contact_id) if contact_id else None,
             "created_at": call.created_at.isoformat() if call.created_at else None,
