@@ -275,6 +275,35 @@ class SipuniProvider(TelephonyProvider):
 
         return None
 
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        """Normalize phone number to +998 format.
+
+        Handles:
+        - Sipuni _id suffix (998783337125_id265648 → +998783337125)
+        - 9-digit local numbers (990002170 → +998990002170)
+        - 12-digit numbers with 998 prefix (998990002170 → +998990002170)
+        """
+        if not phone:
+            return phone
+
+        # Strip Sipuni _id suffix (e.g. _id265648)
+        if '_id' in phone:
+            phone = phone.split('_id')[0]
+
+        # Strip leading + if present
+        phone = phone.lstrip('+')
+
+        # 9 digits — local Uzbek number, prepend 998
+        if len(phone) == 9 and phone[0] in '0123456789':
+            phone = '998' + phone
+
+        # Add + prefix if it looks like a full number (12 digits starting with 998)
+        if len(phone) >= 10:
+            phone = '+' + phone
+
+        return phone
+
     def _extract_common_fields(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Extract fields common to all webhook events."""
         provider_id = payload.get('callbackId') or payload.get('call_id', '')
@@ -283,12 +312,13 @@ class SipuniProvider(TelephonyProvider):
         if self.cabinet_id and src_num.startswith(str(self.cabinet_id)):
             src_num = src_num[len(str(self.cabinet_id)):]
 
-        dst_num = payload.get('dst_num') or payload.get('pbxdstnum', '')
+        # Prefer pbxdstnum (clean) over dst_num (may have _id suffix)
+        dst_num = payload.get('pbxdstnum') or payload.get('dst_num', '')
 
         return {
             "provider_call_id": f"sipuni_{provider_id}",
-            "phone_1": src_num,
-            "phone_2": dst_num,
+            "phone_1": self._normalize_phone(src_num),
+            "phone_2": self._normalize_phone(dst_num),
             "direction": self._determine_direction(payload),
             "scheme_name": payload.get('treeName') or None,
             "scheme_number": payload.get('treeNumber') or None,
