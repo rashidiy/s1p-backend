@@ -25,6 +25,7 @@ from db.models.telegram_auth_challenge import TelegramAuthChallenge
 from db.models.lead import Lead
 from db.models.user import User
 from utils.services.invite_token_service import generate_otp, hash_token
+from utils.services import telegram_i18n as i18n
 
 logger = logging.getLogger(__name__)
 
@@ -230,22 +231,29 @@ async def _handle_login_start(
     # Look up challenge
     challenge = await session.get(TelegramAuthChallenge, challenge_id)
 
+    # Resolve language from company config (default "en" for login flow)
+    lang = "en"
+    if challenge and challenge.company_id:
+        _cfg = await session.execute(
+            select(TelegramBotConfig).where(
+                TelegramBotConfig.company_id == challenge.company_id,
+                TelegramBotConfig.deleted_at.is_(None),
+            )
+        )
+        _tg_cfg = _cfg.scalar_one_or_none()
+        if _tg_cfg and _tg_cfg.language:
+            lang = _tg_cfg.language
+
     if (
         not challenge
         or challenge.purpose != "login"
         or challenge.used
     ):
-        await _send_message(
-            chat_id,
-            "This login link has expired. Please request a new one from the login page."
-        )
+        await _send_message(chat_id, i18n.login_link_expired_text(lang))
         return
 
     if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
-        await _send_message(
-            chat_id,
-            "This login link has expired. Please request a new one from the login page."
-        )
+        await _send_message(chat_id, i18n.login_link_expired_text(lang))
         return
 
     # Find user by telegram_user_id + company_id
@@ -255,33 +263,21 @@ async def _handle_login_start(
         company_id=challenge.company_id,
     )
     if not user or user.deleted_at is not None:
-        await _send_message(
-            chat_id,
-            "No account found for this Telegram account in this company."
-        )
+        await _send_message(chat_id, i18n.no_account_found_text(lang))
         return
 
     if not user.is_active or user.is_suspended:
-        await _send_message(
-            chat_id,
-            "Your account is suspended. Contact your administrator."
-        )
+        await _send_message(chat_id, i18n.account_suspended_text(lang))
         return
 
     # Check OTP rate limit (1 per 60 seconds per user)
     if await _check_otp_rate_limit(str(user.id)):
-        await _send_message(
-            chat_id,
-            "Please wait before requesting another code."
-        )
+        await _send_message(chat_id, i18n.otp_rate_limited_text(lang))
         return
 
     # Check lockout
     if await _check_otp_lockout(str(user.id)):
-        await _send_message(
-            chat_id,
-            "Account temporarily locked. Try again later."
-        )
+        await _send_message(chat_id, i18n.account_locked_text(lang))
         return
 
     # Generate OTP
@@ -325,18 +321,6 @@ async def _handle_login_start(
         "en": f"🔐 Login code:\n\n`{otp}`\n\nTap the code to copy\\. Expires in 5 minutes\\.",
         "uz": f"🔐 Kirish kodi:\n\n`{otp}`\n\nKodni nusxalash uchun bosing\\. 5 daqiqa amal qiladi\\.",
     }
-    # Try to get company language
-    lang = "en"
-    if challenge.company_id:
-        config = await session.execute(
-            select(TelegramBotConfig).where(
-                TelegramBotConfig.company_id == challenge.company_id,
-                TelegramBotConfig.deleted_at.is_(None),
-            )
-        )
-        tg_config = config.scalar_one_or_none()
-        if tg_config and tg_config.language:
-            lang = tg_config.language
 
     await _send_message(
         chat_id,
@@ -363,16 +347,29 @@ async def _handle_register_start(
 
     challenge = await session.get(TelegramAuthChallenge, challenge_id)
 
+    # Resolve language from company config
+    lang = "en"
+    if challenge and challenge.company_id:
+        _cfg = await session.execute(
+            select(TelegramBotConfig).where(
+                TelegramBotConfig.company_id == challenge.company_id,
+                TelegramBotConfig.deleted_at.is_(None),
+            )
+        )
+        _tg_cfg = _cfg.scalar_one_or_none()
+        if _tg_cfg and _tg_cfg.language:
+            lang = _tg_cfg.language
+
     if not challenge or challenge.purpose != "register":
-        await _send_message(chat_id, "This link is invalid.")
+        await _send_message(chat_id, i18n.register_link_invalid_text(lang))
         return
 
     if challenge.used:
-        await _send_message(chat_id, "This link has already been used.")
+        await _send_message(chat_id, i18n.register_link_used_text(lang))
         return
 
     if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
-        await _send_message(chat_id, "This link has expired.")
+        await _send_message(chat_id, i18n.register_link_expired_text(lang))
         return
 
     # Check if telegram user already registered in this company
@@ -382,10 +379,7 @@ async def _handle_register_start(
         company_id=challenge.company_id,
     )
     if existing:
-        await _send_message(
-            chat_id,
-            "This Telegram account is already registered in this company."
-        )
+        await _send_message(chat_id, i18n.already_registered_text(lang))
         return
 
     # Capture telegram profile data
@@ -415,12 +409,11 @@ async def _handle_register_start(
     # Get company name for confirmation message
     from db.models.company import Company
     company = await session.get(Company, challenge.company_id)
-    company_name = company.name if company else "the company"
+    company_name = company.name if company else "S1P"
 
     await _send_message(
         chat_id,
-        f"✅ Telegram connected\\!\n\n"
-        f"Return to the *{_esc_md(company_name)}* registration page to complete signup\\.",
+        i18n.telegram_connected_text(company_name, lang),
         parse_mode="MarkdownV2",
     )
 
@@ -436,6 +429,10 @@ async def _handle_register(
     Creates a registration challenge and sends the user a link
     to the registration page on the website.
     """
+    # Detect language from chat config (DM may not have config, default to "en")
+    config = await _get_config_by_chat(chat_id, session)
+    lang = config.language if config and config.language else "en"
+
     now = datetime.now(timezone.utc)
     challenge_id = secrets.token_urlsafe(16)
 
@@ -455,7 +452,7 @@ async def _handle_register(
 
     await _send_message(
         chat_id,
-        f"To complete registration, open this link and enter your invite code:\n\n`{reg_url}`\n\nTap to copy\\.",
+        i18n.register_instructions_text(reg_url, lang),
         parse_mode="MarkdownV2",
     )
 
@@ -560,7 +557,7 @@ async def _handle_today_command(chat_id: int, session: AsyncSession):
 
     config = await _get_config_by_chat(chat_id, session)
     if not config:
-        await _send_message(chat_id, "Bot not configured for this chat")
+        await _send_message(chat_id, i18n.bot_not_configured_text())
         return
 
     lang = config.language or "ru"
@@ -606,12 +603,12 @@ async def _handle_search_command(chat_id: int, query: str, session: AsyncSession
     from utils.services.telegram_i18n import search_header, no_data_text
 
     if not query:
-        await _send_message(chat_id, "Usage: /search <phone or name>")
+        await _send_message(chat_id, i18n.search_usage_text())
         return
 
     config = await _get_config_by_chat(chat_id, session)
     if not config:
-        await _send_message(chat_id, "Bot not configured for this chat")
+        await _send_message(chat_id, i18n.bot_not_configured_text())
         return
 
     lang = config.language or "ru"
@@ -652,7 +649,7 @@ async def _handle_myleads_command(chat_id: int, telegram_user_id: int, session: 
 
     config = await _get_config_by_chat(chat_id, session)
     if not config:
-        await _send_message(chat_id, "Bot not configured for this chat")
+        await _send_message(chat_id, i18n.bot_not_configured_text())
         return
 
     lang = config.language or "ru"
@@ -734,6 +731,16 @@ async def _handle_inline_query(inline_query: dict, session: AsyncSession):
             await _answer_inline_query(inline_query_id, [])
             return
 
+        # Resolve language for button labels
+        _cfg_result = await session.execute(
+            select(TelegramBotConfig).where(
+                TelegramBotConfig.company_id == user.company_id,
+                TelegramBotConfig.deleted_at.is_(None),
+            )
+        )
+        _inline_cfg = _cfg_result.scalar_one_or_none()
+        inline_lang = _inline_cfg.language if _inline_cfg and _inline_cfg.language else "ru"
+
         # Search contacts by name or phone (case-insensitive, multi-tenant)
         search_term = f"%{query_text}%"
         contacts_result = await session.execute(
@@ -755,6 +762,7 @@ async def _handle_inline_query(inline_query: dict, session: AsyncSession):
         results = []
         frontend_url = AppConfig.FRONTEND_URL.rstrip("/")
         use_webapp = frontend_url.startswith("https://")
+        crm_label = i18n.open_in_crm_text(inline_lang)
 
         for contact in contacts:
             name = f"{contact.first_name or ''} {contact.last_name or ''}".strip() or "Unknown"
@@ -775,7 +783,7 @@ async def _handle_inline_query(inline_query: dict, session: AsyncSession):
             if use_webapp:
                 article["reply_markup"] = {
                     "inline_keyboard": [[{
-                        "text": "Open in CRM",
+                        "text": crm_label,
                         "web_app": {"url": f"{frontend_url}/miniapp?view=contact&id={contact_id}"},
                     }]]
                 }
@@ -841,7 +849,7 @@ async def _answer_inline_query(inline_query_id: str, results: list) -> None:
 # ── Callback query handlers (V2 — shortened prefixes) ────────────────
 #
 # Callback data format: "prefix:param" (must fit 64 bytes)
-# Prefixes: mh=mark_handled, al=assign_lead, cb=callback, cc=create_contact
+# Prefixes: mh=mark_handled, al=assign_lead, cc=create_contact
 
 async def _find_crm_user(telegram_user_id: int, chat_id: str, session: AsyncSession) -> User | None:
     """Find a CRM user by telegram_user_id in any company linked to this chat."""
@@ -903,7 +911,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
 
     config = await _get_config_for_chat(chat_id, session)
     if not config:
-        await _answer_callback(callback_query_id, "Bot not configured for this chat")
+        await _answer_callback(callback_query_id, i18n.bot_not_configured_text())
         return
 
     lang = config.language or "ru"
@@ -914,7 +922,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
     param = parts[1] if len(parts) > 1 else ""
 
     # Validate param format based on action
-    if action in ("al", "mh", "cb") and param:
+    if action in ("al", "mh") and param:
         try:
             from uuid import UUID as _UUID
             _UUID(param)
@@ -922,7 +930,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
             return
     if action == "cc" and param:
         if not _PHONE_RE.match(param):
-            await _answer_callback(callback_query_id, "Invalid phone number")
+            await _answer_callback(callback_query_id, i18n.invalid_phone_text(lang))
             return
 
     try:
@@ -957,11 +965,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
                 await _answer_callback(callback_query_id, msg)
                 logger.info("Lead %s assigned to %s via Telegram", param, crm_user.id)
             else:
-                await _answer_callback(callback_query_id, "Lead not found")
-
-        elif action == "cb":
-            # Callback — show phone number (Phase 1, no telephony integration)
-            await _answer_callback(callback_query_id, f"📞 Callback")
+                await _answer_callback(callback_query_id, i18n.lead_not_found_text(lang))
 
         elif action == "cc":
             # Create contact from phone
@@ -982,7 +986,7 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
                 ).limit(1)
             )
             if existing.first():
-                await _answer_callback(callback_query_id, "Contact already exists")
+                await _answer_callback(callback_query_id, i18n.contact_already_exists_text(lang))
                 return
 
             contact = await Contact.create(
@@ -998,18 +1002,18 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
 
         # Legacy prefixes (backward compat for messages sent before V2)
         elif action == "mark_handled":
-            await _answer_callback(callback_query_id, "Marked as handled")
+            await _answer_callback(callback_query_id, i18n.legacy_marked_handled_text(lang))
         elif action == "assign_lead":
-            await _answer_callback(callback_query_id, "Use CRM to assign leads")
+            await _answer_callback(callback_query_id, i18n.legacy_use_crm_text(lang))
         elif action == "callback":
-            await _answer_callback(callback_query_id, f"Call: {param}")
+            await _answer_callback(callback_query_id, f"📞 {param}")
 
         else:
-            await _answer_callback(callback_query_id, "Unknown action")
+            await _answer_callback(callback_query_id, i18n.unknown_action_text(lang))
 
     except Exception as e:
         logger.error("Error handling callback %s: %s", action, e, exc_info=True)
-        await _answer_callback(callback_query_id, "Error processing request")
+        await _answer_callback(callback_query_id, i18n.error_processing_text(lang))
 
 
 async def _edit_message_handled(chat_id: str, message_id: int, original_text: str, suffix: str, original_markup=None):
