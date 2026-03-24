@@ -109,6 +109,17 @@ class CallEventResponse(BaseSchema, TimestampMixin):
 
     @computed_field
     @property
+    def duration(self) -> Optional[int]:
+        """Call duration in seconds. Falls back to timestamps if billing_sec is missing."""
+        if self.billing_sec:
+            return self.billing_sec
+        if self.call_end_timestamp and self.call_answer_timestamp:
+            diff = self.call_end_timestamp - self.call_answer_timestamp
+            return diff if diff >= 0 else None
+        return None
+
+    @computed_field
+    @property
     def has_recording(self) -> bool:
         return self.record_url is not None
 

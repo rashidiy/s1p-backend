@@ -320,7 +320,11 @@ async def get_call_history(
             "phone_2": call.phone_2,
             "direction": call.direction.value if call.direction else None,
             "state": call.state.value if call.state else None,
-            "duration": call.billing_sec,
+            "duration": call.billing_sec or (
+                (call.call_end_timestamp - call.call_answer_timestamp)
+                if call.call_end_timestamp and call.call_answer_timestamp
+                else None
+            ),
             "outcome": call.outcome.value if call.outcome else None,
             "disposition_notes": call.disposition_notes,
             "started_at": call.call_start_timestamp,
