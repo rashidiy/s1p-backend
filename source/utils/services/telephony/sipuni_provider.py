@@ -392,7 +392,12 @@ class SipuniProvider(TelephonyProvider):
         return data
 
     def _determine_direction(self, payload: Dict[str, Any]) -> str:
-        """Determine call direction from src_type/dst_type (1=external, 2=internal)"""
+        """Determine call direction from src_type/dst_type and treeName.
+
+        src_type/dst_type: 1=external, 2=internal.
+        When both are external (e.g. CPE calls), fall back to treeName
+        which Sipuni sets to "Входящая"/"Исходящая".
+        """
         src_type = payload.get('src_type', '1')
         dst_type = payload.get('dst_type', '2')
 
@@ -400,8 +405,14 @@ class SipuniProvider(TelephonyProvider):
             return 'inbound'
         elif src_type == '2' and dst_type == '1':
             return 'outbound'
-        else:
-            return 'internal'
+        elif src_type == '1' and dst_type == '1':
+            # Both external — use treeName as fallback
+            tree_name = (payload.get('treeName') or '').lower()
+            if 'входящ' in tree_name:
+                return 'inbound'
+            elif 'исходящ' in tree_name:
+                return 'outbound'
+        return 'internal'
 
     async def validate_webhook_auth(
         self,
