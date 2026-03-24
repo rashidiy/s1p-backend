@@ -438,9 +438,12 @@ class TelegramService:
                 )
                 await session.commit()
 
-            # DM notifications
+            # DM notifications — broadcast to ALL users with my_calls pref
+            # (operator_id=None means don't filter to a specific user;
+            #  missed calls should notify everyone, not just the operator who missed it)
             await TelegramService._send_dm_notifications(
                 config, "call_missed", text, session,
+                operator_id=None,
                 call_id=call_id,
                 contact_id=call_event.contact_id,
             )
@@ -585,8 +588,12 @@ class TelegramService:
                 lang=lang,
             )
 
+            from utils.services.startapp_service import build_miniapp_url
             buttons = [
-                [InlineKeyboardButton(text=btn["callback"], callback_data=f"cb:{caller_phone[:50]}")],
+                [InlineKeyboardButton(
+                    text=btn["callback"],
+                    url=build_miniapp_url("call", caller_phone[:50], str(company_id)),
+                )],
                 [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{caller_phone[:50]}")],
             ]
 
@@ -864,9 +871,13 @@ class TelegramService:
         contact_id=None,
         lead_id=None,
         deal_id=None,
+        language: str = "ru",
     ) -> InlineKeyboardMarkup | None:
         """Build inline keyboard for DM notifications."""
         from aiogram.types import WebAppInfo
+
+        locale = get_locale(language)
+        btn = _buttons(locale)
 
         frontend_url = AppConfig.FRONTEND_URL.rstrip("/")
         use_webapp = frontend_url.startswith("https://")
@@ -876,31 +887,31 @@ class TelegramService:
         if event_type in ("call_completed", "call_missed"):
             if use_webapp and contact_id:
                 rows.append([InlineKeyboardButton(
-                    text="Open Contact",
+                    text=btn["open_contact"],
                     web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=contact&id={contact_id}"),
                 )])
             if use_webapp:
                 rows.append([InlineKeyboardButton(
-                    text="Open CRM",
+                    text=btn["open_crm"],
                     web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=calls"),
                 )])
             if call_id:
                 rows.append([InlineKeyboardButton(
-                    text="Handled",
+                    text=btn["mark_handled"],
                     callback_data=f"mh:{call_id}",
                 )])
 
         elif event_type == "new_lead" and lead_id:
             if use_webapp:
                 rows.append([InlineKeyboardButton(
-                    text="View Lead",
+                    text=btn["open_lead"],
                     web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=lead&id={lead_id}"),
                 )])
 
         elif event_type == "deal_stage_change" and deal_id:
             if use_webapp:
                 rows.append([InlineKeyboardButton(
-                    text="View Deal",
+                    text=btn["open_deal"],
                     web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=deal&id={deal_id}"),
                 )])
 
@@ -944,12 +955,14 @@ class TelegramService:
             return
 
         # Build inline keyboard for DM
+        lang = config.language or "ru"
         keyboard = TelegramService._build_dm_keyboard(
             event_type,
             call_id=call_id,
             contact_id=contact_id,
             lead_id=lead_id,
             deal_id=deal_id,
+            language=lang,
         )
 
         try:

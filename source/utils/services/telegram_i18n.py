@@ -353,3 +353,216 @@ def search_header(query: str, lang: str = "ru") -> str:
 
 def my_leads_header(lang: str = "ru") -> str:
     return _MY_LEADS_HEADER[get_locale(lang)]
+
+
+# ── Webhook handler messages (login / register / callback / commands) ──
+
+_LOGIN_LINK_EXPIRED = {
+    "ru": "Эта ссылка для входа истекла. Запросите новую на странице входа.",
+    "en": "This login link has expired. Please request a new one from the login page.",
+    "uz": "Bu kirish havolasi muddati tugagan. Kirish sahifasidan yangi havolani so'rang.",
+}
+
+_NO_ACCOUNT_FOUND = {
+    "ru": "Аккаунт для этого Telegram не найден в данной компании.",
+    "en": "No account found for this Telegram account in this company.",
+    "uz": "Bu Telegram akkaunt uchun kompaniyada hisob topilmadi.",
+}
+
+_ACCOUNT_SUSPENDED = {
+    "ru": "Ваш аккаунт приостановлен. Свяжитесь с администратором.",
+    "en": "Your account is suspended. Contact your administrator.",
+    "uz": "Sizning hisobingiz to'xtatilgan. Administratoringizga murojaat qiling.",
+}
+
+_OTP_RATE_LIMITED = {
+    "ru": "Подождите перед запросом нового кода.",
+    "en": "Please wait before requesting another code.",
+    "uz": "Yangi kod so'rashdan oldin kuting.",
+}
+
+_ACCOUNT_LOCKED = {
+    "ru": "Аккаунт временно заблокирован. Попробуйте позже.",
+    "en": "Account temporarily locked. Try again later.",
+    "uz": "Hisob vaqtincha bloklangan. Keyinroq urinib ko'ring.",
+}
+
+_REGISTER_LINK_INVALID = {
+    "ru": "Эта ссылка недействительна.",
+    "en": "This link is invalid.",
+    "uz": "Bu havola yaroqsiz.",
+}
+
+_REGISTER_LINK_USED = {
+    "ru": "Эта ссылка уже использована.",
+    "en": "This link has already been used.",
+    "uz": "Bu havola allaqachon ishlatilgan.",
+}
+
+_REGISTER_LINK_EXPIRED = {
+    "ru": "Эта ссылка истекла.",
+    "en": "This link has expired.",
+    "uz": "Bu havola muddati tugagan.",
+}
+
+_ALREADY_REGISTERED = {
+    "ru": "Этот Telegram аккаунт уже зарегистрирован в этой компании.",
+    "en": "This Telegram account is already registered in this company.",
+    "uz": "Bu Telegram akkaunt allaqachon ushbu kompaniyada ro'yxatdan o'tgan.",
+}
+
+_TELEGRAM_CONNECTED = {
+    "ru": "✅ Telegram подключен\\!\n\nВернитесь на страницу регистрации *{company}*, чтобы завершить регистрацию\\.",
+    "en": "✅ Telegram connected\\!\n\nReturn to the *{company}* registration page to complete signup\\.",
+    "uz": "✅ Telegram ulandi\\!\n\nRo'yxatdan o'tishni yakunlash uchun *{company}* ro'yxatdan o'tish sahifasiga qayting\\.",
+}
+
+_REGISTER_INSTRUCTIONS = {
+    "ru": "Для завершения регистрации откройте ссылку и введите код приглашения:\n\n`{url}`\n\nНажмите на ссылку, чтобы скопировать\\.",
+    "en": "To complete registration, open this link and enter your invite code:\n\n`{url}`\n\nTap to copy\\.",
+    "uz": "Ro'yxatdan o'tishni yakunlash uchun havolani oching va taklif kodini kiriting:\n\n`{url}`\n\nNusxalash uchun bosing\\.",
+}
+
+_BOT_NOT_CONFIGURED = {
+    "ru": "Бот не настроен для этого чата",
+    "en": "Bot not configured for this chat",
+    "uz": "Bot bu chat uchun sozlanmagan",
+}
+
+_SEARCH_USAGE = {
+    "ru": "Использование: /search <телефон или имя>",
+    "en": "Usage: /search <phone or name>",
+    "uz": "Foydalanish: /search <telefon yoki ism>",
+}
+
+_LEAD_NOT_FOUND = {
+    "ru": "Лид не найден",
+    "en": "Lead not found",
+    "uz": "Lid topilmadi",
+}
+
+_UNKNOWN_ACTION = {
+    "ru": "Неизвестное действие",
+    "en": "Unknown action",
+    "uz": "Noma'lum amal",
+}
+
+_ERROR_PROCESSING = {
+    "ru": "Ошибка обработки запроса",
+    "en": "Error processing request",
+    "uz": "So'rovni qayta ishlashda xato",
+}
+
+_INVALID_PHONE = {
+    "ru": "Неверный номер телефона",
+    "en": "Invalid phone number",
+    "uz": "Noto'g'ri telefon raqami",
+}
+
+_CONTACT_ALREADY_EXISTS = {
+    "ru": "Контакт уже существует",
+    "en": "Contact already exists",
+    "uz": "Kontakt allaqachon mavjud",
+}
+
+_OPEN_IN_CRM = {
+    "ru": "📋 Открыть в CRM",
+    "en": "📋 Open in CRM",
+    "uz": "📋 CRM da ochish",
+}
+
+_LEGACY_MARKED_HANDLED = {
+    "ru": "Обработано",
+    "en": "Marked as handled",
+    "uz": "Bajarildi",
+}
+
+_LEGACY_USE_CRM = {
+    "ru": "Назначьте лид через CRM",
+    "en": "Use CRM to assign leads",
+    "uz": "Lidlarni CRM orqali tayinlang",
+}
+
+
+def login_link_expired_text(lang: str = "ru") -> str:
+    return _LOGIN_LINK_EXPIRED[get_locale(lang)]
+
+
+def no_account_found_text(lang: str = "ru") -> str:
+    return _NO_ACCOUNT_FOUND[get_locale(lang)]
+
+
+def account_suspended_text(lang: str = "ru") -> str:
+    return _ACCOUNT_SUSPENDED[get_locale(lang)]
+
+
+def otp_rate_limited_text(lang: str = "ru") -> str:
+    return _OTP_RATE_LIMITED[get_locale(lang)]
+
+
+def account_locked_text(lang: str = "ru") -> str:
+    return _ACCOUNT_LOCKED[get_locale(lang)]
+
+
+def register_link_invalid_text(lang: str = "ru") -> str:
+    return _REGISTER_LINK_INVALID[get_locale(lang)]
+
+
+def register_link_used_text(lang: str = "ru") -> str:
+    return _REGISTER_LINK_USED[get_locale(lang)]
+
+
+def register_link_expired_text(lang: str = "ru") -> str:
+    return _REGISTER_LINK_EXPIRED[get_locale(lang)]
+
+
+def already_registered_text(lang: str = "ru") -> str:
+    return _ALREADY_REGISTERED[get_locale(lang)]
+
+
+def telegram_connected_text(company: str, lang: str = "ru") -> str:
+    return _TELEGRAM_CONNECTED[get_locale(lang)].format(company=_esc(company))
+
+
+def register_instructions_text(url: str, lang: str = "ru") -> str:
+    return _REGISTER_INSTRUCTIONS[get_locale(lang)].format(url=url)
+
+
+def bot_not_configured_text(lang: str = "ru") -> str:
+    return _BOT_NOT_CONFIGURED[get_locale(lang)]
+
+
+def search_usage_text(lang: str = "ru") -> str:
+    return _SEARCH_USAGE[get_locale(lang)]
+
+
+def lead_not_found_text(lang: str = "ru") -> str:
+    return _LEAD_NOT_FOUND[get_locale(lang)]
+
+
+def unknown_action_text(lang: str = "ru") -> str:
+    return _UNKNOWN_ACTION[get_locale(lang)]
+
+
+def error_processing_text(lang: str = "ru") -> str:
+    return _ERROR_PROCESSING[get_locale(lang)]
+
+
+def invalid_phone_text(lang: str = "ru") -> str:
+    return _INVALID_PHONE[get_locale(lang)]
+
+
+def contact_already_exists_text(lang: str = "ru") -> str:
+    return _CONTACT_ALREADY_EXISTS[get_locale(lang)]
+
+
+def open_in_crm_text(lang: str = "ru") -> str:
+    return _OPEN_IN_CRM[get_locale(lang)]
+
+
+def legacy_marked_handled_text(lang: str = "ru") -> str:
+    return _LEGACY_MARKED_HANDLED[get_locale(lang)]
+
+
+def legacy_use_crm_text(lang: str = "ru") -> str:
+    return _LEGACY_USE_CRM[get_locale(lang)]
