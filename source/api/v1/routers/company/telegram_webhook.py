@@ -927,12 +927,15 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
 
     try:
         if action == "mh":
-            # Mark handled — react + edit message to add handler name, remove buttons
+            # Mark handled — react + edit message to add handler name, keep nav buttons
             from utils.services.telegram_i18n import handled_text
             from utils.services.telegram_service import TelegramService
             suffix = handled_text(user_display, lang)
             await TelegramService.react_to_message(chat_id, message_id, "✅")
-            await _edit_message_handled(chat_id, message_id, message.get("text", ""), suffix)
+            await _edit_message_handled(
+                chat_id, message_id, message.get("text", ""), suffix,
+                original_markup=message.get("reply_markup"),
+            )
             await _answer_callback(callback_query_id, suffix)
 
         elif action == "al":
@@ -1009,21 +1012,41 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
         await _answer_callback(callback_query_id, "Error processing request")
 
 
-async def _edit_message_handled(chat_id: str, message_id: int, original_text: str, suffix: str):
-    """Edit the original message to append 'Handled by X' and remove inline keyboard."""
+async def _edit_message_handled(chat_id: str, message_id: int, original_text: str, suffix: str, original_markup=None):
+    """Edit the original message to append 'Handled by X' and keep only navigation buttons."""
     bot = _get_bot()
     if not bot or not message_id:
         return
 
     try:
         from aiogram.enums import ParseMode
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
         new_text = f"{original_text}\n\n✅ {suffix}"
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=new_text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-        )
+
+        # Keep only URL buttons (Mini App + CRM links), remove callback buttons
+        nav_keyboard = None
+        if original_markup and original_markup.get("inline_keyboard"):
+            nav_rows = []
+            for row in original_markup["inline_keyboard"]:
+                nav_buttons = [b for b in row if b.get("url")]
+                if nav_buttons:
+                    nav_rows.append(nav_buttons)
+            if nav_rows:
+                nav_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(**b) for b in row] for row in nav_rows
+                ])
+
+        kwargs = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": new_text,
+            "parse_mode": ParseMode.MARKDOWN_V2,
+        }
+        if nav_keyboard:
+            kwargs["reply_markup"] = nav_keyboard
+
+        await bot.edit_message_text(**kwargs)
     except Exception:
         logger.warning("Could not edit message %s in chat %s", message_id, chat_id)
     finally:

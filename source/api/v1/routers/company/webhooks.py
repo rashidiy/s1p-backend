@@ -25,6 +25,7 @@ from db.models.lead import Lead
 from db.models.enums import ProviderEnum, CallStatusEnum
 from utils.services.telephony import ProviderFactory
 from utils.services.webhook import fire_webhook_event
+from api.v1.routers.company.calls.common import resolve_operator_id
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,37 @@ async def handle_webhook(
             lead_id=call_data.get('lead_id'),
         )
 
+        # Resolve operator from last_called SIP extension (for inbound calls)
+        if not call_data.get('operator_id') and call_data.get('last_called'):
+            last_ext = call_data['last_called'].split(',')[-1].strip()
+            if last_ext:
+                resolved = await resolve_operator_id(last_ext, company_id, session)
+                if resolved:
+                    call_data['operator_id'] = resolved
+
+        # Flag inbound missed calls for callback
+        state = call_data.get('state')
+        direction = call_data.get('direction')
+        if direction == 'inbound' and state in ('NOANSWER', 'BUSY', 'CANCEL'):
+            call_data['needs_callback'] = True
+
+        # Auto-resolve callback: outbound call to a number that has pending missed calls
+        if direction == 'outbound' and event_type == 'call_ended' and state == 'ANSWER':
+            outbound_dest = call_data.get('phone_2') or call_data.get('phone_1')
+            if outbound_dest:
+                from sqlalchemy import update, and_
+                from sqlalchemy.sql import func as sql_func
+                await session.execute(
+                    update(CallEvent).where(
+                        and_(
+                            CallEvent.company_id == company_id,
+                            CallEvent.direction == 'inbound',
+                            CallEvent.needs_callback == True,
+                            CallEvent.phone_1 == outbound_dest,
+                        )
+                    ).values(needs_callback=False, callback_at=sql_func.now())
+                )
+
         # Check if call event already exists (for updates)
         existing_call = await CallEvent.get(
             session=session,
@@ -394,7 +426,7 @@ def _schedule_notifications(
     elif event_type == "call_ended":
         # Final event — fire outbound webhook + Telegram notification
         background_tasks.add_task(
-            _send_call_notification, company_id, call_data
+            _send_call_notification, company_id, call_data, call_id
         )
         background_tasks.add_task(
             _fire_call_webhook, session, company_id, call_data, call_id,
@@ -403,7 +435,7 @@ def _schedule_notifications(
     else:
         # Legacy path (Binotel or unknown) — keep existing behavior
         background_tasks.add_task(
-            _send_call_notification, company_id, call_data
+            _send_call_notification, company_id, call_data, call_id
         )
         background_tasks.add_task(
             _fire_call_webhook, session, company_id, call_data, call_id,
@@ -456,7 +488,7 @@ async def _fire_call_webhook(
         logger.error(f"Outbound webhook fire failed for call event: {e}", exc_info=True)
 
 
-async def _send_call_notification(company_id, call_data: dict):
+async def _send_call_notification(company_id, call_data: dict, call_id: int = None):
     """Background task: send Telegram notification for call events."""
     from utils.services.telegram_service import TelegramService
 
@@ -476,59 +508,68 @@ async def _send_call_notification(company_id, call_data: dict):
     try:
         # Use a fresh session for the background task
         async for session in AsyncDatabaseSession()():
-            # Look up contact and operator names
-            caller_phone = call_data.get('phone_1', '')
-            contact_name = None
-            contact_id = None
-            operator_name = None
-            direction = "inbound"
+            # Load the full CallEvent object for the object-based notification methods
+            if call_id:
+                call_event = await CallEvent.get(session=session, id=call_id, company_id=company_id)
+            else:
+                call_event = None
 
-            if call_data.get('direction'):
-                d = call_data['direction']
-                direction = d.value if hasattr(d, 'value') else str(d)
+            if call_event:
+                if is_answered:
+                    await TelegramService.send_call_notification(
+                        company_id=company_id,
+                        call_event=call_event,
+                        session=session,
+                    )
+                elif is_missed:
+                    await TelegramService.send_missed_call_notification(
+                        company_id=company_id,
+                        call_event=call_event,
+                        session=session,
+                    )
+            else:
+                # Fallback to legacy individual-param methods
+                caller_phone = call_data.get('phone_1', '')
+                contact_name = None
+                contact_id = None
+                operator_name = None
+                direction = "inbound"
 
-            # Find matching contact by phone
-            if caller_phone:
-                from sqlalchemy import select, or_
-                result = await session.execute(
-                    select(Contact).where(
-                        Contact.company_id == company_id,
-                        or_(
-                            Contact.phone == caller_phone,
-                        )
-                    ).limit(1)
-                )
-                contact = result.scalar_one_or_none()
-                if contact:
-                    contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-                    contact_id = contact.id
+                if call_data.get('direction'):
+                    d = call_data['direction']
+                    direction = d.value if hasattr(d, 'value') else str(d)
 
-            # Get operator name
-            if call_data.get('operator_id'):
-                operator = await User.get(session=session, id=call_data['operator_id'])
-                if operator:
-                    operator_name = operator.full_name
+                if caller_phone:
+                    from sqlalchemy import select, or_
+                    result = await session.execute(
+                        select(Contact).where(
+                            Contact.company_id == company_id,
+                            or_(Contact.phone == caller_phone),
+                        ).limit(1)
+                    )
+                    contact = result.scalar_one_or_none()
+                    if contact:
+                        contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
+                        contact_id = contact.id
 
-            if is_answered:
-                await TelegramService.notify_call_completed(
-                    session=session,
-                    company_id=company_id,
-                    caller_phone=caller_phone,
-                    operator_name=operator_name,
-                    duration_sec=call_data.get('billing_sec', 0) or 0,
-                    contact_name=contact_name,
-                    contact_id=contact_id,
-                    record_url=call_data.get('record_url'),
-                    direction=direction,
-                )
-            elif is_missed:
-                await TelegramService.notify_call_missed(
-                    session=session,
-                    company_id=company_id,
-                    caller_phone=caller_phone,
-                    operator_name=operator_name,
-                    contact_name=contact_name,
-                    contact_id=contact_id,
-                )
+                if call_data.get('operator_id'):
+                    operator = await User.get(session=session, id=call_data['operator_id'])
+                    if operator:
+                        operator_name = operator.full_name
+
+                if is_answered:
+                    await TelegramService.notify_call_completed(
+                        session=session, company_id=company_id,
+                        caller_phone=caller_phone, operator_name=operator_name,
+                        duration_sec=call_data.get('billing_sec', 0) or 0,
+                        contact_name=contact_name, contact_id=contact_id,
+                        record_url=call_data.get('record_url'), direction=direction,
+                    )
+                elif is_missed:
+                    await TelegramService.notify_call_missed(
+                        session=session, company_id=company_id,
+                        caller_phone=caller_phone, operator_name=operator_name,
+                        contact_name=contact_name, contact_id=contact_id,
+                    )
     except Exception as e:
         logger.error(f"Telegram call notification failed: {e}", exc_info=True)
