@@ -90,6 +90,10 @@ def call_completed_message(
     if recording_url:
         btn = BUTTON_LABELS[locale]["listen_recording"]
         lines.append(f"\n[{_esc(btn)}]({recording_url})")
+    elif duration_sec > 0:
+        # T108: Recording may not be ready yet (Sipuni async delay)
+        _rec_processing = {"ru": "⏳ Запись обрабатывается", "en": "⏳ Recording processing", "uz": "⏳ Yozuv qayta ishlanmoqda"}
+        lines.append(f"\n_{_esc(_rec_processing[locale])}_")
 
     return "\n".join(lines)
 
@@ -149,7 +153,9 @@ def new_lead_message(
     if source:
         details.append(_esc(source))
     if estimated_value:
-        details.append(_esc(f"{estimated_value:,.0f} {currency}"))
+        # T87: Use thousands separator (space for readability); UZS uses no decimals
+        formatted = f"{estimated_value:,.0f}".replace(",", " ")
+        details.append(_esc(f"{formatted} {currency}"))
 
     lines = [line1]
     if details:
@@ -314,6 +320,64 @@ _GROUPED_SUFFIX = {
     "en": "(x{count})",
     "uz": "(x{count})",
 }
+
+
+# ── Escalation templates ──────────────────────────────────────
+
+_ESCALATION_TIER1 = {
+    "ru": "⚠️ Напоминание: пропущен звонок от {phone}, {time_ago} мин назад",
+    "en": "⚠️ Reminder: missed call from {phone} {time_ago} min ago",
+    "uz": "⚠️ Eslatma: {phone} dan o'tkazib yuborilgan qo'ng'iroq, {time_ago} min oldin",
+}
+
+_ESCALATION_TIER2 = {
+    "ru": "🔴 Срочно: пропущен звонок от {phone}, без ответа уже {time_ago} мин",
+    "en": "🔴 Urgent: missed call from {phone} still unanswered after {time_ago} min",
+    "uz": "🔴 Shoshilinch: {phone} dan qo'ng'iroq {time_ago} min javobsiz",
+}
+
+_ESCALATION_TIER3 = {
+    "ru": "🚨 Критично: пропущен звонок от {phone}, без ответа {time_ago} мин — требуется немедленное внимание",
+    "en": "🚨 Critical: missed call from {phone} unanswered for {time_ago} min — needs immediate attention",
+    "uz": "🚨 Juda muhim: {phone} dan qo'ng'iroq {time_ago} min javobsiz — zudlik bilan e'tibor kerak",
+}
+
+_ESCALATION_OPERATOR = {
+    "ru": "Оператор",
+    "en": "Operator",
+    "uz": "Operator",
+}
+
+
+def escalation_message(
+    phone: str,
+    operator_name: str | None,
+    time_ago: str,
+    tier: int,
+    lang: str = "ru",
+) -> str:
+    """Build MarkdownV2 escalation message based on tier."""
+    import re
+    locale = get_locale(lang)
+
+    templates = {1: _ESCALATION_TIER1, 2: _ESCALATION_TIER2, 3: _ESCALATION_TIER3}
+    template = templates.get(tier, _ESCALATION_TIER1)
+
+    clean_phone = phone.strip()
+    safe_tel = re.sub(r'[^+\d\- ]', '', clean_phone)
+    phone_link = f"[`{_esc(clean_phone)}`](tel:{safe_tel})"
+
+    # Escape the template text (except placeholders) for MarkdownV2
+    raw_text = _esc(template[locale].format(phone="\x00PHONE\x00", time_ago=time_ago))
+    # Replace escaped placeholder with the phone link
+    text = raw_text.replace("\x00PHONE\x00", phone_link)
+
+    lines = [f"*{text}*"]
+    if operator_name:
+        op_label = _ESCALATION_OPERATOR[locale]
+        lines.append(f"{_esc(op_label)}: {_esc(operator_name)}")
+
+    return "\n".join(lines)
 
 
 def grouped_suffix(count: int, lang: str = "ru") -> str:
