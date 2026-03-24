@@ -8,6 +8,7 @@ import logging
 import socket
 from urllib.parse import urlparse
 
+import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,6 @@ from db import get_session
 from db.models.user import User
 from db.models.call_event import CallEvent
 from utils.permissions import require_permissions, Permissions
-from utils.services.telephony.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -134,35 +134,40 @@ async def stream_recording(
     # Validate the recording URL before fetching
     _validate_recording_url(call.record_url)
 
-    http_client = await get_http_client()
+    # Use residential proxy if configured (Sipuni throttles datacenter IPs)
+    proxy_url = os.getenv("RESIDENTIAL_PROXY_URL") or None
+    timeout = aiohttp.ClientTimeout(total=30)
 
-    # Fetch full recording (files are small, typically <5MB)
-    response = await http_client.get(
-        call.record_url,
-        timeout=300,
-        allow_redirects=True,
-    )
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as http_session:
+            async with http_session.get(
+                call.record_url,
+                allow_redirects=True,
+                proxy=proxy_url,
+            ) as response:
+                if response.status != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Recording file not accessible",
+                    )
 
-    if response.status != 200:
-        response.release()
+                # Reject files over 20MB as a safety guard
+                upstream_size = response.headers.get("Content-Length")
+                if upstream_size and int(upstream_size) > 20 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Recording file too large",
+                    )
+
+                audio_data = await response.read()
+                content_type = response.headers.get("Content-Type", "audio/mpeg")
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch recording: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Recording file not accessible",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Recording temporarily unavailable",
         )
 
-    # Reject files over 20MB as a safety guard
-    upstream_size = response.headers.get("Content-Length")
-    if upstream_size and int(upstream_size) > 20 * 1024 * 1024:
-        response.release()
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Recording file too large",
-        )
-
-    audio_data = await response.read()
-    response.release()
-
-    content_type = response.headers.get("Content-Type", "audio/mpeg")
     total_size = len(audio_data)
 
     # Handle Range requests (required by mobile Safari/Chrome for audio playback)
