@@ -21,14 +21,8 @@ def upgrade() -> None:
     op.add_column('call_events', sa.Column('callback_call_id', sa.Integer(), sa.ForeignKey('call_events.id', ondelete='SET NULL'), nullable=True))
     op.add_column('call_events', sa.Column('telegram_message_id', sa.Integer(), nullable=True))
 
-    # Flag existing inbound missed calls
-    op.execute("""
-        UPDATE call_events
-        SET needs_callback = true
-        WHERE direction = 'inbound'
-          AND state IN ('NOANSWER', 'BUSY', 'CANCEL')
-          AND needs_callback = false
-    """)
+    # Don't flag old calls — only new calls get needs_callback from webhooks.
+    # Flagging old calls causes escalation spam when a Telegram group is first created.
 
 
 def downgrade() -> None:
