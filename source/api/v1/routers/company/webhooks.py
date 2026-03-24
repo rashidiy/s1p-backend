@@ -11,6 +11,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import WebhookConfig
@@ -271,40 +272,31 @@ async def handle_webhook(
         )
 
         if existing_call:
-            # Don't overwrite phones set by call endpoint with SIP extensions from webhook
-            if existing_call.phone_1 and 'phone_1' in call_data:
-                call_data.pop('phone_1')
-            if existing_call.phone_2 and 'phone_2' in call_data:
-                call_data.pop('phone_2')
-
-            # Guard: don't let earlier events overwrite terminal states with RINGING
-            existing_state = existing_call.state
-            incoming_state = call_data.get('state')
-            if (
-                existing_state in _TERMINAL_STATES
-                and incoming_state
-                and incoming_state == CallStatusEnum.RINGING.value
-            ):
-                call_data.pop('state', None)
-
-            # Update existing call event (company_id for defense-in-depth)
-            await CallEvent.update_by(
-                session=session,
-                values=call_data,
-                id=existing_call.id,
-                company_id=company.id,
+            return await _update_existing_call(
+                session, background_tasks, company, existing_call, call_data, event_type,
             )
-
-            # Fire notifications based on event type
-            _schedule_notifications(
-                background_tasks, session, company.id,
-                call_data, existing_call.id, event_type,
-            )
-            return {"status": "updated", "call_id": existing_call.id}
         else:
             # Assign company-scoped id for new events
             call_data['id'] = await next_call_number(session, company.id)
-            call_event = await CallEvent.create(session=session, **call_data)
+            try:
+                call_event = await CallEvent.create(session=session, **call_data)
+            except IntegrityError:
+                # Race condition: another concurrent webhook inserted first.
+                # Rollback the failed INSERT, re-fetch, and update instead.
+                await session.rollback()
+                existing_call = await CallEvent.get(
+                    session=session,
+                    company_id=company.id,
+                    provider_type=company.provider_type,
+                    provider_call_id=call_data['provider_call_id']
+                )
+                if existing_call:
+                    return await _update_existing_call(
+                        session, background_tasks, company, existing_call, call_data, event_type,
+                    )
+                # Re-try with a fresh id if the conflict was on PK only
+                call_data['id'] = await next_call_number(session, company.id)
+                call_event = await CallEvent.create(session=session, **call_data)
 
             # Fire notifications based on event type
             _schedule_notifications(
@@ -319,6 +311,47 @@ async def handle_webhook(
         # Log the error but return 200 to prevent provider retries
         logger.error(f"Webhook processing error for company {company.id}: {str(e)}", exc_info=True)
         return {"status": "error", "message": "Internal processing error"}
+
+
+async def _update_existing_call(
+    session: AsyncSession,
+    background_tasks: BackgroundTasks,
+    company: Company,
+    existing_call: CallEvent,
+    call_data: dict,
+    event_type: Optional[str],
+):
+    """Update an existing call event with new webhook data."""
+    # Don't overwrite phones set by call endpoint with SIP extensions from webhook
+    if existing_call.phone_1 and 'phone_1' in call_data:
+        call_data.pop('phone_1')
+    if existing_call.phone_2 and 'phone_2' in call_data:
+        call_data.pop('phone_2')
+
+    # Guard: don't let earlier events overwrite terminal states with RINGING
+    existing_state = existing_call.state
+    incoming_state = call_data.get('state')
+    if (
+        existing_state in _TERMINAL_STATES
+        and incoming_state
+        and incoming_state == CallStatusEnum.RINGING.value
+    ):
+        call_data.pop('state', None)
+
+    # Update existing call event (company_id for defense-in-depth)
+    await CallEvent.update_by(
+        session=session,
+        values=call_data,
+        id=existing_call.id,
+        company_id=company.id,
+    )
+
+    # Fire notifications based on event type
+    _schedule_notifications(
+        background_tasks, session, company.id,
+        call_data, existing_call.id, event_type,
+    )
+    return {"status": "updated", "call_id": existing_call.id}
 
 
 def _schedule_notifications(
