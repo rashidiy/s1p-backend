@@ -81,7 +81,11 @@ async def send_daily_digests():
                 if not chat_id:
                     continue
 
+                # T109: General topic may not exist (removed in V3).
+                # Prefer calls topic as most relevant; fall back to main chat.
                 thread_id = config.get_topic_thread_id(None)  # General topic
+                if not thread_id:
+                    thread_id = config.get_topic_thread_id("call_completed")  # Calls topic fallback
 
                 from aiogram.enums import ParseMode
 

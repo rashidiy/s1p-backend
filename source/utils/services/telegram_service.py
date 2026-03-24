@@ -18,7 +18,7 @@ from uuid import UUID
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji, BufferedInputFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -266,6 +266,46 @@ class TelegramService:
 
         return result.message_id
 
+    # ── Recording audio helper ──────────────────────────────────
+
+    @staticmethod
+    async def send_recording_audio(
+        bot: Bot,
+        chat_id: str | int,
+        recording_url: str,
+        caption: str | None = None,
+        thread_id: int | None = None,
+    ) -> bool:
+        """
+        Download a call recording and send it as inline audio via Telegram.
+        Falls back silently on failure (caller should handle fallback to URL link).
+        """
+        try:
+            import httpx
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+                resp = await client.get(recording_url)
+                if resp.status_code != 200:
+                    logger.debug("Recording download failed: HTTP %s", resp.status_code)
+                    return False
+                audio_data = resp.content
+                if len(audio_data) < 100:  # Too small to be a real recording
+                    return False
+
+            kwargs = {
+                "chat_id": chat_id,
+                "audio": BufferedInputFile(audio_data, filename="recording.mp3"),
+            }
+            if caption:
+                kwargs["caption"] = caption
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+
+            await bot.send_audio(**kwargs)
+            return True
+        except Exception:
+            logger.debug("Failed to send recording audio to chat %s", chat_id)
+            return False
+
     # ── Public API: object-based signatures ──────────────────────
 
     @staticmethod
@@ -297,6 +337,8 @@ class TelegramService:
 
             direction = (call_event.direction.value if call_event.direction else "unknown")
 
+            recording_url = getattr(call_event, 'record_url', None)
+
             text = i18n.call_completed_message(
                 direction=direction,
                 caller_display=contact_name or call_event.phone_1 or "Unknown",
@@ -304,6 +346,7 @@ class TelegramService:
                 duration_sec=call_event.duration_sec or 0,
                 operator_name=operator_name,
                 contact_name=contact_name,
+                recording_url=recording_url,
                 lang=lang,
             )
 
@@ -345,6 +388,15 @@ class TelegramService:
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=phone)
+
+            # Send recording as inline audio if available (T94)
+            if recording_url and config.send_recordings:
+                thread_id = config.get_topic_thread_id("call_completed")
+                caption = f"{btn['listen_recording']} — {contact_name or call_event.phone_1 or ''}"
+                await TelegramService.send_recording_audio(
+                    bot, config.effective_chat_id, recording_url,
+                    caption=caption, thread_id=thread_id,
+                )
 
             # DM notifications for the operator
             await TelegramService._send_dm_notifications(
@@ -850,13 +902,18 @@ class TelegramService:
 
     @staticmethod
     def _is_quiet_hours(prefs: dict) -> bool:
-        """Check if current UTC hour falls within user's quiet hours range."""
+        """Check if current hour (in user's timezone) falls within quiet hours range.
+
+        Uses timezone_offset from prefs if available, otherwise defaults to +5 (Tashkent).
+        """
         start = prefs.get("quiet_hours_start")
         end = prefs.get("quiet_hours_end")
         if start is None or end is None:
             return False
         from datetime import datetime as _dt, timezone as _tz
-        current_hour = _dt.now(_tz.utc).hour
+        # Use timezone_offset from DM prefs; default to +5 (Asia/Tashkent) for CIS users
+        offset = prefs.get("timezone_offset", 5)
+        current_hour = (_dt.now(_tz.utc).hour + offset) % 24
         if start <= end:
             # Simple range, e.g. 9-17
             return start <= current_hour < end
@@ -872,28 +929,27 @@ class TelegramService:
         lead_id=None,
         deal_id=None,
         language: str = "ru",
+        company_id: str | None = None,
     ) -> InlineKeyboardMarkup | None:
-        """Build inline keyboard for DM notifications."""
-        from aiogram.types import WebAppInfo
+        """Build inline keyboard for DM notifications using startapp signed deep links."""
+        from utils.services.startapp_service import build_miniapp_url
 
         locale = get_locale(language)
         btn = _buttons(locale)
-
-        frontend_url = AppConfig.FRONTEND_URL.rstrip("/")
-        use_webapp = frontend_url.startswith("https://")
+        cid = company_id or ""
 
         rows = []
 
         if event_type in ("call_completed", "call_missed"):
-            if use_webapp and contact_id:
+            if cid and contact_id:
                 rows.append([InlineKeyboardButton(
                     text=btn["open_contact"],
-                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=contact&id={contact_id}"),
+                    url=build_miniapp_url("contact_detail", str(contact_id), cid),
                 )])
-            if use_webapp:
+            if cid and call_id:
                 rows.append([InlineKeyboardButton(
                     text=btn["open_crm"],
-                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=calls"),
+                    url=build_miniapp_url("call_detail", str(call_id), cid),
                 )])
             if call_id:
                 rows.append([InlineKeyboardButton(
@@ -902,17 +958,17 @@ class TelegramService:
                 )])
 
         elif event_type == "new_lead" and lead_id:
-            if use_webapp:
+            if cid:
                 rows.append([InlineKeyboardButton(
                     text=btn["open_lead"],
-                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=lead&id={lead_id}"),
+                    url=build_miniapp_url("lead_detail", str(lead_id), cid),
                 )])
 
         elif event_type == "deal_stage_change" and deal_id:
-            if use_webapp:
+            if cid:
                 rows.append([InlineKeyboardButton(
                     text=btn["open_deal"],
-                    web_app=WebAppInfo(url=f"{frontend_url}/miniapp?view=deal&id={deal_id}"),
+                    url=build_miniapp_url("deal_detail", str(deal_id), cid),
                 )])
 
         return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
@@ -963,6 +1019,7 @@ class TelegramService:
             lead_id=lead_id,
             deal_id=deal_id,
             language=lang,
+            company_id=str(config.company_id),
         )
 
         try:

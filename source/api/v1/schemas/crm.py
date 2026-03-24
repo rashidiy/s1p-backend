@@ -2,10 +2,11 @@
 CRM schemas for Contacts, Leads, Deals, Tasks, Notes
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Literal, Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, Field
+
 
 from db.models.enums import DealStageEnum
 from api.v1.schemas.validators import CustomFieldsValidator, TagsValidator
@@ -72,7 +73,7 @@ class LeadBase(CustomFieldsValidator, BaseModel):
     source: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=5000)
     estimated_value: Optional[float] = Field(None, ge=0)
-    currency: Optional[str] = Field("USD", max_length=10)
+    currency: Optional[Literal["USD", "UZS"]] = Field("USD", max_length=10)
     custom_fields: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -90,7 +91,7 @@ class LeadUpdateRequest(CustomFieldsValidator, TagsValidator, BaseModel):
     source: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=5000)
     estimated_value: Optional[float] = Field(None, ge=0)
-    currency: Optional[str] = Field(None, max_length=10)
+    currency: Optional[Literal["USD", "UZS"]] = Field(None, max_length=10)
     custom_fields: Optional[Dict[str, Any]] = None
     tags: Optional[List[str]] = None
 
@@ -123,7 +124,7 @@ class DealBase(CustomFieldsValidator, BaseModel):
     contact_id: Optional[UUID] = None
     lead_id: Optional[UUID] = None
     amount: float = Field(..., ge=0)
-    currency: Optional[str] = Field("USD", max_length=10)
+    currency: Optional[Literal["USD", "UZS"]] = Field("USD", max_length=10)
     probability: Optional[int] = Field(0, ge=0, le=100)
     expected_close_date: Optional[date] = None
     description: Optional[str] = Field(None, max_length=5000)
@@ -144,7 +145,7 @@ class DealUpdateRequest(CustomFieldsValidator, TagsValidator, BaseModel):
     assigned_to: Optional[UUID] = None
     stage: Optional[DealStageEnum] = None
     amount: Optional[float] = Field(None, ge=0)
-    currency: Optional[str] = Field(None, max_length=10)
+    currency: Optional[Literal["USD", "UZS"]] = Field(None, max_length=10)
     probability: Optional[int] = Field(None, ge=0, le=100)
     expected_close_date: Optional[date] = None
     description: Optional[str] = Field(None, max_length=5000)

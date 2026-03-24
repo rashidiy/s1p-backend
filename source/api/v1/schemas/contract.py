@@ -2,7 +2,7 @@
 Contract schemas for API requests and responses
 """
 
-from typing import Optional, List
+from typing import Literal, Optional, List
 from uuid import UUID
 from datetime import date, datetime
 from decimal import Decimal
@@ -20,7 +20,7 @@ class ContractCreateRequest(BaseModel):
     max_operators: int = Field(10, ge=0)
     max_storage_gb: int = Field(10, ge=1)
     price: Decimal = Field(..., ge=0, decimal_places=2)
-    currency: str = Field("USD", min_length=3, max_length=3)
+    currency: Literal["USD", "UZS"] = Field("USD", min_length=3, max_length=3)
     billing_period: BillingPeriodEnum = BillingPeriodEnum.MONTHLY
     start_date: date
     end_date: date
@@ -57,7 +57,7 @@ class ContractUpdateRequest(BaseModel):
     max_operators: Optional[int] = Field(None, ge=0)
     max_storage_gb: Optional[int] = Field(None, ge=1)
     price: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    currency: Optional[Literal["USD", "UZS"]] = Field(None, min_length=3, max_length=3)
     billing_period: Optional[BillingPeriodEnum] = None
     status: Optional[ContractStatusEnum] = None
     payment_status: Optional[PaymentStatusEnum] = None

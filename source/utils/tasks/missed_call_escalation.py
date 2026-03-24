@@ -120,7 +120,8 @@ async def check_missed_calls():
                 company_id_str = str(call.company_id)
                 age_str = f"{int(age_minutes)}"
 
-                text = _build_escalation_message(
+                from utils.services import telegram_i18n as i18n
+                text = i18n.escalation_message(
                     phone, operator_name, age_str, tier, lang
                 )
 
@@ -224,42 +225,6 @@ def _esc(text: str) -> str:
     """Escape special characters for Telegram MarkdownV2."""
     special = r'_*[]()~`>#+-=|{}.!'
     return ''.join(('\\' + ch if ch in special else ch) for ch in str(text))
-
-
-def _build_escalation_message(
-    phone: str, operator_name: str | None, age_min: str, tier: int, lang: str
-) -> str:
-    """Build escalation message based on tier."""
-    titles = {
-        1: {"ru": "Напоминание", "en": "Reminder", "uz": "Eslatma"},
-        2: {"ru": "Срочно", "en": "Urgent", "uz": "Shoshilinch"},
-        3: {"ru": "Критично", "en": "Critical", "uz": "Juda muhim"},
-    }
-    icons = {1: "\u26a0\ufe0f", 2: "\U0001f534", 3: "\U0001f6a8"}
-
-    locale = lang if lang in ("ru", "en", "uz") else "ru"
-    title = titles[tier][locale]
-    icon = icons[tier]
-
-    min_labels = {"ru": "мин", "en": "min", "uz": "min"}
-    no_callback = {
-        "ru": "нет обратного звонка",
-        "en": "no callback",
-        "uz": "qayta qo'ng'iroq yo'q",
-    }
-    operator_label = {"ru": "Оператор", "en": "Operator", "uz": "Operator"}
-
-    clean_phone = re.sub(r'[^+\d\- ]', '', phone.strip())
-    phone_link = f"[{_esc(phone)}](tel:{clean_phone})"
-
-    line1 = f"*{icon} {_esc(title)}*  {phone_link}"
-    line2 = f"{_esc(age_min)} {_esc(min_labels[locale])} — {_esc(no_callback[locale])}"
-
-    lines = [line1, line2]
-    if operator_name:
-        lines.append(f"{_esc(operator_label[locale])}: {_esc(operator_name)}")
-
-    return "\n".join(lines)
 
 
 async def escalation_scheduler():

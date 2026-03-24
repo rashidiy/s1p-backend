@@ -633,14 +633,15 @@ async def _handle_search_command(chat_id: int, query: str, session: AsyncSession
         await _send_message(chat_id, no_data_text(lang))
         return
 
-    header = search_header(query, lang)
+    # T111: Escape all user-supplied data for MarkdownV2
+    header = f"*{_esc_md(search_header(query, lang))}*"
     lines = [header, ""]
     for c in contacts:
-        name = f"{c.first_name or ''} {c.last_name or ''}".strip() or "—"
-        phone = c.phone or "—"
-        lines.append(f"• {name} — {phone}")
+        name = f"{c.first_name or ''} {c.last_name or ''}".strip() or "\u2014"
+        phone = c.phone or "\u2014"
+        lines.append(f"\u2022 {_esc_md(name)} \u2014 `{_esc_md(phone)}`")
 
-    await _send_message(chat_id, "\n".join(lines))
+    await _send_message(chat_id, "\n".join(lines), parse_mode="MarkdownV2")
 
 
 async def _handle_myleads_command(chat_id: int, telegram_user_id: int, session: AsyncSession):
@@ -681,14 +682,14 @@ async def _handle_myleads_command(chat_id: int, telegram_user_id: int, session: 
         await _send_message(chat_id, no_data_text(lang))
         return
 
-    header = my_leads_header(lang)
+    header = f"*{_esc_md(my_leads_header(lang))}*"
     lines = [header, ""]
     for lead in leads:
-        title = lead.title or "—"
-        status_val = lead.status if isinstance(lead.status, str) else (lead.status.value if lead.status else "—")
-        lines.append(f"• {title} [{status_val}]")
+        title = lead.title or "\u2014"
+        status_val = lead.status if isinstance(lead.status, str) else (lead.status.value if lead.status else "\u2014")
+        lines.append(f"\u2022 {_esc_md(title)} \\[{_esc_md(status_val)}\\]")
 
-    await _send_message(chat_id, "\n".join(lines))
+    await _send_message(chat_id, "\n".join(lines), parse_mode="MarkdownV2")
 
 
 # ── Inline query handler ──────────────────────────────────────────────
@@ -910,6 +911,26 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
         return
 
     config = await _get_config_for_chat(chat_id, session)
+    # T110: In DMs, chat_id won't match any group config — look up via user's company
+    if not config and telegram_user_id:
+        _dm_user = await session.execute(
+            select(User).where(
+                User.telegram_user_id == telegram_user_id,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+            )
+        )
+        _dm_u = _dm_user.scalars().first()
+        if _dm_u and _dm_u.company_id:
+            _cfg_q = await session.execute(
+                select(TelegramBotConfig).where(
+                    TelegramBotConfig.company_id == _dm_u.company_id,
+                    TelegramBotConfig.enabled.is_(True),
+                    TelegramBotConfig.deleted_at.is_(None),
+                )
+            )
+            config = _cfg_q.scalar_one_or_none()
+
     if not config:
         await _answer_callback(callback_query_id, i18n.bot_not_configured_text())
         return
@@ -933,6 +954,10 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
             await _answer_callback(callback_query_id, i18n.invalid_phone_text(lang))
             return
 
+    # Detect if callback came from a private chat (DM context)
+    chat_type = message.get("chat", {}).get("type", "")
+    is_dm = chat_type == "private"
+
     try:
         if action == "mh":
             # Mark handled — react + edit message to add handler name, keep nav buttons
@@ -940,10 +965,12 @@ async def _handle_callback_query(callback_query: dict, session: AsyncSession):
             from utils.services.telegram_service import TelegramService
             suffix = handled_text(user_display, lang)
             await TelegramService.react_to_message(chat_id, message_id, "✅")
-            await _edit_message_handled(
-                chat_id, message_id, message.get("text", ""), suffix,
-                original_markup=message.get("reply_markup"),
-            )
+            # T110: In DM context, skip group message edit (message IDs differ)
+            if not is_dm:
+                await _edit_message_handled(
+                    chat_id, message_id, message.get("text", ""), suffix,
+                    original_markup=message.get("reply_markup"),
+                )
             await _answer_callback(callback_query_id, suffix)
 
         elif action == "al":
