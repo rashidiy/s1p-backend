@@ -33,9 +33,8 @@ def _duration(seconds: int, lang: str) -> str:
 
 
 def _phone_link(phone: str) -> str:
-    """Format phone as inline code in MarkdownV2 (Telegram auto-detects phone numbers)."""
-    clean = phone.strip()
-    return f"`{clean}`"
+    """Format phone as plain escaped text — Telegram auto-detects and adds native menu."""
+    return _esc(phone.strip())
 
 
 # ── Call completed ────────────────────────────────────────────────
@@ -360,12 +359,11 @@ def escalation_message(
     template = templates.get(tier, _ESCALATION_TIER1)
 
     clean_phone = phone.strip()
-    phone_code = f"`{clean_phone}`"
 
     # Escape the template text (except placeholders) for MarkdownV2
     raw_text = _esc(template[locale].format(phone="\x00PHONE\x00", time_ago=time_ago))
-    # Replace escaped placeholder with the phone in inline code
-    text = raw_text.replace("\x00PHONE\x00", phone_code)
+    # Replace escaped placeholder with plain escaped phone
+    text = raw_text.replace("\x00PHONE\x00", _esc(clean_phone))
 
     lines = [f"*{text}*"]
     if operator_name:
