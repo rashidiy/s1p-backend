@@ -17,7 +17,7 @@ from utils.services.telephony import ProviderFactory
 from utils.services.telephony.base import ProviderException
 from utils.permissions import require_permissions, Permissions
 
-from .common import resolve_operator_id, require_provider, next_call_number
+from .common import resolve_operator_id, require_provider
 
 
 router = APIRouter(prefix="/calls/binotel", tags=["Calls - Binotel"])
@@ -52,11 +52,9 @@ async def call_ext_to_ext(
         result = await provider.make_call(request)
 
         if result.success:
-            call_num = await next_call_number(session, company.id)
-            await CallEvent.create(
+            call_event = await CallEvent.create(
                 session=session,
                 company_id=company.id,
-                id=call_num,
                 provider_type=company.provider_type,
                 provider_call_id=f"binotel_{result.call_id}",
                 phone_1=request.phone_1,
@@ -67,7 +65,7 @@ async def call_ext_to_ext(
                 utm_campaign=request.utm_campaign,
                 attempts=1
             )
-            return CallResponse(success=True, call_id=call_num)
+            return CallResponse(success=True, call_id=call_event.id)
 
         return CallResponse(success=False, error=result.error, message=result.message)
 
