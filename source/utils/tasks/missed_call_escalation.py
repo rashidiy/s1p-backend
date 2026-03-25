@@ -70,11 +70,24 @@ async def check_missed_calls():
             )
             missed_calls = result.scalars().all()
 
+            # Group by (company_id, phone) — send ONE escalation per phone, not per call
+            from collections import defaultdict
+            phone_groups: dict[tuple, list] = defaultdict(list)
             for call in missed_calls:
-                age_minutes = (now - call.created_at).total_seconds() / 60
-                call_key = f"escalation:{call.company_id}:{call.id}"
+                phone = call.phone_1 or "Unknown"
+                key = (call.company_id, phone)
+                phone_groups[key].append(call)
 
-                # Determine tier
+            from aiogram.enums import ParseMode
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            from utils.services import telegram_i18n as i18n
+
+            for (company_id, phone), calls_in_group in phone_groups.items():
+                # Use the OLDEST call in the group to determine tier (highest urgency)
+                oldest_call = min(calls_in_group, key=lambda c: c.created_at)
+                age_minutes = (now - oldest_call.created_at).total_seconds() / 60
+
+                # Determine tier based on oldest call
                 tier = 0
                 if age_minutes >= TIER3_MINUTES:
                     tier = 3
@@ -85,15 +98,16 @@ async def check_missed_calls():
                 else:
                     continue
 
-                # Check if already sent
-                sent_tier = await redis.get(call_key)
+                # Check if already escalated for this phone (use phone-based key)
+                phone_key = f"escalation:{company_id}:phone:{phone}"
+                sent_tier = await redis.get(phone_key)
                 if sent_tier and int(sent_tier) >= tier:
                     continue
 
                 # Get Telegram config
                 tg_config = await session.execute(
                     select(TelegramBotConfig).where(
-                        TelegramBotConfig.company_id == call.company_id,
+                        TelegramBotConfig.company_id == company_id,
                         TelegramBotConfig.enabled.is_(True),
                         TelegramBotConfig.deleted_at.is_(None),
                     )
@@ -109,26 +123,23 @@ async def check_missed_calls():
                 lang = config.language or "ru"
                 thread_id = config.get_topic_thread_id("call_missed")
 
-                # Get operator name
+                # Use the most recent call for reply threading and operator info
+                latest_call = max(calls_in_group, key=lambda c: c.created_at)
+
                 operator_name = None
-                if call.operator_id:
-                    op = await session.get(User, call.operator_id)
+                if latest_call.operator_id:
+                    op = await session.get(User, latest_call.operator_id)
                     if op:
                         operator_name = op.full_name
 
-                phone = call.phone_1 or "Unknown"
-                company_id_str = str(call.company_id)
+                company_id_str = str(company_id)
                 age_str = f"{int(age_minutes)}"
 
-                from utils.services import telegram_i18n as i18n
                 text = i18n.escalation_message(
                     phone, operator_name, age_str, tier, lang
                 )
 
                 # Build Mini App callback button
-                from aiogram.enums import ParseMode
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
                         text="📞 Перезвонить",
@@ -144,23 +155,27 @@ async def check_missed_calls():
                 }
                 if thread_id:
                     kwargs["message_thread_id"] = thread_id
-                # Reply to original missed call message
-                if call.telegram_message_id:
-                    kwargs["reply_to_message_id"] = call.telegram_message_id
+                # Reply to the most recent missed call message
+                if latest_call.telegram_message_id:
+                    kwargs["reply_to_message_id"] = latest_call.telegram_message_id
                     kwargs["allow_sending_without_reply"] = True
 
                 try:
                     await bot.send_message(**kwargs)
-                    await redis.set(call_key, str(tier), ex=10800)
+                    # Mark phone-level key to prevent duplicate escalations
+                    await redis.set(phone_key, str(tier), ex=10800)
+                    # Also mark individual call keys so old-style checks still work
+                    for c in calls_in_group:
+                        await redis.set(f"escalation:{company_id}:{c.id}", str(tier), ex=10800)
                     logger.info(
-                        "Escalation tier %d sent for call %s (company %s, %d min old)",
-                        tier, call.id, call.company_id, int(age_minutes),
+                        "Escalation tier %d sent for phone %s (company %s, %d calls, %d min old)",
+                        tier, phone, company_id, len(calls_in_group), int(age_minutes),
                     )
 
                     # Tier 3: DM managers (fallback to admins)
                     if tier == 3:
                         await _dm_managers(
-                            bot, session, call.company_id, text, keyboard,
+                            bot, session, company_id, text, keyboard,
                             phone, company_id_str, lang,
                         )
 
