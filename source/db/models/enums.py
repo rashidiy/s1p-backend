@@ -14,6 +14,7 @@ class CallStatusEnum(str, enum.Enum):
     CANCEL = "CANCEL"
     CONGESTION = "CONGESTION"
     CHANUNAVAIL = "CHANUNAVAIL"
+    FAILED = "FAILED"
 
 
 class ProviderEnum(str, enum.Enum):
