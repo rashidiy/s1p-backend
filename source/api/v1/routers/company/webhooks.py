@@ -522,70 +522,24 @@ async def _send_call_notification(company_id, call_data: dict, call_id: int = No
         return
 
     try:
-        # Use a fresh session for the background task
         async for session in AsyncDatabaseSession()():
-            # Load the full CallEvent object for the object-based notification methods
-            if call_id:
-                call_event = await CallEvent.get(session=session, id=call_id, company_id=company_id)
-            else:
-                call_event = None
+            if not call_id:
+                return
+            call_event = await CallEvent.get(session=session, id=call_id, company_id=company_id)
+            if not call_event:
+                return
 
-            if call_event:
-                if is_answered:
-                    await TelegramService.send_call_notification(
-                        company_id=company_id,
-                        call_event=call_event,
-                        session=session,
-                    )
-                elif is_missed:
-                    await TelegramService.send_missed_call_notification(
-                        company_id=company_id,
-                        call_event=call_event,
-                        session=session,
-                    )
-            else:
-                # Fallback to legacy individual-param methods
-                caller_phone = call_data.get('phone_1', '')
-                contact_name = None
-                contact_id = None
-                operator_name = None
-                direction = "inbound"
-
-                if call_data.get('direction'):
-                    d = call_data['direction']
-                    direction = d.value if hasattr(d, 'value') else str(d)
-
-                if caller_phone:
-                    from sqlalchemy import select, or_
-                    result = await session.execute(
-                        select(Contact).where(
-                            Contact.company_id == company_id,
-                            or_(Contact.phone == caller_phone),
-                        ).limit(1)
-                    )
-                    contact = result.scalar_one_or_none()
-                    if contact:
-                        contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-                        contact_id = contact.id
-
-                if call_data.get('operator_id'):
-                    operator = await User.get(session=session, id=call_data['operator_id'])
-                    if operator:
-                        operator_name = operator.full_name
-
-                if is_answered:
-                    await TelegramService.notify_call_completed(
-                        session=session, company_id=company_id,
-                        caller_phone=caller_phone, operator_name=operator_name,
-                        duration_sec=call_data.get('billing_sec', 0) or 0,
-                        contact_name=contact_name, contact_id=contact_id,
-                        record_url=call_data.get('record_url'), direction=direction,
-                    )
-                elif is_missed:
-                    await TelegramService.notify_call_missed(
-                        session=session, company_id=company_id,
-                        caller_phone=caller_phone, operator_name=operator_name,
-                        contact_name=contact_name, contact_id=contact_id,
-                    )
+            if is_answered:
+                await TelegramService.send_call_notification(
+                    company_id=company_id,
+                    call_event=call_event,
+                    session=session,
+                )
+            elif is_missed:
+                await TelegramService.send_missed_call_notification(
+                    company_id=company_id,
+                    call_event=call_event,
+                    session=session,
+                )
     except Exception as e:
         logger.error(f"Telegram call notification failed: {e}", exc_info=True)
