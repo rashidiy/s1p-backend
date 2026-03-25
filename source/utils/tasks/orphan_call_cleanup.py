@@ -33,12 +33,12 @@ async def cleanup_orphan_calls():
                         CallEvent.state.is_(None),
                         CallEvent.created_at < cutoff,
                     )
-                ).values(state=CallStatusEnum.NOANSWER)
+                ).values(state=CallStatusEnum.FAILED)
             )
 
             if result.rowcount > 0:
                 await session.commit()
-                logger.info("Orphan cleanup: marked %d stale calls as NOANSWER", result.rowcount)
+                logger.info("Orphan cleanup: marked %d stale calls as FAILED", result.rowcount)
 
     except Exception:
         logger.exception("Orphan call cleanup failed")
