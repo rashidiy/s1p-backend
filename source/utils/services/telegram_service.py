@@ -48,19 +48,25 @@ def get_bot() -> Optional[Bot]:
     return _bot
 
 
-def _crm_url(path: str) -> str | None:
-    """Build CRM frontend URL. Returns None if URL wouldn't be valid for Telegram (non-HTTPS)."""
+def _crm_url(path: str, subdomain: str | None = None) -> str | None:
+    """Build CRM frontend URL with company subdomain.
+
+    Example: subdomain='logistic' → https://logistic.s1p.uz/calls/123
+    Returns None if URL wouldn't be valid for Telegram (non-HTTPS).
+    """
     base = AppConfig.FRONTEND_URL.rstrip('/')
+    if subdomain and base.startswith("https://"):
+        # Insert subdomain: https://s1p.uz → https://logistic.s1p.uz
+        base = base.replace("https://", f"https://{subdomain}.", 1)
     url = f"{base}/{path.lstrip('/')}"
-    # Telegram rejects non-HTTPS URLs in inline keyboard buttons
     if not url.startswith("https://"):
         return None
     return url
 
 
-def _url_button(text: str, path: str) -> InlineKeyboardButton | None:
+def _url_button(text: str, path: str, subdomain: str | None = None) -> InlineKeyboardButton | None:
     """Create a URL button, or None if the URL isn't valid for Telegram."""
-    url = _crm_url(path)
+    url = _crm_url(path, subdomain)
     if not url:
         return None
     return InlineKeyboardButton(text=text, url=url)
@@ -82,6 +88,15 @@ class TelegramService:
     - Skip silently if not configured
     - Log errors, never raise
     """
+
+    @staticmethod
+    async def _get_subdomain(company_id: UUID, session: AsyncSession) -> str | None:
+        """Get company subdomain for CRM URL buttons."""
+        from db.models.company import Company
+        result = await session.execute(
+            select(Company.subdomain).where(Company.id == company_id)
+        )
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def _get_config(company_id: UUID, session: AsyncSession) -> Optional[TelegramConfig]:
@@ -359,6 +374,7 @@ class TelegramService:
 
             call_id = call_event.id
             company_id_str = str(company_id)
+            subdomain = await TelegramService._get_subdomain(company_id, session)
             from utils.services.startapp_service import build_miniapp_url
 
             # Single row: [📱 Подробнее] [📋 CRM]
@@ -368,7 +384,7 @@ class TelegramService:
                     url=build_miniapp_url("call_detail", str(call_id), company_id_str),
                 ),
             ]
-            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
+            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}", subdomain)
             if crm_btn:
                 nav_row.append(crm_btn)
 
@@ -426,6 +442,7 @@ class TelegramService:
 
             call_id = call_event.id
             company_id_str = str(company_id)
+            subdomain = await TelegramService._get_subdomain(company_id, session)
             from utils.services.startapp_service import build_miniapp_url
 
             if is_outbound:
@@ -460,7 +477,7 @@ class TelegramService:
                     ),
                 ]
 
-            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
+            crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}", subdomain)
             if crm_btn:
                 nav_row.append(crm_btn)
 
@@ -521,6 +538,7 @@ class TelegramService:
 
             from utils.services.startapp_service import build_miniapp_url
             company_id_str = str(company_id)
+            subdomain = await TelegramService._get_subdomain(company_id, session)
 
             nav_row = [
                 InlineKeyboardButton(
@@ -528,7 +546,7 @@ class TelegramService:
                     url=build_miniapp_url("lead_detail", str(lead.id), company_id_str),
                 ),
             ]
-            crm_btn = _url_button(btn["open_crm"], f"/leads/{lead.id}")
+            crm_btn = _url_button(btn["open_crm"], f"/leads/{lead.id}", subdomain)
             if crm_btn:
                 nav_row.append(crm_btn)
             keyboard = InlineKeyboardMarkup(inline_keyboard=[nav_row])
@@ -720,6 +738,7 @@ class TelegramService:
 
             from utils.services.startapp_service import build_miniapp_url
             company_id_str = str(company_id)
+            subdomain = await TelegramService._get_subdomain(company_id, session)
 
             rows = [
                 [InlineKeyboardButton(
@@ -728,7 +747,7 @@ class TelegramService:
                 )],
                 [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{str(deal_id)[:36]}")],
             ]
-            crm_btn = _url_button(btn["open_crm"], f"/deals/{deal_id}")
+            crm_btn = _url_button(btn["open_crm"], f"/deals/{deal_id}", subdomain)
             if crm_btn:
                 rows[0].append(crm_btn)
             keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
