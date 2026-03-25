@@ -364,6 +364,10 @@ async def _update_existing_call(
     existing_phone_2 = existing_call.phone_2
     existing_state = existing_call.state
 
+    # Skip duplicate Event 1 (SIP calls fire 2x Event 1, 1s apart)
+    if event_type == "call_started" and existing_state == CallStatusEnum.RINGING:
+        return {"status": "duplicate", "call_id": existing_call_id}
+
     # Don't overwrite phones set by call endpoint with SIP extensions from webhook
     if existing_phone_1 and 'phone_1' in call_data:
         call_data.pop('phone_1')
@@ -378,6 +382,18 @@ async def _update_existing_call(
         and incoming_state == CallStatusEnum.RINGING.value
     ):
         call_data.pop('state', None)
+
+    # Guard: don't overwrite a valid answer timestamp (from event 3) with
+    # a broken one from event 2 (external calls have answer <= start)
+    existing_answer_ts = existing_call.call_answer_timestamp
+    incoming_answer_ts = call_data.get('call_answer_timestamp')
+    if existing_answer_ts and incoming_answer_ts is None:
+        # Event 2 had broken timestamp (stripped by provider), keep event 3's value
+        call_data.pop('call_answer_timestamp', None)
+        # Recompute billing_sec using the existing valid answer timestamp
+        end_ts = call_data.get('call_end_timestamp')
+        if call_data.get('state') == 'ANSWER' and end_ts and existing_answer_ts:
+            call_data['billing_sec'] = max(0, end_ts - existing_answer_ts)
 
     # Update existing call event (company_id for defense-in-depth)
     await CallEvent.update_by(

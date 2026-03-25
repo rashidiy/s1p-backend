@@ -40,16 +40,22 @@ def _phone_link(phone: str) -> str:
 # ── Call completed ────────────────────────────────────────────────
 # Compact format: Contact → Operator, then details on one line
 
-_CALL_COMPLETED_TITLE = {
+_CALL_INBOUND_TITLE = {
+    "ru": "📞⬇️ Входящий",
+    "en": "📞⬇️ Inbound",
+    "uz": "📞⬇️ Kiruvchi",
+}
+
+_CALL_OUTBOUND_TITLE = {
+    "ru": "📞⬆️ Исходящий",
+    "en": "📞⬆️ Outbound",
+    "uz": "📞⬆️ Chiquvchi",
+}
+
+_CALL_TITLE_FALLBACK = {
     "ru": "📞 Звонок",
     "en": "📞 Call",
     "uz": "📞 Qo'ng'iroq",
-}
-
-_CALL_COMPLETED_UNKNOWN = {
-    "ru": "Неизвестный",
-    "en": "Unknown",
-    "uz": "Noma'lum",
 }
 
 
@@ -63,22 +69,40 @@ def call_completed_message(
     recording_url: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build compact MarkdownV2 message for a completed call."""
+    """Build compact MarkdownV2 message for a completed call.
+
+    Inbound:  📞⬇️ Входящий  Contact → Operator
+    Outbound: 📞⬆️ Исходящий  Operator → Contact
+    """
     locale = get_locale(lang)
-    dir_label = DIRECTION_LABELS[locale].get(direction, "")
     dur = _duration(duration_sec, locale)
 
-    # Line 1: Contact → Operator (or just contact if no operator)
-    caller = _esc(contact_name or caller_display)
-    if operator_name:
-        line1 = f"*{_esc(_CALL_COMPLETED_TITLE[locale])}*  {caller}  →  {_esc(operator_name)}"
+    # Direction-aware title and arrow
+    if direction == "inbound":
+        title = _CALL_INBOUND_TITLE[locale]
+        left = _esc(contact_name or caller_display)
+        right = _esc(operator_name) if operator_name else None
+    elif direction == "outbound":
+        title = _CALL_OUTBOUND_TITLE[locale]
+        left = _esc(operator_name) if operator_name else None
+        right = _esc(contact_name or caller_display)
     else:
-        line1 = f"*{_esc(_CALL_COMPLETED_TITLE[locale])}*  {caller}"
+        title = _CALL_TITLE_FALLBACK[locale]
+        left = _esc(contact_name or caller_display)
+        right = _esc(operator_name) if operator_name else None
 
-    # Line 2: phone · duration · direction
+    # Line 1: Title  Left → Right
+    if left and right:
+        line1 = f"*{_esc(title)}*  {left}  →  {right}"
+    elif left:
+        line1 = f"*{_esc(title)}*  {left}"
+    elif right:
+        line1 = f"*{_esc(title)}*  {right}"
+    else:
+        line1 = f"*{_esc(title)}*"
+
+    # Line 2: phone · duration
     parts = [_phone_link(phone), _esc(dur)]
-    if dir_label:
-        parts.append(_esc(dir_label))
     line2 = " · ".join(parts)
 
     lines = [line1, line2]
@@ -87,7 +111,6 @@ def call_completed_message(
         btn = BUTTON_LABELS[locale]["listen_recording"]
         lines.append(f"\n[{_esc(btn)}]({recording_url})")
     elif duration_sec > 0:
-        # T108: Recording may not be ready yet (Sipuni async delay)
         _rec_processing = {"ru": "⏳ Запись обрабатывается", "en": "⏳ Recording processing", "uz": "⏳ Yozuv qayta ishlanmoqda"}
         lines.append(f"\n_{_esc(_rec_processing[locale])}_")
 
@@ -108,6 +131,7 @@ def missed_call_message(
     caller_display: str,
     phone: str,
     contact_name: str | None = None,
+    operator_name: str | None = None,
     lang: str = "ru",
 ) -> str:
     """Build compact MarkdownV2 message for a missed call."""
@@ -117,6 +141,8 @@ def missed_call_message(
     parts = [_phone_link(phone)]
     if contact_name:
         parts.insert(0, _esc(contact_name))
+    if operator_name:
+        parts.append(f"→ {_esc(operator_name)}")
 
     return f"{line1}  {' · '.join(parts)}"
 

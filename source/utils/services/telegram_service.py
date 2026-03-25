@@ -328,22 +328,34 @@ class TelegramService:
             locale = get_locale(lang)
             btn = _buttons(locale)
 
+            direction = (call_event.direction.value if call_event.direction else "unknown")
+
+            # For outbound: the external party is phone_2 (destination)
+            # For inbound: the external party is phone_1 (caller)
+            if direction == "outbound":
+                display_phone = call_event.phone_2 or call_event.phone_1 or ""
+            else:
+                display_phone = call_event.phone_1 or ""
+
             contact_name = await TelegramService._lookup_contact_name(
-                call_event.phone_1, company_id, session
+                display_phone, company_id, session
             )
             operator_name = await TelegramService._get_operator_name(
                 call_event.operator_id, session
             )
 
-            direction = (call_event.direction.value if call_event.direction else "unknown")
-
             recording_url = getattr(call_event, 'record_url', None)
+
+            # Compute duration from billing_sec or timestamps
+            duration_sec = call_event.billing_sec or 0
+            if not duration_sec and call_event.call_end_timestamp and call_event.call_answer_timestamp:
+                duration_sec = max(0, call_event.call_end_timestamp - call_event.call_answer_timestamp)
 
             text = i18n.call_completed_message(
                 direction=direction,
-                caller_display=contact_name or call_event.phone_1 or "Unknown",
-                phone=call_event.phone_1 or "N/A",
-                duration_sec=call_event.duration_sec or 0,
+                caller_display=contact_name or display_phone or "Unknown",
+                phone=display_phone or "N/A",
+                duration_sec=duration_sec,
                 operator_name=operator_name,
                 contact_name=contact_name,
                 recording_url=recording_url,
@@ -351,7 +363,7 @@ class TelegramService:
             )
 
             call_id = call_event.id
-            phone = call_event.phone_1 or ""
+            phone = display_phone
             company_id_str = str(company_id)
 
             from utils.services.startapp_service import build_miniapp_url
@@ -392,7 +404,7 @@ class TelegramService:
             # Send recording as inline audio if available (T94)
             if recording_url and config.send_recordings:
                 thread_id = config.get_topic_thread_id("call_completed")
-                caption = f"{btn['listen_recording']} — {contact_name or call_event.phone_1 or ''}"
+                caption = f"{btn['listen_recording']} — {contact_name or phone or ''}"
                 await TelegramService.send_recording_audio(
                     bot, config.effective_chat_id, recording_url,
                     caption=caption, thread_id=thread_id,
@@ -428,19 +440,26 @@ class TelegramService:
             locale = get_locale(lang)
             btn = _buttons(locale)
 
+            # Missed calls are always inbound — phone_1 is the external caller
+            display_phone = call_event.phone_1 or ""
+
             contact_name = await TelegramService._lookup_contact_name(
-                call_event.phone_1, company_id, session
+                display_phone, company_id, session
+            )
+            operator_name = await TelegramService._get_operator_name(
+                call_event.operator_id, session
             )
 
             text = i18n.missed_call_message(
-                caller_display=contact_name or call_event.phone_1 or "Unknown",
-                phone=call_event.phone_1 or "N/A",
+                caller_display=contact_name or display_phone or "Unknown",
+                phone=display_phone or "N/A",
                 contact_name=contact_name,
+                operator_name=operator_name,
                 lang=lang,
             )
 
             call_id = call_event.id
-            phone = call_event.phone_1 or ""
+            phone = display_phone
             company_id_str = str(company_id)
 
             from utils.services.startapp_service import build_miniapp_url
