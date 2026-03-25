@@ -299,6 +299,14 @@ async def _register_telegram_webhook():
         except Exception as e:
             print(f"[Telegram] Failed to start escalation scheduler: {e}")
 
+        # Start orphan call cleanup scheduler
+        try:
+            from utils.tasks.orphan_call_cleanup import orphan_cleanup_scheduler
+            asyncio.create_task(orphan_cleanup_scheduler())
+            print("[Calls] Orphan call cleanup scheduler started")
+        except Exception as e:
+            print(f"[Calls] Failed to start orphan cleanup scheduler: {e}")
+
     except Exception as e:
         print(f"[Telegram] Failed to register webhook: {e}")
 

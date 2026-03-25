@@ -338,18 +338,39 @@ class SipuniProvider(TelephonyProvider):
         return data
 
     def _handle_hangup(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Event 2: Call ended — set final state, recording, timestamps."""
+        """Event 2: Call ended — set final state, recording, timestamps.
+
+        Sipuni quirks handled:
+        - billing_sec is never sent — compute from timestamps
+        - External calls have broken call_answer_timestamp (= start or before start)
+        - Only trust call_answer_timestamp when answer > start
+        """
         data = self._extract_common_fields(payload)
 
         call_start = payload.get('call_start_timestamp')
         call_end = payload.get('timestamp')
         call_answer = payload.get('call_answer_timestamp')
 
+        start_ts = int(call_start) if call_start else None
+        end_ts = int(call_end) if call_end else None
+        answer_ts = int(call_answer) if call_answer and str(call_answer) != '0' else None
+
+        # Validate answer_timestamp: must be > start (external calls have broken values)
+        if answer_ts and start_ts and answer_ts <= start_ts:
+            answer_ts = None
+
+        # Compute billing_sec (Sipuni never sends it)
+        status = payload.get('status')
+        billing_sec = None
+        if status == 'ANSWER' and end_ts and answer_ts:
+            billing_sec = max(0, end_ts - answer_ts)
+
         data.update({
-            "state": payload.get('status'),
-            "call_start_timestamp": int(call_start) if call_start else None,
-            "call_end_timestamp": int(call_end) if call_end else None,
-            "call_answer_timestamp": int(call_answer) if call_answer and str(call_answer) != '0' else None,
+            "state": status,
+            "call_start_timestamp": start_ts,
+            "call_end_timestamp": end_ts,
+            "call_answer_timestamp": answer_ts,
+            "billing_sec": billing_sec,
             "record_url": payload.get('call_record_link') or None,
             "transfer_from": payload.get('transfer_from') or None,
             "last_called": payload.get('last_called') or None,
@@ -363,11 +384,11 @@ class SipuniProvider(TelephonyProvider):
         timestamp = payload.get('timestamp')
 
         data.update({
+            "state": "ANSWER",
             "call_answer_timestamp": int(timestamp) if timestamp else None,
             "last_called": payload.get('last_called') or None,
             "_event_type": "call_answered",
         })
-        # Don't set state — let event 2 set the final state
         return data
 
     def _handle_transfer_hangup(self, payload: Dict[str, Any]) -> Dict[str, Any]:
