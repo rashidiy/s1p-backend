@@ -562,105 +562,9 @@ class TelegramService:
         except Exception:
             logger.exception("Failed to send lead notification for company %s", company_id)
 
-    # ── Legacy-compatible methods (individual-field signatures) ──
-
-    @staticmethod
-    async def notify_call_completed(
-        session: AsyncSession,
-        company_id: UUID,
-        caller_phone: str,
-        operator_name: Optional[str],
-        duration_sec: int,
-        contact_name: Optional[str] = None,
-        contact_id: Optional[UUID] = None,
-        record_url: Optional[str] = None,
-        direction: str = "inbound",
-    ):
-        """Send notification for completed call (individual-field signature)."""
-        try:
-            bot = get_bot()
-            if not bot:
-                return
-
-            config = await TelegramService._get_config(company_id, session)
-            if not config or not config.is_event_enabled("call_completed"):
-                return
-
-            lang = config.language or "ru"
-            locale = get_locale(lang)
-            btn = _buttons(locale)
-
-            text = i18n.call_completed_message(
-                direction=direction,
-                caller_display=contact_name or caller_phone or "Unknown",
-                phone=caller_phone or "N/A",
-                duration_sec=duration_sec,
-                operator_name=operator_name,
-                contact_name=contact_name,
-                recording_url=record_url,
-                lang=lang,
-            )
-
-            buttons = []
-            if contact_id:
-                contact_btn = _url_button(btn["open_crm"], f"/contacts/{contact_id}")
-                if contact_btn:
-                    buttons.append([contact_btn])
-            buttons.append([InlineKeyboardButton(
-                text=btn["mark_handled"],
-                callback_data=f"mh:{caller_phone[:50]}",
-            )])
-
-            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=caller_phone)
-        except Exception:
-            logger.exception("Failed to send call_completed notification for company %s", company_id)
-
-    @staticmethod
-    async def notify_call_missed(
-        session: AsyncSession,
-        company_id: UUID,
-        caller_phone: str,
-        operator_name: Optional[str] = None,
-        contact_name: Optional[str] = None,
-        contact_id: Optional[UUID] = None,
-    ):
-        """Send notification for missed call (individual-field signature)."""
-        try:
-            bot = get_bot()
-            if not bot:
-                return
-
-            config = await TelegramService._get_config(company_id, session)
-            if not config or not config.is_event_enabled("call_missed"):
-                return
-
-            lang = config.language or "ru"
-            locale = get_locale(lang)
-            btn = _buttons(locale)
-
-            text = i18n.missed_call_message(
-                caller_display=contact_name or caller_phone or "Unknown",
-                phone=caller_phone or "N/A",
-                contact_name=contact_name,
-                lang=lang,
-            )
-
-            from utils.services.startapp_service import build_miniapp_url
-            buttons = [
-                [InlineKeyboardButton(
-                    text=btn["callback"],
-                    url=build_miniapp_url("call", caller_phone[:50], str(company_id)),
-                )],
-                [InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{caller_phone[:50]}")],
-            ]
-
-            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-            await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=caller_phone)
-        except Exception:
-            logger.exception("Failed to send call_missed notification for company %s", company_id)
+    # Legacy methods removed — all call notifications now use
+    # send_call_notification() and send_missed_call_notification()
+    # with the call_event object.
 
     @staticmethod
     async def notify_new_lead(
@@ -949,21 +853,12 @@ class TelegramService:
         rows = []
 
         if event_type in ("call_completed", "call_missed"):
-            if cid and contact_id:
-                rows.append([InlineKeyboardButton(
-                    text=btn["open_contact"],
-                    url=build_miniapp_url("contact_detail", str(contact_id), cid),
-                )])
             if cid and call_id:
-                rows.append([InlineKeyboardButton(
-                    text=btn["open_crm"],
+                row = [InlineKeyboardButton(
+                    text=btn["details"],
                     url=build_miniapp_url("call_detail", str(call_id), cid),
-                )])
-            if call_id:
-                rows.append([InlineKeyboardButton(
-                    text=btn["mark_handled"],
-                    callback_data=f"mh:{call_id}",
-                )])
+                )]
+                rows.append(row)
 
         elif event_type == "new_lead" and lead_id:
             if cid:
