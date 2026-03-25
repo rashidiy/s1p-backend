@@ -89,6 +89,10 @@ BUTTON_LABELS = {
         "open_lead": "📝 Лид",
         "open_deal": "💼 Сделка",
         "listen_recording": "🎵 Запись",
+        "details": "📱 Подробнее",
+        "retry": "📱 Повторить",
+        "callback_mini": "📱 Перезвонить",
+        "open_mini": "📱 Открыть",
     },
     "en": {
         "mark_handled": "✅ Handled",
@@ -100,6 +104,10 @@ BUTTON_LABELS = {
         "open_lead": "📝 Lead",
         "open_deal": "💼 Deal",
         "listen_recording": "🎵 Recording",
+        "details": "📱 Details",
+        "retry": "📱 Retry",
+        "callback_mini": "📱 Callback",
+        "open_mini": "📱 Open",
     },
     "uz": {
         "mark_handled": "✅ Bajarildi",
@@ -111,6 +119,10 @@ BUTTON_LABELS = {
         "open_lead": "📝 Lid",
         "open_deal": "💼 Bitim",
         "listen_recording": "🎵 Yozuv",
+        "details": "📱 Batafsil",
+        "retry": "📱 Qayta",
+        "callback_mini": "📱 Qayta qo'ng'iroq",
+        "open_mini": "📱 Ochish",
     },
 }
 

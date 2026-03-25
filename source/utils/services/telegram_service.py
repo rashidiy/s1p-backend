@@ -314,7 +314,7 @@ class TelegramService:
         call_event,
         session: AsyncSession,
     ) -> None:
-        """Send a completed call notification with topic routing + i18n."""
+        """Send a completed (answered) call notification — clean 2-line format."""
         try:
             bot = get_bot()
             if not bot:
@@ -330,8 +330,7 @@ class TelegramService:
 
             direction = (call_event.direction.value if call_event.direction else "unknown")
 
-            # For outbound: the external party is phone_2 (destination)
-            # For inbound: the external party is phone_1 (caller)
+            # External party phone: phone_2 for outbound, phone_1 for inbound
             if direction == "outbound":
                 display_phone = call_event.phone_2 or call_event.phone_1 or ""
             else:
@@ -344,9 +343,6 @@ class TelegramService:
                 call_event.operator_id, session
             )
 
-            recording_url = getattr(call_event, 'record_url', None)
-
-            # Compute duration from billing_sec or timestamps
             duration_sec = call_event.billing_sec or 0
             if not duration_sec and call_event.call_end_timestamp and call_event.call_answer_timestamp:
                 duration_sec = max(0, call_event.call_end_timestamp - call_event.call_answer_timestamp)
@@ -358,59 +354,31 @@ class TelegramService:
                 duration_sec=duration_sec,
                 operator_name=operator_name,
                 contact_name=contact_name,
-                recording_url=recording_url,
                 lang=lang,
             )
 
             call_id = call_event.id
-            phone = display_phone
             company_id_str = str(company_id)
-
             from utils.services.startapp_service import build_miniapp_url
 
-            row1 = [
-                InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
-            ]
-            rows = [row1]
-
-            row2 = []
-            if not contact_name and phone:
-                row2.append(InlineKeyboardButton(
-                    text=btn["create_contact"],
-                    url=build_miniapp_url("new_contact", phone, company_id_str),
-                ))
-            row2.append(InlineKeyboardButton(
-                text=btn["assign_lead"],
-                url=build_miniapp_url("new_lead", phone, company_id_str),
-            ))
-            rows.append(row2)
-
-            # Navigation row: Mini App + CRM
+            # Single row: [📱 Подробнее] [📋 CRM]
             nav_row = [
                 InlineKeyboardButton(
-                    text="📱 Mini App",
+                    text=btn["details"],
                     url=build_miniapp_url("call_detail", str(call_id), company_id_str),
                 ),
             ]
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
                 nav_row.append(crm_btn)
-            rows.append(nav_row)
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
-            await TelegramService._send(bot, config, text, "call_completed", keyboard, phone=phone)
+            await TelegramService._send(
+                bot, config, text, "call_completed", keyboard, phone=display_phone,
+            )
 
-            # Send recording as inline audio if available (T94)
-            if recording_url and config.send_recordings:
-                thread_id = config.get_topic_thread_id("call_completed")
-                caption = f"{btn['listen_recording']} — {contact_name or phone or ''}"
-                await TelegramService.send_recording_audio(
-                    bot, config.effective_chat_id, recording_url,
-                    caption=caption, thread_id=thread_id,
-                )
-
-            # DM notifications for the operator
+            # DM to operator
             await TelegramService._send_dm_notifications(
                 config, "call_completed", text, session,
                 operator_id=call_event.operator_id,
@@ -426,7 +394,7 @@ class TelegramService:
         call_event,
         session: AsyncSession,
     ) -> None:
-        """Send a missed call notification with topic routing + i18n."""
+        """Send missed/unanswered call notification — direction-aware."""
         try:
             bot = get_bot()
             if not bot:
@@ -440,8 +408,14 @@ class TelegramService:
             locale = get_locale(lang)
             btn = _buttons(locale)
 
-            # Missed calls are always inbound — phone_1 is the external caller
-            display_phone = call_event.phone_1 or ""
+            direction = (call_event.direction.value if call_event.direction else "inbound")
+            is_outbound = direction == "outbound"
+
+            # External party phone
+            if is_outbound:
+                display_phone = call_event.phone_2 or call_event.phone_1 or ""
+            else:
+                display_phone = call_event.phone_1 or ""
 
             contact_name = await TelegramService._lookup_contact_name(
                 display_phone, company_id, session
@@ -450,56 +424,54 @@ class TelegramService:
                 call_event.operator_id, session
             )
 
-            text = i18n.missed_call_message(
-                caller_display=contact_name or display_phone or "Unknown",
-                phone=display_phone or "N/A",
-                contact_name=contact_name,
-                operator_name=operator_name,
-                lang=lang,
-            )
-
             call_id = call_event.id
-            phone = display_phone
             company_id_str = str(company_id)
-
             from utils.services.startapp_service import build_miniapp_url
 
-            rows = [
-                [
+            if is_outbound:
+                # Outbound unanswered: 📵 Олег → Contact / Не дозвонились
+                text = i18n.outbound_unanswered_message(
+                    operator_name=operator_name,
+                    caller_display=contact_name or display_phone or "Unknown",
+                    phone=display_phone or "N/A",
+                    contact_name=contact_name,
+                    lang=lang,
+                )
+                # [📱 Повторить] [📋 CRM]
+                nav_row = [
                     InlineKeyboardButton(
-                        text=btn["callback"],
-                        url=build_miniapp_url("call", phone, company_id_str),
+                        text=btn["retry"],
+                        url=build_miniapp_url("call_detail", str(call_id), company_id_str),
                     ),
-                    InlineKeyboardButton(text=btn["mark_handled"], callback_data=f"mh:{call_id}"),
-                ],
-            ]
+                ]
+            else:
+                # Inbound missed: 🔴 Пропущен от Contact
+                text = i18n.missed_call_message(
+                    caller_display=contact_name or display_phone or "Unknown",
+                    phone=display_phone or "N/A",
+                    contact_name=contact_name,
+                    lang=lang,
+                )
+                # [📱 Перезвонить] [📋 CRM]
+                nav_row = [
+                    InlineKeyboardButton(
+                        text=btn["callback_mini"],
+                        url=build_miniapp_url("call_detail", str(call_id), company_id_str),
+                    ),
+                ]
 
-            row2 = []
-            if not contact_name and phone:
-                row2.append(InlineKeyboardButton(
-                    text=btn["create_contact"],
-                    url=build_miniapp_url("new_contact", phone, company_id_str),
-                ))
-            rows.append(row2) if row2 else None
-
-            # Navigation row: Mini App + CRM
-            nav_row = [
-                InlineKeyboardButton(
-                    text="📱 Mini App",
-                    url=build_miniapp_url("call_detail", str(call_id), company_id_str),
-                ),
-            ]
             crm_btn = _url_button(btn["open_crm"], f"/calls/{call_id}")
             if crm_btn:
                 nav_row.append(crm_btn)
-            rows.append(nav_row)
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[r for r in rows if r])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
-            msg_id = await TelegramService._send(bot, config, text, "call_missed", keyboard, phone=phone)
+            msg_id = await TelegramService._send(
+                bot, config, text, "call_missed", keyboard, phone=display_phone,
+            )
 
-            # Save telegram message_id for escalation replies
-            if msg_id and call_event.id:
+            # Save telegram message_id for escalation replies (inbound only)
+            if not is_outbound and msg_id and call_event.id:
                 from db.models.call_event import CallEvent
                 await session.execute(
                     CallEvent.__table__.update()
@@ -509,12 +481,10 @@ class TelegramService:
                 )
                 await session.commit()
 
-            # DM notifications — broadcast to ALL users with my_calls pref
-            # (operator_id=None means don't filter to a specific user;
-            #  missed calls should notify everyone, not just the operator who missed it)
+            # DMs: inbound missed → ALL users, outbound unanswered → operator only
             await TelegramService._send_dm_notifications(
                 config, "call_missed", text, session,
-                operator_id=None,
+                operator_id=call_event.operator_id if is_outbound else None,
                 call_id=call_id,
                 contact_id=call_event.contact_id,
             )
