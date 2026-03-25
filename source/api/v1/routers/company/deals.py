@@ -21,7 +21,6 @@ from api.v1.schemas.crm import (
     DealResponse,
     PaginatedResponse
 )
-from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 from utils.services.webhook import fire_webhook_event
 
@@ -91,17 +90,15 @@ async def list_deals(
     """
     List all deals with filters
 
-    Operators only see their assigned deals. Admins and Managers see all company deals.
+    Use my_deals=true to filter by current user's assigned deals.
     """
     query = select(Deal).where(
         Deal.company_id == user.company_id,
         Deal.deleted_at.is_(None)
     )
 
-    # Operator scoping: operators only see their assigned deals
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(Deal.assigned_to == user.id)
-    elif my_deals:
+    # Optional self-filter
+    if my_deals:
         query = query.where(Deal.assigned_to == user.id)
 
     # Search
@@ -214,10 +211,6 @@ async def get_pipeline_summary(
         )
     )
 
-    # Operators only see their own deals in pipeline
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        stage_query = stage_query.where(Deal.assigned_to == user.id)
-
     stage_query = stage_query.group_by(Deal.stage)
     result = await session.execute(stage_query)
     stage_rows = result.all()
@@ -261,17 +254,12 @@ async def get_deal(
     Get deal details
 
     Returns full deal information with contact name, assignee name, and weighted value.
-    Operators can only view their own assigned deals.
     """
     deal = await Deal.get_or_404(
         session=session,
         id=deal_id,
         company_id=user.company_id
     )
-
-    # Operators can only see their own deals
-    if user.role == RoleEnum.COMPANY_OPERATOR and deal.assigned_to != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deal not found")
 
     # Get contact name (handle soft-deleted contacts)
     contact_name = None
