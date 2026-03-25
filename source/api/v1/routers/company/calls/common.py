@@ -2,7 +2,7 @@
 Provider-agnostic call endpoints and shared helpers
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -12,7 +12,7 @@ from db import get_session
 from db.models.user import User
 from db.models.company import Company
 from db.models.call_event import CallEvent
-from db.models.enums import ProviderEnum, RoleEnum
+from db.models.enums import ProviderEnum
 from api.v1.schemas.call import CallEventResponse
 from utils.permissions import require_permissions, Permissions
 
@@ -119,6 +119,7 @@ router = APIRouter(prefix="/calls", tags=["Calls"])
 async def list_calls(
     skip: int = 0,
     limit: int = 100,
+    my_calls: bool = Query(False, description="Show only my calls"),
     user: User = User.current(),
     session: AsyncSession = Depends(get_session),
 ):
@@ -126,10 +127,10 @@ async def list_calls(
     List all calls
 
     Returns call events ordered by most recent first.
-    Operators only see their own calls. Admins and Managers see all company calls.
+    Use my_calls=true to filter by current user's calls.
     """
     filters = {"company_id": user.company_id}
-    if user.role == RoleEnum.COMPANY_OPERATOR:
+    if my_calls:
         filters["operator_id"] = user.id
 
     calls = await CallEvent.get_all(

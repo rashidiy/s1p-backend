@@ -15,7 +15,7 @@ from db.models.call_event import CallEvent
 from db.models.contact import Contact
 from db.models.lead import Lead
 from db.models.deal import Deal
-from db.models.enums import CallOutcomeEnum, CallDirectionEnum, RoleEnum
+from db.models.enums import CallOutcomeEnum, CallDirectionEnum
 from api.v1.schemas.crm import PaginatedResponse
 from utils.permissions import require_permissions, Permissions
 from pydantic import BaseModel, Field
@@ -184,14 +184,12 @@ async def get_call_history(
     """
     Enhanced call history with comprehensive filters
 
-    Operators only see their own calls. Admins and Managers see all company calls.
+    Use my_calls=true to filter by current user's calls.
     """
     query = select(CallEvent).where(CallEvent.company_id == user.company_id)
 
-    # Operator scoping: operators only see their own calls
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(CallEvent.operator_id == user.id)
-    elif my_calls:
+    # Optional self-filter
+    if my_calls:
         query = query.where(CallEvent.operator_id == user.id)
 
     # Search by phone number
@@ -366,10 +364,7 @@ async def get_call_outcomes_summary(
     # Build shared filter conditions
     conditions = [CallEvent.company_id == user.company_id]
 
-    # Operators only see their own call stats
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        conditions.append(CallEvent.operator_id == user.id)
-    elif operator_id:
+    if operator_id:
         # Validate operator belongs to the same company
         operator_user = await User.get(session=session, id=operator_id, company_id=user.company_id)
         if not operator_user:

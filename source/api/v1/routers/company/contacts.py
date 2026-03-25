@@ -93,7 +93,8 @@ async def list_contacts(
     assigned_to: Optional[UUID] = None,
     has_email: Optional[bool] = None,
     has_phone: Optional[bool] = None,
-    created_by: Optional[UUID] = None
+    created_by: Optional[UUID] = None,
+    my_contacts: bool = Query(False, description="Show only my assigned contacts")
 ):
     """
     List all contacts with filters and search
@@ -107,8 +108,8 @@ async def list_contacts(
         Contact.deleted_at.is_(None)
     ]
 
-    # Operator scoping: operators only see their assigned contacts
-    if user.role == RoleEnum.COMPANY_OPERATOR:
+    # Optional self-filter
+    if my_contacts:
         conditions.append(Contact.assigned_to == user.id)
 
     # Search
@@ -294,10 +295,6 @@ async def get_contact(
         )
 
     contact = row[0]
-
-    # Operators can only see their own contacts
-    if user.role == RoleEnum.COMPANY_OPERATOR and contact.assigned_to != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
     contact_dict = {
         "id": contact.id,

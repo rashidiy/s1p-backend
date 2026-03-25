@@ -72,17 +72,15 @@ async def list_tasks(
     """
     List all tasks with filters
 
-    Operators only see their assigned tasks. Admins and Managers see all company tasks.
+    Use my_tasks=true to filter by current user's assigned tasks.
     """
     query = select(Task).where(
         Task.company_id == user.company_id,
         Task.deleted_at.is_(None)
     )
 
-    # Operator scoping: operators only see their assigned tasks
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(Task.assigned_to == user.id)
-    elif my_tasks:
+    # Optional self-filter
+    if my_tasks:
         query = query.where(Task.assigned_to == user.id)
 
     # Search
@@ -215,17 +213,12 @@ async def get_task(
     Get task details
 
     Returns full task information with assignee name.
-    Operators can only view their own assigned tasks.
     """
     task = await Task.get_or_404(
         session=session,
         id=task_id,
         company_id=user.company_id
     )
-
-    # Operators can only see their own tasks
-    if user.role == RoleEnum.COMPANY_OPERATOR and task.assigned_to != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     # Get assigned to name
     assigned_to_name = None

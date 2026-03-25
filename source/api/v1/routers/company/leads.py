@@ -20,7 +20,6 @@ from api.v1.schemas.crm import (
     LeadResponse,
     PaginatedResponse
 )
-from db.models.enums import RoleEnum
 from utils.permissions import require_permissions, Permissions
 from utils.services.webhook import fire_webhook_event
 
@@ -112,17 +111,15 @@ async def list_leads(
     """
     List all leads with filters
 
-    Operators only see their assigned leads. Admins and Managers see all company leads.
+    Use my_leads=true to filter by current user's assigned leads.
     """
     query = select(Lead).where(
         Lead.company_id == user.company_id,
         Lead.deleted_at.is_(None)
     )
 
-    # Operator scoping: operators only see their assigned leads
-    if user.role == RoleEnum.COMPANY_OPERATOR:
-        query = query.where(Lead.assigned_to == user.id)
-    elif my_leads:
+    # Optional self-filter
+    if my_leads:
         query = query.where(Lead.assigned_to == user.id)
 
     # Search
@@ -219,17 +216,12 @@ async def get_lead(
     Get lead details
 
     Returns full lead information including contact name and assignee name.
-    Operators can only view their own assigned leads.
     """
     lead = await Lead.get_or_404(
         session=session,
         id=lead_id,
         company_id=user.company_id
     )
-
-    # Operators can only see their own leads
-    if user.role == RoleEnum.COMPANY_OPERATOR and lead.assigned_to != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
     # Get contact name (handle soft-deleted contacts)
     contact_name = None
