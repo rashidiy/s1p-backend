@@ -40,22 +40,16 @@ def _phone_link(phone: str) -> str:
 # ── Call completed ────────────────────────────────────────────────
 # Compact format: Contact → Operator, then details on one line
 
-_CALL_INBOUND_TITLE = {
-    "ru": "📞⬇️ Входящий",
-    "en": "📞⬇️ Inbound",
-    "uz": "📞⬇️ Kiruvchi",
+_DIR_LABEL = {
+    "ru": {"inbound": "Входящий", "outbound": "Исходящий"},
+    "en": {"inbound": "Inbound", "outbound": "Outbound"},
+    "uz": {"inbound": "Kiruvchi", "outbound": "Chiquvchi"},
 }
 
-_CALL_OUTBOUND_TITLE = {
-    "ru": "📞⬆️ Исходящий",
-    "en": "📞⬆️ Outbound",
-    "uz": "📞⬆️ Chiquvchi",
-}
-
-_CALL_TITLE_FALLBACK = {
-    "ru": "📞 Звонок",
-    "en": "📞 Call",
-    "uz": "📞 Qo'ng'iroq",
+_NEW_NUMBER = {
+    "ru": "Новый номер",
+    "en": "New number",
+    "uz": "Yangi raqam",
 }
 
 
@@ -66,64 +60,70 @@ def call_completed_message(
     duration_sec: int,
     operator_name: str | None = None,
     contact_name: str | None = None,
-    recording_url: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build compact MarkdownV2 message for a completed call.
+    """Build compact call notification.
 
-    Inbound:  📞⬇️ Входящий  Contact → Operator
-    Outbound: 📞⬆️ Исходящий  Operator → Contact
+    Known contact:
+      ✅ Иван Петров → Олег
+      Входящий · +998... · 1:13
+
+    Unknown number:
+      ✅ +998... → Олег
+      Входящий · Новый номер · 1:13
     """
     locale = get_locale(lang)
     dur = _duration(duration_sec, locale)
+    dir_label = _DIR_LABEL[locale].get(direction, "")
 
-    # Direction-aware title and arrow
-    if direction == "inbound":
-        title = _CALL_INBOUND_TITLE[locale]
-        left = _esc(contact_name or caller_display)
-        right = _esc(operator_name) if operator_name else None
-    elif direction == "outbound":
-        title = _CALL_OUTBOUND_TITLE[locale]
+    # Line 1: ✅ Left → Right
+    if direction == "outbound":
         left = _esc(operator_name) if operator_name else None
         right = _esc(contact_name or caller_display)
     else:
-        title = _CALL_TITLE_FALLBACK[locale]
         left = _esc(contact_name or caller_display)
         right = _esc(operator_name) if operator_name else None
 
-    # Line 1: Title  Left → Right
     if left and right:
-        line1 = f"*{_esc(title)}*  {left}  →  {right}"
+        line1 = f"*✅ {left}  →  {right}*"
     elif left:
-        line1 = f"*{_esc(title)}*  {left}"
+        line1 = f"*✅ {left}*"
     elif right:
-        line1 = f"*{_esc(title)}*  {right}"
+        line1 = f"*✅ {right}*"
     else:
-        line1 = f"*{_esc(title)}*"
+        line1 = f"*✅ {_esc(dir_label)}*"
 
-    # Line 2: phone · duration
-    parts = [_phone_link(phone), _esc(dur)]
+    # Line 2: Direction · phone · duration (or "Новый номер" if unknown)
+    parts = [_esc(dir_label)]
+    if contact_name:
+        parts.append(_phone_link(phone))
+    else:
+        parts.append(_esc(_NEW_NUMBER[locale]))
+    parts.append(_esc(dur))
     line2 = " · ".join(parts)
 
-    lines = [line1, line2]
-
-    if recording_url:
-        btn = BUTTON_LABELS[locale]["listen_recording"]
-        lines.append(f"\n[{_esc(btn)}]({recording_url})")
-    elif duration_sec > 0:
-        _rec_processing = {"ru": "⏳ Запись обрабатывается", "en": "⏳ Recording processing", "uz": "⏳ Yozuv qayta ishlanmoqda"}
-        lines.append(f"\n_{_esc(_rec_processing[locale])}_")
-
-    return "\n".join(lines)
+    return f"{line1}\n{line2}"
 
 
 # ── Missed call ───────────────────────────────────────────────────
 # Urgent style: 🚨 prefix, short and action-first
 
-_MISSED_TITLE = {
-    "ru": "🚨 Пропущен",
-    "en": "🚨 Missed",
-    "uz": "🚨 O'tkazib yuborildi",
+_MISSED_FROM = {
+    "ru": "Пропущен от",
+    "en": "Missed from",
+    "uz": "O'tkazilgan",
+}
+
+_MISSED_UNKNOWN = {
+    "ru": "Пропущен",
+    "en": "Missed call",
+    "uz": "O'tkazib yuborildi",
+}
+
+_UNANSWERED = {
+    "ru": "Не дозвонились",
+    "en": "Didn't reach",
+    "uz": "Bog'lanilmadi",
 }
 
 
@@ -131,20 +131,59 @@ def missed_call_message(
     caller_display: str,
     phone: str,
     contact_name: str | None = None,
-    operator_name: str | None = None,
     lang: str = "ru",
 ) -> str:
-    """Build compact MarkdownV2 message for a missed call."""
+    """Inbound missed call notification.
+
+    Known:   🔴 Пропущен от Иван Петров
+             +998...
+
+    Unknown: 🔴 Пропущен
+             +998... · Новый номер
+    """
     locale = get_locale(lang)
 
-    line1 = f"*{_esc(_MISSED_TITLE[locale])}*"
-    parts = [_phone_link(phone)]
     if contact_name:
-        parts.insert(0, _esc(contact_name))
-    if operator_name:
-        parts.append(f"→ {_esc(operator_name)}")
+        line1 = f"*🔴 {_esc(_MISSED_FROM[locale])} {_esc(contact_name)}*"
+        line2 = _phone_link(phone)
+    else:
+        line1 = f"*🔴 {_esc(_MISSED_UNKNOWN[locale])}*"
+        line2 = f"{_phone_link(phone)} · {_esc(_NEW_NUMBER[locale])}"
 
-    return f"{line1}  {' · '.join(parts)}"
+    return f"{line1}\n{line2}"
+
+
+def outbound_unanswered_message(
+    operator_name: str | None,
+    caller_display: str,
+    phone: str,
+    contact_name: str | None = None,
+    lang: str = "ru",
+) -> str:
+    """Outbound call not answered notification.
+
+    Known:   📵 Олег → Иван Петров
+             Не дозвонились · +998...
+
+    Unknown: 📵 Олег → +998...
+             Не дозвонились
+    """
+    locale = get_locale(lang)
+
+    left = _esc(operator_name) if operator_name else ""
+    right = _esc(contact_name or caller_display)
+
+    if left:
+        line1 = f"*📵 {left}  →  {right}*"
+    else:
+        line1 = f"*📵 {right}*"
+
+    parts = [_esc(_UNANSWERED[locale])]
+    if contact_name:
+        parts.append(_phone_link(phone))
+    line2 = " · ".join(parts)
+
+    return f"{line1}\n{line2}"
 
 
 # ── New lead ──────────────────────────────────────────────────────
@@ -346,29 +385,13 @@ _GROUPED_SUFFIX = {
 
 # ── Escalation templates ──────────────────────────────────────
 
-_ESCALATION_TIER1 = {
-    "ru": "⚠️ Напоминание: пропущен звонок от {phone}, {time_ago} мин назад",
-    "en": "⚠️ Reminder: missed call from {phone} {time_ago} min ago",
-    "uz": "⚠️ Eslatma: {phone} dan o'tkazib yuborilgan qo'ng'iroq, {time_ago} min oldin",
+_ESCALATION_SUFFIX = {
+    "ru": "мин без ответа",
+    "en": "min unanswered",
+    "uz": "min javobsiz",
 }
 
-_ESCALATION_TIER2 = {
-    "ru": "🔴 Срочно: пропущен звонок от {phone}, без ответа уже {time_ago} мин",
-    "en": "🔴 Urgent: missed call from {phone} still unanswered after {time_ago} min",
-    "uz": "🔴 Shoshilinch: {phone} dan qo'ng'iroq {time_ago} min javobsiz",
-}
-
-_ESCALATION_TIER3 = {
-    "ru": "🚨 Критично: пропущен звонок от {phone}, без ответа {time_ago} мин — требуется немедленное внимание",
-    "en": "🚨 Critical: missed call from {phone} unanswered for {time_ago} min — needs immediate attention",
-    "uz": "🚨 Juda muhim: {phone} dan qo'ng'iroq {time_ago} min javobsiz — zudlik bilan e'tibor kerak",
-}
-
-_ESCALATION_OPERATOR = {
-    "ru": "Оператор",
-    "en": "Operator",
-    "uz": "Operator",
-}
+_ESCALATION_EMOJI = {1: "⚠️", 2: "🔴", 3: "🚨"}
 
 
 def escalation_message(
@@ -378,25 +401,15 @@ def escalation_message(
     tier: int,
     lang: str = "ru",
 ) -> str:
-    """Build MarkdownV2 escalation message based on tier."""
+    """Compact escalation: ⚠️ +998... · 5 мин без ответа"""
     locale = get_locale(lang)
+    emoji = _ESCALATION_EMOJI.get(tier, "⚠️")
+    suffix = _ESCALATION_SUFFIX[locale]
+    clean_phone = _esc(phone.strip())
 
-    templates = {1: _ESCALATION_TIER1, 2: _ESCALATION_TIER2, 3: _ESCALATION_TIER3}
-    template = templates.get(tier, _ESCALATION_TIER1)
-
-    clean_phone = phone.strip()
-
-    # Escape the template text (except placeholders) for MarkdownV2
-    raw_text = _esc(template[locale].format(phone="\x00PHONE\x00", time_ago=time_ago))
-    # Replace escaped placeholder with plain escaped phone
-    text = raw_text.replace("\x00PHONE\x00", _esc(clean_phone))
-
-    lines = [f"*{text}*"]
-    if operator_name:
-        op_label = _ESCALATION_OPERATOR[locale]
-        lines.append(f"{_esc(op_label)}: {_esc(operator_name)}")
-
-    return "\n".join(lines)
+    if tier >= 3:
+        return f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}\\!*"
+    return f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}*"
 
 
 def grouped_suffix(count: int, lang: str = "ru") -> str:
