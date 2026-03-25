@@ -276,6 +276,8 @@ ROLE_PERMISSIONS = {
         # Notes
         Permissions.NOTES_READ,
         Permissions.NOTES_WRITE,  # Can add notes
+        # Statistics
+        Permissions.STATS_READ,
         # Company
         Permissions.COMPANY_READ,
     ],
