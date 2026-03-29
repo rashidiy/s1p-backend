@@ -103,10 +103,10 @@ def call_completed_message(
     parts.append(_esc(dur))
     line2 = " · ".join(parts)
 
-    # Hashtag on separate line (unescaped # so Telegram renders it as clickable hashtag)
+    # Call ID on separate line as inline code badge
     lines = [line1, line2]
     if call_id:
-        lines.append(f"\n#call{call_id}")
+        lines.append(f"\n`\\#call{call_id}`")
 
     return "\n".join(lines)
 
