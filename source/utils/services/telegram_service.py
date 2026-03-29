@@ -297,13 +297,18 @@ class TelegramService:
         """
         try:
             import httpx
-            async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            # Use residential proxy to bypass Sipuni datacenter IP throttling
+            proxy_url = os.getenv("RESIDENTIAL_PROXY_URL") or None
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=30.0, proxy=proxy_url,
+            ) as client:
                 resp = await client.get(recording_url)
                 if resp.status_code != 200:
-                    logger.debug("Recording download failed: HTTP %s", resp.status_code)
+                    logger.warning("Recording download failed: HTTP %s for %s", resp.status_code, recording_url)
                     return False
                 audio_data = resp.content
                 if len(audio_data) < 100:  # Too small to be a real recording
+                    logger.warning("Recording too small (%d bytes): %s", len(audio_data), recording_url)
                     return False
 
             kwargs = {
@@ -318,7 +323,7 @@ class TelegramService:
             await bot.send_audio(**kwargs)
             return True
         except Exception:
-            logger.debug("Failed to send recording audio to chat %s", chat_id)
+            logger.warning("Failed to send recording audio to chat %s", chat_id, exc_info=True)
             return False
 
     # ── Public API: object-based signatures ──────────────────────
