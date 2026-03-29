@@ -284,20 +284,10 @@ class TelegramService:
     # ── Recording audio helper ──────────────────────────────────
 
     @staticmethod
-    async def send_recording_audio(
-        bot: Bot,
-        chat_id: str | int,
-        recording_url: str,
-        caption: str | None = None,
-        thread_id: int | None = None,
-    ) -> bool:
-        """
-        Download a call recording and send it as inline audio via Telegram.
-        Falls back silently on failure (caller should handle fallback to URL link).
-        """
+    async def _download_recording(recording_url: str) -> bytes | None:
+        """Download a call recording via residential proxy. Returns audio bytes or None."""
         try:
             import httpx
-            # Use residential proxy to bypass Sipuni datacenter IP throttling
             proxy_url = os.getenv("RESIDENTIAL_PROXY_URL") or None
             async with httpx.AsyncClient(
                 follow_redirects=True, timeout=30.0, proxy=proxy_url,
@@ -305,20 +295,46 @@ class TelegramService:
                 resp = await client.get(recording_url)
                 if resp.status_code != 200:
                     logger.warning("Recording download failed: HTTP %s for %s", resp.status_code, recording_url)
-                    return False
-                audio_data = resp.content
-                if len(audio_data) < 100:  # Too small to be a real recording
-                    logger.warning("Recording too small (%d bytes): %s", len(audio_data), recording_url)
-                    return False
+                    return None
+                if len(resp.content) < 100:
+                    logger.warning("Recording too small (%d bytes): %s", len(resp.content), recording_url)
+                    return None
+                return resp.content
+        except Exception:
+            logger.warning("Recording download error for %s", recording_url, exc_info=True)
+            return None
+
+    @staticmethod
+    async def send_recording_audio(
+        bot: Bot,
+        chat_id: str | int,
+        recording_url: str,
+        caption: str | None = None,
+        thread_id: int | None = None,
+        keyboard: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
+    ) -> bool:
+        """
+        Download a call recording and send it as audio with optional caption + buttons.
+        Falls back silently on failure (caller should handle fallback to text message).
+        """
+        try:
+            audio_data = await TelegramService._download_recording(recording_url)
+            if not audio_data:
+                return False
 
             kwargs = {
                 "chat_id": chat_id,
                 "audio": BufferedInputFile(audio_data, filename="recording.mp3"),
             }
             if caption:
-                kwargs["caption"] = caption
+                kwargs["caption"] = caption[:1024]  # Telegram caption limit
+            if parse_mode:
+                kwargs["parse_mode"] = parse_mode
             if thread_id:
                 kwargs["message_thread_id"] = thread_id
+            if keyboard:
+                kwargs["reply_markup"] = keyboard
 
             await bot.send_audio(**kwargs)
             return True
@@ -395,9 +411,25 @@ class TelegramService:
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
-            await TelegramService._send(
-                bot, config, text, "call_completed", keyboard, phone=display_phone,
-            )
+            recording_url = getattr(call_event, 'record_url', None)
+            sent_as_audio = False
+
+            # Try to send as audio message with caption + buttons (single message)
+            if recording_url and config.send_recordings:
+                thread_id = config.get_topic_thread_id("call_completed")
+                chat_id = config.effective_chat_id
+                if chat_id:
+                    sent_as_audio = await TelegramService.send_recording_audio(
+                        bot, chat_id, recording_url,
+                        caption=text, thread_id=thread_id,
+                        keyboard=keyboard, parse_mode=ParseMode.MARKDOWN_V2,
+                    )
+
+            # Fallback to text message if audio failed or not available
+            if not sent_as_audio:
+                await TelegramService._send(
+                    bot, config, text, "call_completed", keyboard, phone=display_phone,
+                )
 
             # DM to operator
             await TelegramService._send_dm_notifications(
