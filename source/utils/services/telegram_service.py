@@ -313,6 +313,7 @@ class TelegramService:
         thread_id: int | None = None,
         keyboard: InlineKeyboardMarkup | None = None,
         parse_mode: str | None = None,
+        filename: str = "recording.mp3",
     ) -> bool:
         """
         Download a call recording and send it as audio with optional caption + buttons.
@@ -325,7 +326,7 @@ class TelegramService:
 
             kwargs = {
                 "chat_id": chat_id,
-                "audio": BufferedInputFile(audio_data, filename="recording.mp3"),
+                "audio": BufferedInputFile(audio_data, filename=filename),
             }
             if caption:
                 kwargs["caption"] = caption[:1024]  # Telegram caption limit
@@ -383,6 +384,8 @@ class TelegramService:
             if not duration_sec and call_event.call_end_timestamp and call_event.call_answer_timestamp:
                 duration_sec = max(0, call_event.call_end_timestamp - call_event.call_answer_timestamp)
 
+            call_id = call_event.id
+
             text = i18n.call_completed_message(
                 direction=direction,
                 caller_display=contact_name or display_phone or "Unknown",
@@ -390,10 +393,9 @@ class TelegramService:
                 duration_sec=duration_sec,
                 operator_name=operator_name,
                 contact_name=contact_name,
+                call_id=call_id,
                 lang=lang,
             )
-
-            call_id = call_event.id
             company_id_str = str(company_id)
             subdomain = await TelegramService._get_subdomain(company_id, session)
             from utils.services.startapp_service import build_miniapp_url
@@ -423,6 +425,7 @@ class TelegramService:
                         bot, chat_id, recording_url,
                         caption=text, thread_id=thread_id,
                         keyboard=keyboard, parse_mode=ParseMode.MARKDOWN_V2,
+                        filename=f"call_{call_id}.mp3",
                     )
 
             # Fallback to text message if audio failed or not available

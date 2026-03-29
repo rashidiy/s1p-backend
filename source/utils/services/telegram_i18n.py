@@ -60,17 +60,18 @@ def call_completed_message(
     duration_sec: int,
     operator_name: str | None = None,
     contact_name: str | None = None,
+    call_id: int | None = None,
     lang: str = "ru",
 ) -> str:
     """Build compact call notification.
 
     Known contact:
       ✅ Иван Петров → Олег
-      Входящий · +998... · 1:13
+      Входящий · +998... · 1:13 · #738
 
     Unknown number:
       ✅ +998... → Олег
-      Входящий · Новый номер · 1:13
+      Входящий · Новый номер · 1:13 · #738
     """
     locale = get_locale(lang)
     dur = _duration(duration_sec, locale)
@@ -93,13 +94,15 @@ def call_completed_message(
     else:
         line1 = f"*✅ {_esc(dir_label)}*"
 
-    # Line 2: Direction · phone · duration (or "Новый номер" if unknown)
+    # Line 2: Direction · phone · duration · #call_id
     parts = [_esc(dir_label)]
     if contact_name:
         parts.append(_phone_link(phone))
     else:
         parts.append(_esc(_NEW_NUMBER[locale]))
     parts.append(_esc(dur))
+    if call_id:
+        parts.append(f"\\#{call_id}")
     line2 = " · ".join(parts)
 
     return f"{line1}\n{line2}"
