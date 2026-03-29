@@ -136,7 +136,8 @@ async def check_missed_calls():
                 age_str = f"{int(age_minutes)}"
 
                 text = i18n.escalation_message(
-                    phone, operator_name, age_str, tier, lang
+                    phone, operator_name, age_str, tier,
+                    call_id=latest_call.id, lang=lang,
                 )
 
                 # Build Mini App callback button

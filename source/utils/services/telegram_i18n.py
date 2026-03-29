@@ -159,6 +159,7 @@ def missed_call_message(
     caller_display: str,
     phone: str,
     contact_name: str | None = None,
+    call_id: int | None = None,
     lang: str = "ru",
 ) -> str:
     """Inbound missed call notification.
@@ -178,7 +179,10 @@ def missed_call_message(
         line1 = f"*🔴 {_esc(_MISSED_UNKNOWN[locale])}*"
         line2 = f"{_phone_link(phone)} · {_esc(_NEW_NUMBER[locale])}"
 
-    return f"{line1}\n{line2}"
+    lines = [line1, line2]
+    if call_id:
+        lines.append(f"\n\\#call{call_id}")
+    return "\n".join(lines)
 
 
 def outbound_unanswered_message(
@@ -186,6 +190,7 @@ def outbound_unanswered_message(
     caller_display: str,
     phone: str,
     contact_name: str | None = None,
+    call_id: int | None = None,
     lang: str = "ru",
 ) -> str:
     """Outbound call not answered notification.
@@ -211,7 +216,10 @@ def outbound_unanswered_message(
         parts.append(_phone_link(phone))
     line2 = " · ".join(parts)
 
-    return f"{line1}\n{line2}"
+    lines = [line1, line2]
+    if call_id:
+        lines.append(f"\n\\#call{call_id}")
+    return "\n".join(lines)
 
 
 # ── New lead ──────────────────────────────────────────────────────
@@ -427,6 +435,7 @@ def escalation_message(
     operator_name: str | None,
     time_ago: str,
     tier: int,
+    call_id: int | None = None,
     lang: str = "ru",
 ) -> str:
     """Compact escalation: ⚠️ +998... · 5 мин без ответа"""
@@ -436,8 +445,13 @@ def escalation_message(
     clean_phone = _esc(phone.strip())
 
     if tier >= 3:
-        return f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}\\!*"
-    return f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}*"
+        line = f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}\\!*"
+    else:
+        line = f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}*"
+
+    if call_id:
+        return f"{line}\n\n\\#call{call_id}"
+    return line
 
 
 def grouped_suffix(count: int, lang: str = "ru") -> str:
