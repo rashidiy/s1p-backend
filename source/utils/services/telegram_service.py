@@ -386,7 +386,7 @@ class TelegramService:
 
             call_id = call_event.id
 
-            text = i18n.call_completed_message(
+            msg_args = dict(
                 direction=direction,
                 caller_display=contact_name or display_phone or "Unknown",
                 phone=display_phone or "N/A",
@@ -396,6 +396,7 @@ class TelegramService:
                 call_id=call_id,
                 lang=lang,
             )
+
             company_id_str = str(company_id)
             subdomain = await TelegramService._get_subdomain(company_id, session)
             from utils.services.startapp_service import build_miniapp_url
@@ -416,20 +417,22 @@ class TelegramService:
             recording_url = getattr(call_event, 'record_url', None)
             sent_as_audio = False
 
-            # Try to send as audio message with caption + buttons (single message)
+            # Try to send as audio with HTML caption (supports clickable #hashtags)
             if recording_url and config.send_recordings:
                 thread_id = config.get_topic_thread_id("call_completed")
                 chat_id = config.effective_chat_id
                 if chat_id:
+                    html_text = i18n.call_completed_message(**msg_args, html=True)
                     sent_as_audio = await TelegramService.send_recording_audio(
                         bot, chat_id, recording_url,
-                        caption=text, thread_id=thread_id,
-                        keyboard=keyboard, parse_mode=ParseMode.MARKDOWN_V2,
-                        filename=f"{subdomain}_call_{call_id}.mp3" if subdomain else f"call_{call_id}.mp3",
+                        caption=html_text, thread_id=thread_id,
+                        keyboard=keyboard, parse_mode=ParseMode.HTML,
+                        filename=f"{subdomain}_{call_id}.mp3" if subdomain else f"call_{call_id}.mp3",
                     )
 
-            # Fallback to text message if audio failed or not available
+            # Fallback to text message (MarkdownV2)
             if not sent_as_audio:
+                text = i18n.call_completed_message(**msg_args)
                 await TelegramService._send(
                     bot, config, text, "call_completed", keyboard, phone=display_phone,
                 )

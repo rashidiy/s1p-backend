@@ -24,6 +24,11 @@ def _esc(text: str) -> str:
     return ''.join(result)
 
 
+def _esc_html(text: str) -> str:
+    """Escape special characters for Telegram HTML."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _duration(seconds: int, lang: str) -> str:
     """Format duration as compact string."""
     m, s = divmod(seconds, 60)
@@ -62,51 +67,67 @@ def call_completed_message(
     contact_name: str | None = None,
     call_id: int | None = None,
     lang: str = "ru",
+    html: bool = False,
 ) -> str:
     """Build compact call notification.
 
     Known contact:
       ✅ Иван Петров → Олег
-      Входящий · +998... · 1:13 · #738
+      Входящий · +998... · 1:13
 
     Unknown number:
       ✅ +998... → Олег
-      Входящий · Новый номер · 1:13 · #738
+      Входящий · Новый номер · 1:13
+
+    With call_id: adds #call738 on separate line (clickable hashtag in HTML mode).
+    html=True returns HTML format (for audio captions — supports clickable hashtags).
+    html=False returns MarkdownV2 format (for text messages).
     """
     locale = get_locale(lang)
     dur = _duration(duration_sec, locale)
     dir_label = _DIR_LABEL[locale].get(direction, "")
 
+    esc = _esc_html if html else _esc
+
     # Line 1: ✅ Left → Right
     if direction == "outbound":
-        left = _esc(operator_name) if operator_name else None
-        right = _esc(contact_name or caller_display)
+        left = esc(operator_name) if operator_name else None
+        right = esc(contact_name or caller_display)
     else:
-        left = _esc(contact_name or caller_display)
-        right = _esc(operator_name) if operator_name else None
+        left = esc(contact_name or caller_display)
+        right = esc(operator_name) if operator_name else None
 
-    if left and right:
-        line1 = f"*✅ {left}  →  {right}*"
-    elif left:
-        line1 = f"*✅ {left}*"
-    elif right:
-        line1 = f"*✅ {right}*"
+    if html:
+        if left and right:
+            line1 = f"<b>✅ {left}  →  {right}</b>"
+        elif left:
+            line1 = f"<b>✅ {left}</b>"
+        elif right:
+            line1 = f"<b>✅ {right}</b>"
+        else:
+            line1 = f"<b>✅ {esc(dir_label)}</b>"
     else:
-        line1 = f"*✅ {_esc(dir_label)}*"
+        if left and right:
+            line1 = f"*✅ {left}  →  {right}*"
+        elif left:
+            line1 = f"*✅ {left}*"
+        elif right:
+            line1 = f"*✅ {right}*"
+        else:
+            line1 = f"*✅ {esc(dir_label)}*"
 
     # Line 2: Direction · phone · duration
-    parts = [_esc(dir_label)]
+    parts = [esc(dir_label)]
     if contact_name:
-        parts.append(_phone_link(phone))
+        parts.append(esc(phone.strip()) if html else _phone_link(phone))
     else:
-        parts.append(_esc(_NEW_NUMBER[locale]))
-    parts.append(_esc(dur))
+        parts.append(esc(_NEW_NUMBER[locale]))
+    parts.append(esc(dur))
     line2 = " · ".join(parts)
 
-    # Call ID on separate line as inline code badge
     lines = [line1, line2]
     if call_id:
-        lines.append(f"\n`\\#call{call_id}`")
+        lines.append(f"\n#call{call_id}")
 
     return "\n".join(lines)
 
