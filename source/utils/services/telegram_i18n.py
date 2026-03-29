@@ -127,17 +127,8 @@ def call_completed_message(
 
     lines = [line1, line2]
 
-    # Hashtag line: #call738 #998220001122
-    tags = []
     if call_id:
-        tags.append(f"#call{call_id}")
-    if phone and phone.strip():
-        # Strip + and spaces to make a valid hashtag: +998220001122 → #998220001122
-        clean_phone = phone.strip().lstrip("+").replace(" ", "").replace("-", "")
-        if clean_phone:
-            tags.append(f"#p{clean_phone}")
-    if tags:
-        lines.append("\n" + " ".join(tags))
+        lines.append(f"\n#call{call_id}")
 
     return "\n".join(lines)
 
