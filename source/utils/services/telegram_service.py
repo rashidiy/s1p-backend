@@ -425,7 +425,7 @@ class TelegramService:
                         bot, chat_id, recording_url,
                         caption=text, thread_id=thread_id,
                         keyboard=keyboard, parse_mode=ParseMode.MARKDOWN_V2,
-                        filename=f"call_{call_id}.mp3",
+                        filename=f"{subdomain}_call_{call_id}.mp3" if subdomain else f"call_{call_id}.mp3",
                     )
 
             # Fallback to text message if audio failed or not available

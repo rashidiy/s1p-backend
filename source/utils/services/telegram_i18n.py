@@ -94,18 +94,21 @@ def call_completed_message(
     else:
         line1 = f"*✅ {_esc(dir_label)}*"
 
-    # Line 2: Direction · phone · duration · #call_id
+    # Line 2: Direction · phone · duration
     parts = [_esc(dir_label)]
     if contact_name:
         parts.append(_phone_link(phone))
     else:
         parts.append(_esc(_NEW_NUMBER[locale]))
     parts.append(_esc(dur))
-    if call_id:
-        parts.append(f"\\#{call_id}")
     line2 = " · ".join(parts)
 
-    return f"{line1}\n{line2}"
+    # Hashtag on separate line (unescaped # so Telegram renders it as clickable hashtag)
+    lines = [line1, line2]
+    if call_id:
+        lines.append(f"\n#call{call_id}")
+
+    return "\n".join(lines)
 
 
 # ── Missed call ───────────────────────────────────────────────────
