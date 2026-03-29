@@ -495,6 +495,7 @@ class TelegramService:
                     caller_display=contact_name or display_phone or "Unknown",
                     phone=display_phone or "N/A",
                     contact_name=contact_name,
+                    call_id=call_id,
                     lang=lang,
                 )
                 # [📱 Повторить] [📋 CRM]
@@ -510,6 +511,7 @@ class TelegramService:
                     caller_display=contact_name or display_phone or "Unknown",
                     phone=display_phone or "N/A",
                     contact_name=contact_name,
+                    call_id=call_id,
                     lang=lang,
                 )
                 # [📱 Перезвонить] [📋 CRM]
