@@ -431,15 +431,15 @@ class TelegramService:
                     )
 
             # Fallback to text message (MarkdownV2)
+            text_md = i18n.call_completed_message(**msg_args)
             if not sent_as_audio:
-                text = i18n.call_completed_message(**msg_args)
                 await TelegramService._send(
-                    bot, config, text, "call_completed", keyboard, phone=display_phone,
+                    bot, config, text_md, "call_completed", keyboard, phone=display_phone,
                 )
 
             # DM to operator
             await TelegramService._send_dm_notifications(
-                config, "call_completed", text, session,
+                config, "call_completed", text_md, session,
                 operator_id=call_event.operator_id,
                 call_id=call_id,
                 contact_id=call_event.contact_id,
