@@ -37,9 +37,18 @@ def _duration(seconds: int, lang: str) -> str:
     return f"0:{s:02d}"
 
 
+def _fmt_phone(phone: str) -> str:
+    """Format phone number for display: +998 (90) 123 45 67."""
+    raw = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    # Uzbekistan: +998XXYYYYYY → +998 (XX) YYY YY YY
+    if raw.startswith("+998") and len(raw) == 13:
+        return f"+998 ({raw[4:6]}) {raw[6:9]} {raw[9:11]} {raw[11:13]}"
+    return phone.strip()
+
+
 def _phone_link(phone: str) -> str:
     """Format phone as plain escaped text — Telegram auto-detects and adds native menu."""
-    return _esc(phone.strip())
+    return _esc(_fmt_phone(phone))
 
 
 # ── Call completed ────────────────────────────────────────────────
@@ -89,12 +98,15 @@ def call_completed_message(
 
     esc = _esc_html if html else _esc
 
+    # Format phone in display name when no contact
+    display = contact_name or _fmt_phone(caller_display)
+
     # Line 1: ✅ Left → Right
     if direction == "outbound":
         left = esc(operator_name) if operator_name else None
-        right = esc(contact_name or caller_display)
+        right = esc(display)
     else:
-        left = esc(contact_name or caller_display)
+        left = esc(display)
         right = esc(operator_name) if operator_name else None
 
     if html:
@@ -119,7 +131,7 @@ def call_completed_message(
     # Line 2: Direction · phone · duration
     parts = [esc(dir_label)]
     if contact_name:
-        parts.append(esc(phone.strip()) if html else _phone_link(phone))
+        parts.append(esc(_fmt_phone(phone)) if html else _phone_link(phone))
     else:
         parts.append(esc(_NEW_NUMBER[locale]))
     parts.append(esc(dur))
@@ -203,8 +215,9 @@ def outbound_unanswered_message(
     """
     locale = get_locale(lang)
 
+    display = contact_name or _fmt_phone(caller_display)
     left = _esc(operator_name) if operator_name else ""
-    right = _esc(contact_name or caller_display)
+    right = _esc(display)
 
     if left:
         line1 = f"*📵 {left}  →  {right}*"
@@ -442,7 +455,7 @@ def escalation_message(
     locale = get_locale(lang)
     emoji = _ESCALATION_EMOJI.get(tier, "⚠️")
     suffix = _ESCALATION_SUFFIX[locale]
-    clean_phone = _esc(phone.strip())
+    clean_phone = _esc(_fmt_phone(phone))
 
     if tier >= 3:
         line = f"*{emoji} {clean_phone} · {_esc(time_ago)} {_esc(suffix)}\\!*"
