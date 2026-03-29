@@ -314,6 +314,8 @@ class TelegramService:
         keyboard: InlineKeyboardMarkup | None = None,
         parse_mode: str | None = None,
         filename: str = "recording.mp3",
+        title: str | None = None,
+        performer: str | None = None,
     ) -> bool:
         """
         Download a call recording and send it as audio with optional caption + buttons.
@@ -336,6 +338,16 @@ class TelegramService:
                 kwargs["message_thread_id"] = thread_id
             if keyboard:
                 kwargs["reply_markup"] = keyboard
+            if title:
+                kwargs["title"] = title
+            if performer:
+                kwargs["performer"] = performer
+
+            # Attach S1P logo as thumbnail if available
+            logo_path = os.path.join(os.path.dirname(__file__), "..", "..", "static", "s1p_logo.jpg")
+            if os.path.exists(logo_path):
+                with open(logo_path, "rb") as f:
+                    kwargs["thumbnail"] = BufferedInputFile(f.read(), filename="thumb.jpg")
 
             await bot.send_audio(**kwargs)
             return True
@@ -427,7 +439,9 @@ class TelegramService:
                         bot, chat_id, recording_url,
                         caption=html_text, thread_id=thread_id,
                         keyboard=keyboard, parse_mode=ParseMode.HTML,
-                        filename=f"{subdomain}_{call_id}.mp3" if subdomain else f"call_{call_id}.mp3",
+                        filename=f"№{call_id}.mp3",
+                        title=f"#call{call_id}",
+                        performer=subdomain or "S1P",
                     )
 
             # Fallback to text message (MarkdownV2)
