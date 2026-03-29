@@ -80,15 +80,10 @@ def call_completed_message(
 ) -> str:
     """Build compact call notification.
 
-    Known contact:
-      ✅ Иван Петров → Олег
-      Входящий · +998... · 1:13
+    Structure:
+      ✅ Исходящий (bold)
+      +998 (90) 812 90 77 · Иван Петров · 1:01
 
-    Unknown number:
-      ✅ +998... → Олег
-      Входящий · Новый номер · 1:13
-
-    With call_id: adds #call738 on separate line (clickable hashtag in HTML mode).
     html=True returns HTML format (for audio captions — supports clickable hashtags).
     html=False returns MarkdownV2 format (for text messages).
     """
@@ -97,48 +92,26 @@ def call_completed_message(
     dir_label = _DIR_LABEL[locale].get(direction, "")
 
     esc = _esc_html if html else _esc
+    fmt_phone = esc(_fmt_phone(phone)) if html else _phone_link(phone)
 
-    # Format phone in display name when no contact
-    display = contact_name or _fmt_phone(caller_display)
-
-    # Line 1: ✅ Left → Right
-    if direction == "outbound":
-        left = esc(operator_name) if operator_name else None
-        right = esc(display)
-    else:
-        left = esc(display)
-        right = esc(operator_name) if operator_name else None
-
+    # Line 1: ✅ Исходящий (bold status)
     if html:
-        if left and right:
-            line1 = f"<b>✅ {left}  →  {right}</b>"
-        elif left:
-            line1 = f"<b>✅ {left}</b>"
-        elif right:
-            line1 = f"<b>✅ {right}</b>"
-        else:
-            line1 = f"<b>✅ {esc(dir_label)}</b>"
+        line1 = f"<b>✅ {_esc_html(dir_label)}</b>"
     else:
-        if left and right:
-            line1 = f"*✅ {left}  →  {right}*"
-        elif left:
-            line1 = f"*✅ {left}*"
-        elif right:
-            line1 = f"*✅ {right}*"
-        else:
-            line1 = f"*✅ {esc(dir_label)}*"
+        line1 = f"*✅ {_esc(dir_label)}*"
 
-    # Line 2: Direction · phone · duration
-    parts = [esc(dir_label)]
+    # Line 2: phone · contact/new · operator · duration
+    parts = [fmt_phone]
     if contact_name:
-        parts.append(esc(_fmt_phone(phone)) if html else _phone_link(phone))
+        parts.append(esc(contact_name))
     else:
         parts.append(esc(_NEW_NUMBER[locale]))
+    if operator_name:
+        parts.append(esc(operator_name))
     parts.append(esc(dur))
     line2 = " · ".join(parts)
 
     lines = [line1, line2]
-
     if call_id:
         lines.append(f"\n#call{call_id}")
 
@@ -176,20 +149,20 @@ def missed_call_message(
 ) -> str:
     """Inbound missed call notification.
 
-    Known:   🔴 Пропущен от Иван Петров
-             +998...
-
-    Unknown: 🔴 Пропущен
-             +998... · Новый номер
+    Structure:
+      🔴 Пропущен (bold)
+      +998 (88) 602 12 10 · Иван Петров
     """
     locale = get_locale(lang)
 
+    line1 = f"*🔴 {_esc(_MISSED_UNKNOWN[locale])}*"
+
+    parts = [_phone_link(phone)]
     if contact_name:
-        line1 = f"*🔴 {_esc(_MISSED_FROM[locale])} {_esc(contact_name)}*"
-        line2 = _phone_link(phone)
+        parts.append(_esc(contact_name))
     else:
-        line1 = f"*🔴 {_esc(_MISSED_UNKNOWN[locale])}*"
-        line2 = f"{_phone_link(phone)} · {_esc(_NEW_NUMBER[locale])}"
+        parts.append(_esc(_NEW_NUMBER[locale]))
+    line2 = " · ".join(parts)
 
     lines = [line1, line2]
     if call_id:
@@ -207,26 +180,21 @@ def outbound_unanswered_message(
 ) -> str:
     """Outbound call not answered notification.
 
-    Known:   📵 Олег → Иван Петров
-             Не дозвонились · +998...
-
-    Unknown: 📵 Олег → +998...
-             Не дозвонились
+    Structure:
+      📵 Не дозвонились (bold)
+      +998 (90) 901 01 61 · Иван Петров · Олег
     """
     locale = get_locale(lang)
 
-    display = contact_name or _fmt_phone(caller_display)
-    left = _esc(operator_name) if operator_name else ""
-    right = _esc(display)
+    line1 = f"*📵 {_esc(_UNANSWERED[locale])}*"
 
-    if left:
-        line1 = f"*📵 {left}  →  {right}*"
-    else:
-        line1 = f"*📵 {right}*"
-
-    parts = [_esc(_UNANSWERED[locale])]
+    parts = [_phone_link(phone)]
     if contact_name:
-        parts.append(_phone_link(phone))
+        parts.append(_esc(contact_name))
+    else:
+        parts.append(_esc(_NEW_NUMBER[locale]))
+    if operator_name:
+        parts.append(_esc(operator_name))
     line2 = " · ".join(parts)
 
     lines = [line1, line2]
