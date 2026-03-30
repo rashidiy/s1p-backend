@@ -9,11 +9,14 @@ Optimized for high-load production:
 """
 
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 
 import aiohttp
 from aiohttp import ClientTimeout, TCPConnector
+
+logger = logging.getLogger("s1p.http")
 
 
 class HTTPClientPool:
@@ -77,6 +80,7 @@ class HTTPClientPool:
             timeout=timeout,
             raise_for_status=False,  # We handle status codes ourselves
         )
+        logger.info("HTTP client pool initialized: max_conn=%d per_host=%d", self.MAX_CONNECTIONS, self.MAX_CONNECTIONS_PER_HOST)
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get the shared session"""
@@ -169,6 +173,10 @@ class HTTPClientPool:
                     # Retry on server errors
                     if attempt < max_retries:
                         wait_time = backoff_factor * (2 ** attempt)
+                        logger.warning(
+                            "HTTP retry: %s %s status=%d attempt=%d/%d wait=%.1fs",
+                            method, url, response.status, attempt + 1, max_retries, wait_time,
+                        )
                         await asyncio.sleep(wait_time)
                         continue
 
@@ -178,8 +186,13 @@ class HTTPClientPool:
                 last_exception = e
                 if attempt < max_retries:
                     wait_time = backoff_factor * (2 ** attempt)
+                    logger.warning(
+                        "HTTP retry: %s %s error=%s attempt=%d/%d wait=%.1fs",
+                        method, url, str(e), attempt + 1, max_retries, wait_time,
+                    )
                     await asyncio.sleep(wait_time)
                     continue
+                logger.error("HTTP request failed after %d retries: %s %s error=%s", max_retries, method, url, str(e))
                 raise
 
         raise last_exception

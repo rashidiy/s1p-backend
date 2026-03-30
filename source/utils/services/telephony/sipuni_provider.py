@@ -8,6 +8,8 @@ Optimized for production:
 """
 
 import hashlib
+import logging
+import time
 from typing import Dict, Any, Optional
 
 import aiohttp
@@ -20,6 +22,8 @@ from .base import (
     ProviderException
 )
 from .http_client import get_http_client
+
+logger = logging.getLogger("s1p.sipuni")
 
 
 class SipuniProvider(TelephonyProvider):
@@ -76,6 +80,13 @@ class SipuniProvider(TelephonyProvider):
             error=error,
         )
 
+    def _safe_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Return params with hash masked for logging."""
+        safe = {k: v for k, v in params.items() if k != 'hash'}
+        if 'hash' in params:
+            safe['hash'] = params['hash'][:8] + '...'
+        return safe
+
     async def _make_request(
         self,
         endpoint: str,
@@ -89,6 +100,12 @@ class SipuniProvider(TelephonyProvider):
         """
         params['user'] = self.cabinet_id
 
+        start = time.monotonic()
+        logger.info(
+            "Sipuni API request: POST %s params=%s",
+            endpoint, self._safe_params(params),
+        )
+
         try:
             client = await get_http_client()
             async with await client.post(
@@ -98,18 +115,33 @@ class SipuniProvider(TelephonyProvider):
             ) as response:
                 # content_type=None: Sipuni may respond with text/html
                 result = await response.json(content_type=None)
+                elapsed = round((time.monotonic() - start) * 1000)
+
                 if response.status != 200:
+                    logger.error(
+                        "Sipuni API error: %s status=%d response=%s elapsed=%dms",
+                        endpoint, response.status, result, elapsed,
+                    )
                     raise ProviderException(
                         f"Sipuni API returned status {response.status}",
                         provider="sipuni",
                         details={"endpoint": endpoint, "status": response.status, "response": result}
                     )
 
+                logger.info(
+                    "Sipuni API response: %s status=%d result=%s elapsed=%dms",
+                    endpoint, response.status, result, elapsed,
+                )
                 return result
 
         except ProviderException:
             raise
         except Exception as e:
+            elapsed = round((time.monotonic() - start) * 1000)
+            logger.error(
+                "Sipuni API failed: %s error=%s elapsed=%dms",
+                endpoint, str(e), elapsed,
+            )
             raise ProviderException(
                 f"Sipuni API request failed: {str(e)}",
                 provider="sipuni",
@@ -145,7 +177,18 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_external", params)
-        return self._parse_result(result)
+        response = self._parse_result(result)
+        if response.success:
+            logger.info(
+                "External call initiated: %s → %s via SIP %s, call_id=%s",
+                request.phone_1, request.phone_2, sipnumber, response.call_id,
+            )
+        else:
+            logger.warning(
+                "External call rejected by Sipuni: %s → %s via SIP %s, error=%s",
+                request.phone_1, request.phone_2, sipnumber, response.error,
+            )
+        return response
 
     async def call_number(
         self,
@@ -175,7 +218,18 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_number", params)
-        return self._parse_result(result)
+        response = self._parse_result(result)
+        if response.success:
+            logger.info(
+                "SIP call initiated: SIP %s → %s, reverse=%s, call_id=%s",
+                sipnumber, phone, reverse, response.call_id,
+            )
+        else:
+            logger.warning(
+                "SIP call rejected by Sipuni: SIP %s → %s, error=%s",
+                sipnumber, phone, response.error,
+            )
+        return response
 
     async def call_tree(
         self,
@@ -207,7 +261,18 @@ class SipuniProvider(TelephonyProvider):
         }
 
         result = await self._make_request("/api/callback/call_tree", params)
-        return self._parse_result(result)
+        response = self._parse_result(result)
+        if response.success:
+            logger.info(
+                "Tree call initiated: SIP %s → %s, tree=%s, call_id=%s",
+                sipnumber, phone, tree, response.call_id,
+            )
+        else:
+            logger.warning(
+                "Tree call rejected by Sipuni: SIP %s → %s, tree=%s, error=%s",
+                sipnumber, phone, tree, response.error,
+            )
+        return response
 
     async def cancel_call(self, call_id: str) -> CallResponse:
         """
@@ -225,6 +290,10 @@ class SipuniProvider(TelephonyProvider):
         result = await self._make_request("/api/callback/cancel", params)
         resp = self._parse_result(result)
         resp.call_id = resp.call_id or call_id
+        if resp.success:
+            logger.info("Call cancelled: call_id=%s", call_id)
+        else:
+            logger.warning("Call cancel failed: call_id=%s, error=%s", call_id, resp.error)
         return resp
 
     async def get_call_status(self, call_id: str) -> Optional[CallStatus]:
@@ -263,6 +332,15 @@ class SipuniProvider(TelephonyProvider):
         Returns None for unknown event types.
         """
         event = str(payload.get('event', ''))
+        call_id = payload.get('call_id') or payload.get('callbackId', '?')
+
+        event_names = {'1': 'call_start', '2': 'hangup', '3': 'answer', '4': 'transfer'}
+        logger.info(
+            "Webhook event=%s(%s) call_id=%s src=%s dst=%s status=%s",
+            event, event_names.get(event, 'unknown'), call_id,
+            payload.get('src_num', ''), payload.get('dst_num', ''),
+            payload.get('status', ''),
+        )
 
         if event == '1':
             return self._handle_call_start(payload)
@@ -273,6 +351,7 @@ class SipuniProvider(TelephonyProvider):
         elif event == '4':
             return self._handle_transfer_hangup(payload)
 
+        logger.warning("Unknown webhook event=%s, payload=%s", event, payload)
         return None
 
     @staticmethod
