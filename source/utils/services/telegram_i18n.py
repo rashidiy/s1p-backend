@@ -111,7 +111,7 @@ def call_completed_message(
     parts.append(esc(dur))
     line2 = " · ".join(parts)
 
-    lines = [line1, line2]
+    lines = [line1, "", line2]
     if call_id:
         lines.append(f"\n#call{call_id}")
 
