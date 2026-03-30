@@ -283,6 +283,42 @@ class TelegramService:
 
     # ── Recording audio helper ──────────────────────────────────
 
+    _thumbnail_data: bytes | None = None
+
+    @classmethod
+    def _get_thumbnail_data(cls) -> bytes:
+        """Load S1P audio thumbnail bytes (cached after first call)."""
+        if cls._thumbnail_data is None:
+            from pathlib import Path
+            logo_path = Path(__file__).resolve().parent.parent.parent / "static" / "s1p_audio_thumb.jpg"
+            cls._thumbnail_data = logo_path.read_bytes() if logo_path.exists() else b""
+        return cls._thumbnail_data
+
+    @classmethod
+    def _embed_cover_art(cls, audio_data: bytes, title: str, performer: str) -> bytes:
+        """Embed album art + metadata into MP3 via ID3 tags for full-res display."""
+        cover = cls._get_thumbnail_data()
+        if not cover:
+            return audio_data
+        try:
+            import io
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import ID3, APIC, TIT2, TPE1
+
+            buf = io.BytesIO(audio_data)
+            audio = MP3(buf)
+            if audio.tags is None:
+                audio.add_tags()
+            audio.tags.add(APIC(mime="image/jpeg", type=3, desc="Cover", data=cover))
+            audio.tags.add(TIT2(encoding=3, text=[title]))
+            audio.tags.add(TPE1(encoding=3, text=[performer]))
+            buf.seek(0)
+            audio.save(buf)
+            return buf.getvalue()
+        except Exception:
+            logger.debug("Failed to embed cover art into MP3")
+            return audio_data
+
     @staticmethod
     async def _download_recording(recording_url: str) -> bytes | None:
         """Download a call recording via residential proxy. Returns audio bytes or None."""
@@ -309,6 +345,7 @@ class TelegramService:
         bot: Bot,
         chat_id: str | int,
         recording_url: str,
+        phone: str | None = None,
         caption: str | None = None,
         thread_id: int | None = None,
         keyboard: InlineKeyboardMarkup | None = None,
@@ -326,10 +363,23 @@ class TelegramService:
             if not audio_data:
                 return False
 
+            filename = f"{phone}.mp3" if phone else "recording.mp3"
+            actual_title = title or (phone if phone else filename)
+            actual_performer = performer or "s1p.uz"
+
+            # Embed full-res cover art into MP3 ID3 tags (for lock screen / now playing)
+            audio_data = TelegramService._embed_cover_art(audio_data, actual_title, actual_performer)
+
             kwargs = {
                 "chat_id": chat_id,
                 "audio": BufferedInputFile(audio_data, filename=filename),
+                "title": actual_title,
+                "performer": actual_performer,
             }
+            # Also send 320px thumbnail for chat bubble preview
+            thumb_data = TelegramService._get_thumbnail_data()
+            if thumb_data:
+                kwargs["thumbnail"] = BufferedInputFile(thumb_data, filename="thumbnail.jpg")
             if caption:
                 kwargs["caption"] = caption[:1024]  # Telegram caption limit
             if parse_mode:
@@ -338,16 +388,6 @@ class TelegramService:
                 kwargs["message_thread_id"] = thread_id
             if keyboard:
                 kwargs["reply_markup"] = keyboard
-            if title:
-                kwargs["title"] = title
-            if performer:
-                kwargs["performer"] = performer
-
-            # Attach S1P logo as thumbnail if available
-            logo_path = os.path.join(os.path.dirname(__file__), "..", "..", "static", "s1p_logo.jpg")
-            if os.path.exists(logo_path):
-                with open(logo_path, "rb") as f:
-                    kwargs["thumbnail"] = BufferedInputFile(f.read(), filename="thumb.jpg")
 
             await bot.send_audio(**kwargs)
             return True
@@ -437,11 +477,9 @@ class TelegramService:
                     html_text = i18n.call_completed_message(**msg_args, html=True)
                     sent_as_audio = await TelegramService.send_recording_audio(
                         bot, chat_id, recording_url,
+                        phone=display_phone,
                         caption=html_text, thread_id=thread_id,
                         keyboard=keyboard, parse_mode=ParseMode.HTML,
-                        filename=f"№{call_id}.mp3",
-                        title=f"#call{call_id}",
-                        performer=subdomain or "S1P",
                     )
 
             # Fallback to text message (MarkdownV2)
