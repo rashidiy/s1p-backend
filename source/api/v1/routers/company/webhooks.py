@@ -196,9 +196,13 @@ async def handle_webhook(
     # GET request: payload comes from query parameters
     payload = dict(request.query_params)
 
+    logger.info("Webhook received: token=%s...%s event=%s call_id=%s",
+                token[:8], token[-4:], payload.get('event', '?'), payload.get('call_id', '?'))
+
     # Find company by webhook token
     company = await Company.get(session=session, webhook_token=token)
     if not company:
+        logger.warning("Webhook rejected: invalid token=%s...%s", token[:8], token[-4:])
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid webhook token"
@@ -211,6 +215,8 @@ async def handle_webhook(
 
     # Validate source IP against provider whitelist
     if not validate_webhook_ip(request, provider_type):
+        client_ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+        logger.warning("Webhook IP rejected: company=%s ip=%s provider=%s", company_id, client_ip, provider_type.value)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: IP not whitelisted for this provider"
@@ -309,6 +315,10 @@ async def handle_webhook(
         )
 
         if existing_call:
+            logger.info(
+                "Webhook updating existing call: company=%s call_id=%s event=%s state=%s",
+                company_id, existing_call.id, event_type, call_data.get('state'),
+            )
             return await _update_existing_call(
                 session, background_tasks, company_id, existing_call, call_data, event_type,
             )
@@ -334,6 +344,10 @@ async def handle_webhook(
                 # If still not found, re-raise — something unexpected happened
                 raise
 
+            logger.info(
+                "Webhook created call: company=%s call_id=%s provider_call_id=%s event=%s",
+                company_id, call_event.id, call_data.get('provider_call_id'), event_type,
+            )
             # Fire notifications based on event type
             _schedule_notifications(
                 background_tasks, session, company_id,

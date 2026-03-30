@@ -19,7 +19,11 @@ from utils.services.telephony import ProviderFactory
 from utils.services.telephony.base import ProviderException
 from utils.permissions import require_permissions, Permissions
 
+import logging
+
 from .common import resolve_operator_id, require_provider
+
+logger = logging.getLogger("s1p.calls")
 
 
 def _resolve_sip_ext(user: User, request_operator_id: str | None) -> str:
@@ -120,6 +124,10 @@ async def call_external(
     """
     try:
         sip_ext = _resolve_sip_ext(user, request.operator_id)
+        logger.info(
+            "External call request: company=%s user=%s phone_1=%s phone_2=%s sip=%s",
+            company.id, user.id, request.phone_1, request.phone_2, sip_ext,
+        )
 
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
@@ -148,11 +156,23 @@ async def call_external(
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
             )
+            logger.info(
+                "External call created: call_id=%s provider_call_id=%s",
+                call_num, provider_call_id,
+            )
             return CallResponse(success=True, call_id=call_num)
 
+        logger.warning(
+            "External call failed: company=%s error=%s message=%s",
+            company.id, result.error, result.message,
+        )
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
+        logger.error(
+            "External call provider error: company=%s error=%s details=%s",
+            company.id, e.message, e.details,
+        )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
@@ -172,6 +192,10 @@ async def call_number(
     """
     try:
         sip_ext = _resolve_sip_ext(user, request.operator_id)
+        logger.info(
+            "SIP call request: company=%s user=%s sip=%s phone=%s reverse=%s",
+            company.id, user.id, sip_ext, request.phone, request.reverse,
+        )
 
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
@@ -203,11 +227,14 @@ async def call_number(
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
             )
+            logger.info("SIP call created: call_id=%s provider_call_id=%s", call_num, provider_call_id)
             return CallResponse(success=True, call_id=call_num)
 
+        logger.warning("SIP call failed: company=%s error=%s", company.id, result.error)
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
+        logger.error("SIP call provider error: company=%s error=%s", company.id, e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
@@ -227,6 +254,10 @@ async def call_tree(
     """
     try:
         sip_ext = _resolve_sip_ext(user, request.operator_id)
+        logger.info(
+            "Tree call request: company=%s user=%s sip=%s phone=%s tree=%s",
+            company.id, user.id, sip_ext, request.phone, request.tree,
+        )
 
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
@@ -259,11 +290,14 @@ async def call_tree(
                 utm_medium=request.utm_medium,
                 utm_campaign=request.utm_campaign,
             )
+            logger.info("Tree call created: call_id=%s provider_call_id=%s", call_num, provider_call_id)
             return CallResponse(success=True, call_id=call_num)
 
+        logger.warning("Tree call failed: company=%s error=%s", company.id, result.error)
         return CallResponse(success=False, error=result.error, message=result.message)
 
     except ProviderException as e:
+        logger.error("Tree call provider error: company=%s error=%s", company.id, e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 
@@ -295,6 +329,8 @@ async def cancel_call(
     raw_provider_id = call_event.provider_call_id.removeprefix("sipuni_")
 
     try:
+        logger.info("Cancel call request: company=%s call_id=%s provider_id=%s", company.id, call_id, raw_provider_id)
+
         provider = ProviderFactory.create(
             provider_type=company.provider_type.value,
             config=company.provider_config
@@ -309,6 +345,7 @@ async def cancel_call(
         )
 
     except ProviderException as e:
+        logger.error("Cancel call provider error: company=%s error=%s", company.id, e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Sipuni service error: {e}")
 
 

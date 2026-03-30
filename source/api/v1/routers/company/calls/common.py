@@ -2,7 +2,11 @@
 Provider-agnostic call endpoints and shared helpers
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+logger = logging.getLogger("s1p.calls")
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -57,6 +61,7 @@ async def resolve_operator_id(
     if user:
         return user.id
 
+    logger.warning("Operator not resolved: operator_id=%s company=%s", operator_id, company_id)
     return None
 
 
