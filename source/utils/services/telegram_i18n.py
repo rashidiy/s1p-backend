@@ -164,7 +164,7 @@ def missed_call_message(
         parts.append(_esc(_NEW_NUMBER[locale]))
     line2 = " · ".join(parts)
 
-    lines = [line1, line2]
+    lines = [line1, "", line2]
     if call_id:
         lines.append(f"\n\\#call{call_id}")
     return "\n".join(lines)
@@ -197,7 +197,7 @@ def outbound_unanswered_message(
         parts.append(_esc(operator_name))
     line2 = " · ".join(parts)
 
-    lines = [line1, line2]
+    lines = [line1, "", line2]
     if call_id:
         lines.append(f"\n\\#call{call_id}")
     return "\n".join(lines)
