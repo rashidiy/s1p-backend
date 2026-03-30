@@ -55,6 +55,7 @@ Jinja2==3.1.6
 
 # Telegram Bot
 aiogram==3.20.0
+mutagen>=1.47
 
 # Telegram Userbot (MTProto — group creation, topic management)
 pyrofork>=2.3.69
