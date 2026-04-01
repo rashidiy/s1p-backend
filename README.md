@@ -4,10 +4,6 @@ Multi-tenant CRM backend with telephony integration. Manages leads, deals, conta
 
 Live at [s1p.uz](https://s1p.uz)
 
-<p align="center">
-  <img src="docs/swagger.jpg" alt="S1P API Documentation" width="800">
-</p>
-
 ---
 
 ## Features
