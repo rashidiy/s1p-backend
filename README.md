@@ -148,6 +148,31 @@ API docs at `http://localhost:8000/swagger`
 pytest
 ```
 
+## Security & Production Hardening
+
+- **Rate limiting** — slowapi on all public endpoints + custom OTP rate limiting
+- **Security headers** — HSTS (`max-age=31536000`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`
+- **JWT validation** — Key length enforcement on startup (minimum 32 chars), rejects insecure defaults
+- **CORS** — Configurable origin whitelist with regex support
+- **Request logging** — Middleware captures method, path, status code, response duration
+- **Health checks** — `/health` verifies DB + Redis connectivity; `/version` for deployment verification
+- **Graceful shutdown** — Proper cleanup of DB pools, Redis connections, HTTP clients
+- **Webhook IP whitelisting** — Restrict telephony callbacks to provider IP ranges
+- **Proxy trust** — Explicit trusted proxy host declaration
+
+## Testing
+
+37 test files covering API endpoints, business logic, and integrations.
+
+- **Async test suite** — pytest-asyncio with httpx AsyncClient
+- **Database isolation** — Transaction rollback per test, no shared state
+- **Integration + unit separation** — API-level and service-level tests
+- **Telephony mocks** — Sipuni/Binotel webhook simulation
+
+```bash
+make test
+```
+
 ## API Overview
 
 | Scope | Base Path | Purpose |
